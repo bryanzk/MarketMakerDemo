@@ -260,17 +260,17 @@ sequenceDiagram
 
 ```mermaid
 graph TD
-    Start[运行中] --> Error{异常发生}
-    Error -->|单次循环异常| Log[记录错误日志]
-    Log --> Continue[继续下一次循环]
+    Start["运行中"] --> Error{"异常发生"}
+    Error -->|"单次循环异常"| Log["记录错误日志"]
+    Log --> Continue["继续下一次循环"]
     Continue --> Start
     
-    Error -->|严重异常| Critical[捕获在外层]
-    Critical --> SetError[设置 status.error]
-    Critical --> Stop[调用 stop()]
-    Stop --> CancelOrders[取消所有订单]
-    CancelOrders --> StatusInactive[设置 active=False]
-    StatusInactive --> UIShow[UI 显示 ERROR 状态]
+    Error -->|"严重异常"| Critical["捕获在外层"]
+    Critical --> SetError["设置 status.error"]
+    Critical --> Stop["调用 stop()"]
+    Stop --> CancelOrders["取消所有订单"]
+    CancelOrders --> StatusInactive["设置 active=False"]
+    StatusInactive --> UIShow["UI 显示 ERROR 状态"]
 ```
 
 **安全机制**：

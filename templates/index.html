@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Binance Market Maker</title>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f3f4f6;
+            color: #1f2937;
+            margin: 0;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+        }
+
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .card-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+
+        .card {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+        }
+
+        .card h3 {
+            margin: 0 0 10px 0;
+            font-size: 14px;
+            color: #6b7280;
+        }
+
+        .card .value {
+            font-size: 1.5rem;
+            font-weight: bold;
+            margin-top: 10px;
+        }
+
+        .sub-text {
+            font-size: 0.8rem;
+            color: #888;
+            margin-top: 5px;
+        }
+
+        .btn {
+            padding: 10px 20px;
+            border-radius: 6px;
+            border: none;
+            cursor: pointer;
+            font-weight: bold;
+        }
+
+        .btn-primary {
+            background-color: #3b82f6;
+            color: white;
+        }
+
+        .btn-danger {
+            background-color: #ef4444;
+            color: white;
+        }
+
+        .btn-success {
+            background-color: #10b981;
+            color: white;
+        }
+
+        .btn:disabled {
+            background-color: #d1d5db;
+            color: #9ca3af;
+            cursor: not-allowed;
+            opacity: 0.6;
+        }
+
+        .status-badge {
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: bold;
+        }
+
+        .status-active {
+            background-color: #d1fae5;
+            color: #065f46;
+        }
+
+        .status-inactive {
+            background-color: #fee2e2;
+            color: #991b1b;
+        }
+
+        .status-error {
+            background-color: #fef3c7;
+            color: #92400e;
+        }
+
+        .error-message {
+            background-color: #fee2e2;
+            color: #991b1b;
+            padding: 10px;
+            border-radius: 6px;
+            margin: 10px 0;
+            font-size: 14px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 10px;
+        }
+
+        th,
+        td {
+            text-align: left;
+            padding: 8px;
+            border-bottom: 1px solid #e5e7eb;
+        }
+
+        .log-console {
+            background: #1f2937;
+            color: #10b981;
+            padding: 15px;
+            border-radius: 8px;
+            height: 200px;
+            overflow-y: auto;
+            font-family: monospace;
+            font-size: 12px;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Binance Market Maker (MVP)</h1>
+            <div>
+                <span id="botStatus" class="status-badge status-inactive">STOPPED</span>
+            </div>
+        </div>
+
+        <div id="errorDisplay" class="error-message" style="display: none;"></div>
+
+        <div class="card-grid">
+            <div class="card">
+                <h3>Mid Price</h3>
+                <div class="value" id="midPrice">--</div>
+            </div>
+            <div class="card">
+                <h3>Position (ETH)</h3>
+                <div class="value" id="position">--</div>
+            </div>
+            <div class="card">
+                <h3>Balance (USDT)</h3>
+                <div class="value" id="balance">--</div>
+            </div>
+            <div class="card">
+                <h3>Unrealized PnL</h3>
+                <div class="value" id="pnl">--</div>
+            </div>
+            <div class="card">
+                <h3>Total Realized PnL</h3>
+                <div class="value" id="realizedPnl">--</div>
+                <div class="sub-text" id="pnlStart">Since --</div>
+            </div>
+            <div class="card">
+                <h3>Leverage</h3>
+                <div class="value" id="leverage">--</div>
+            </div>
+        </div>
+
+        <div class="card-grid">
+            <div class="card">
+                <h3>Control Panel</h3>
+                <div style="display: flex; gap: 10px; margin-bottom: 15px;">
+                    <button id="startBtn" class="btn btn-success" onclick="controlBot('start')">Start Bot</button>
+                    <button id="stopBtn" class="btn btn-danger" onclick="controlBot('stop')" disabled>Stop Bot</button>
+                </div>
+                <hr>
+                <div style="margin-top: 15px;">
+                    <label>Spread (%): <input type="number" id="spreadInput" step="0.001" value="0.002"></label>
+                    <label>Qty: <input type="number" id="qtyInput" step="0.01" value="0.02"></label>
+                    <button class="btn btn-primary" style="margin-top: 10px; width: 100%;"
+                        onclick="updateConfig()">Update Config</button>
+                </div>
+                <hr>
+                <div style="margin-top: 15px;">
+                    <label>Leverage (1-125x): <input type="number" id="leverageInput" min="1" max="125"
+                            value="5"></label>
+                    <button class="btn btn-primary" style="margin-top: 10px; width: 100%;"
+                        onclick="updateLeverage()">Update Leverage</button>
+                </div>
+            </div>
+            <div class="card" style="grid-column: span 2;">
+                <h3>Active Orders</h3>
+                <table id="ordersTable">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Side</th>
+                            <th>Price</th>
+                            <th>Qty</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <!-- Orders here -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        async function fetchStatus() {
+            try {
+                const res = await fetch('/api/status');
+                const data = await res.json();
+
+                if (data.error) return;
+
+                document.getElementById('midPrice').innerText = data.mid_price ? data.mid_price.toFixed(2) : '--';
+                document.getElementById('position').innerText = data.position;
+                document.getElementById('balance').innerText = data.balance ? data.balance.toFixed(2) : '--';
+                document.getElementById('pnl').innerText = data.pnl ? data.pnl.toFixed(4) : '--';
+                document.getElementById('realizedPnl').innerText = data.realized_pnl ? data.realized_pnl.toFixed(4) : '0.0000';
+                document.getElementById('leverage').innerText = data.leverage ? data.leverage + 'x' : '--';
+                if (data.pnl_start_str) {
+                    document.getElementById('pnlStart').innerText = `Since ${data.pnl_start_str}`;
+                }
+
+                const statusBadge = document.getElementById('botStatus');
+                const errorDisplay = document.getElementById('errorDisplay');
+                const startBtn = document.getElementById('startBtn');
+                const stopBtn = document.getElementById('stopBtn');
+
+                // Update error display
+                if (data.error) {
+                    errorDisplay.innerText = `Error: ${data.error}`;
+                    errorDisplay.style.display = 'block';
+                    statusBadge.innerText = "ERROR";
+                    statusBadge.className = "status-badge status-error";
+                    startBtn.disabled = false;
+                    stopBtn.disabled = true;
+                } else {
+                    errorDisplay.style.display = 'none';
+
+                    if (data.active) {
+                        statusBadge.innerText = "RUNNING";
+                        statusBadge.className = "status-badge status-active";
+                        startBtn.disabled = true;
+                        stopBtn.disabled = false;
+                    } else {
+                        statusBadge.innerText = "STOPPED";
+                        statusBadge.className = "status-badge status-inactive";
+                        startBtn.disabled = false;
+                        stopBtn.disabled = true;
+                    }
+                }
+
+                const tbody = document.querySelector('#ordersTable tbody');
+                tbody.innerHTML = '';
+                data.orders.forEach(o => {
+                    const row = `<tr><td>${o.id}</td><td>${o.side}</td><td>${o.price}</td><td>${o.amount}</td></tr>`;
+                    tbody.innerHTML += row;
+                });
+
+            } catch (e) {
+                console.error(e);
+            }
+        }
+
+        async function controlBot(action) {
+            const startBtn = document.getElementById('startBtn');
+            const stopBtn = document.getElementById('stopBtn');
+
+            // Immediately update button states for responsive feedback
+            if (action === 'start') {
+                startBtn.disabled = true;
+                startBtn.innerText = 'Starting...';
+            } else {
+                stopBtn.disabled = true;
+                stopBtn.innerText = 'Stopping...';
+            }
+
+            try {
+                await fetch(`/api/control?action=${action}`, { method: 'POST' });
+                // Wait a bit for the bot to actually start/stop
+                await new Promise(resolve => setTimeout(resolve, 500));
+                fetchStatus();
+            } catch (e) {
+                console.error(e);
+            } finally {
+                // Reset button text
+                startBtn.innerText = 'Start Bot';
+                stopBtn.innerText = 'Stop Bot';
+            }
+        }
+
+        async function updateConfig() {
+            const spread = parseFloat(document.getElementById('spreadInput').value);
+            const qty = parseFloat(document.getElementById('qtyInput').value);
+            await fetch('/api/config', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ spread, quantity: qty })
+            });
+            alert('Config Updated!');
+        }
+
+        async function updateLeverage() {
+            const leverage = parseInt(document.getElementById('leverageInput').value);
+            if (leverage < 1 || leverage > 125) {
+                alert('Leverage must be between 1 and 125');
+                return;
+            }
+            const res = await fetch('/api/leverage', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(leverage)
+            });
+            const result = await res.json();
+            if (result.error) {
+                alert('Error: ' + result.error);
+            } else {
+                alert('Leverage updated to ' + leverage + 'x');
+                // Wait a bit for backend to update status
+                await new Promise(resolve => setTimeout(resolve, 500));
+                fetchStatus();
+            }
+        }
+
+        // Poll every 1 second
+        setInterval(fetchStatus, 1000);
+        fetchStatus();
+    </script>
+</body>
+
+</html>

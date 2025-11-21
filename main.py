@@ -7,6 +7,7 @@ from exchange import BinanceClient
 from strategy import FixedSpreadStrategy
 from risk import RiskManager
 from order_manager import OrderManager
+from performance import PerformanceTracker
 
 # Setup Logging
 logging.basicConfig(
@@ -17,22 +18,20 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 class BotEngine:
-    # Start time for Realized PnL: 2025-11-20 11:00 ET (16:00 UTC)
-    PNL_START_TIME = 1763654400000
-    PNL_START_STR = "2025-11-20 11:00 ET"
 
     def __init__(self):
         self.running = False
         self.thread = None
         self.status = {
+            "symbol": SYMBOL,
             "mid_price": 0.0,
             "position": 0.0,
             "balance": 0.0,
             "orders": [],
             "pnl": 0.0,
-            "realized_pnl": 0.0,
-            "pnl_start_str": self.PNL_START_STR,
             "leverage": 0,
+            "max_leverage": 125,
+            "limits": {},
             "active": False,
             "error": None
         }
@@ -43,6 +42,7 @@ class BotEngine:
             self.strategy = FixedSpreadStrategy()
             self.risk = RiskManager()
             self.om = OrderManager()
+            self.performance = PerformanceTracker()
             logger.info(f"Connected to Binance Testnet. Symbol: {SYMBOL}")
         except Exception as e:
             logger.error(f"Initialization failed: {e}")
@@ -93,6 +93,44 @@ class BotEngine:
         
         logger.info("Bot stopped.")
 
+    def switch_pair(self, symbol):
+        """
+        Switches the trading pair.
+        """
+        logger.info(f"Switching pair to {symbol}...")
+        was_running = self.running
+        
+        # Stop bot if running
+        if self.running:
+            self.stop()
+            
+        # Set new symbol
+        success = self.client.set_symbol(symbol)
+        if not success:
+            logger.error(f"Failed to switch to symbol {symbol}")
+            return False
+            
+        # Reset status for new pair
+        self.status = {
+            "symbol": symbol,
+            "mid_price": 0.0,
+            "position": 0.0,
+            "balance": 0.0,
+            "orders": [],
+            "pnl": 0.0,
+            "leverage": 0,
+            "max_leverage": 125,
+            "limits": {},
+            "active": False,
+            "error": None
+        }
+        
+        # Restart if it was running
+        if was_running:
+            self.start()
+            
+        return True
+
     def get_status(self):
         self.status["active"] = self.running
         return self.status
@@ -116,8 +154,6 @@ class BotEngine:
 
                     current_orders = self.client.fetch_open_orders()
 
-                    # Fetch Realized PnL (less frequent? for now every tick is fine for MVP)
-                    realized_pnl = self.client.fetch_realized_pnl(start_time=self.PNL_START_TIME)
                     
                     # Fetch current leverage
                     leverage = self.client.get_leverage() or 0
@@ -130,9 +166,16 @@ class BotEngine:
                         "orders": current_orders,
                         # Simple PnL calc (unrealized)
                         "pnl": (market_data['mid_price'] - account_data['entry_price']) * account_data['position_amt'] if account_data['position_amt'] != 0 else 0.0,
-                        "realized_pnl": realized_pnl,
-                        "leverage": leverage
+                        "leverage": leverage,
+                        "max_leverage": self.client.get_max_leverage(),
+                        "limits": self.client.get_symbol_limits()
                     })
+                    
+                    # Update performance tracker
+                    self.performance.update_position(
+                        account_data['position_amt'],
+                        market_data['mid_price']
+                    )
 
                     # 2. Strategy Calculation
                     target_orders = self.strategy.calculate_target_orders(market_data)

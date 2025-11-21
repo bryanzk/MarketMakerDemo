@@ -43,6 +43,26 @@ class BinanceClient:
         # Set initial leverage
         self.set_leverage(LEVERAGE)
 
+    def set_symbol(self, symbol):
+        """
+        Updates the trading symbol.
+        """
+        try:
+            if symbol not in self.exchange.markets:
+                self.exchange.load_markets()
+            
+            if symbol not in self.exchange.markets:
+                logger.error(f"Symbol {symbol} not found in markets.")
+                return False
+                
+            self.symbol = symbol
+            self.market = self.exchange.markets[self.symbol]
+            logger.info(f"Switched exchange client to symbol: {self.symbol}")
+            return True
+        except Exception as e:
+            logger.error(f"Error setting symbol {symbol}: {e}")
+            return False
+
     def get_leverage(self):
         """
         Gets the current leverage for the symbol.
@@ -73,6 +93,70 @@ class BinanceClient:
             logger.error(f"Error setting leverage: {e}")
             return False
 
+    def get_max_leverage(self):
+        """
+        Gets the maximum leverage for the symbol.
+        """
+        try:
+            # Check if limits are available in market info
+            if 'limits' in self.market and 'leverage' in self.market['limits']:
+                return self.market['limits']['leverage']['max']
+            
+            # Fallback: fetch leverage brackets
+            brackets = self.exchange.fapiPrivateGetLeverageBracket({'symbol': self.market['id']})
+            if brackets:
+                # Brackets is a list, usually one item if symbol specified
+                # Or list of all symbols.
+                for b in brackets:
+                    if b['symbol'] == self.market['id']:
+                        # Brackets are usually sorted by leverage, max leverage is the highest bracket's initialLeverage?
+                        # Actually brackets define max leverage for notional value ranges.
+                        # The highest leverage is usually the first bracket.
+                        return b['brackets'][0]['initialLeverage']
+            return 20 # Default fallback
+        except Exception as e:
+            logger.error(f"Error fetching max leverage: {e}")
+            return 20
+
+    def get_symbol_limits(self):
+        """
+        Gets trading limits for the symbol.
+        Returns: dict with minQty, maxQty, stepSize, minNotional
+        """
+        try:
+            limits = {
+                'minQty': 0.001,
+                'maxQty': 100000,
+                'stepSize': 0.001,
+                'minNotional': 5.0
+            }
+            
+            if 'limits' in self.market:
+                m_limits = self.market['limits']
+                if 'amount' in m_limits:
+                    limits['minQty'] = m_limits['amount']['min']
+                    limits['maxQty'] = m_limits['amount']['max']
+                if 'market' in m_limits:
+                    limits['minNotional'] = m_limits['market']['min']
+                if 'cost' in m_limits:
+                     # Some exchanges use cost for minNotional
+                     if limits['minNotional'] == 5.0: # If not set by market
+                         limits['minNotional'] = m_limits['cost']['min']
+
+            if 'precision' in self.market:
+                if 'amount' in self.market['precision']:
+                    limits['stepSize'] = self.market['precision']['amount']
+            
+            return limits
+        except Exception as e:
+            logger.error(f"Error fetching symbol limits: {e}")
+            return {
+                'minQty': 0.001,
+                'maxQty': 100000,
+                'stepSize': 0.001,
+                'minNotional': 5.0
+            }
+
     def fetch_market_data(self):
         """
         Fetches top 5 order book and calculates mid price.
@@ -95,6 +179,21 @@ class BinanceClient:
             }
         except Exception as e:
             logger.error(f"Error fetching market data: {e}")
+            return None
+
+    def fetch_ticker_stats(self):
+        """
+        Fetches 24h ticker statistics.
+        Returns: dict with 'percentage' (24h change %), 'quoteVolume'
+        """
+        try:
+            ticker = self.exchange.fetch_ticker(self.symbol)
+            return {
+                'percentage': ticker['percentage'],
+                'quoteVolume': ticker['quoteVolume']
+            }
+        except Exception as e:
+            logger.error(f"Error fetching ticker stats: {e}")
             return None
 
     def fetch_account_data(self):
@@ -155,20 +254,47 @@ class BinanceClient:
         orders: list of dicts {'side': 'buy'/'sell', 'price': float, 'quantity': float}
         """
         created_orders = []
+        limits = self.get_symbol_limits()
+        min_qty = limits['minQty']
+        min_notional = limits['minNotional']
+        step_size = limits['stepSize']
+        
         for order in orders:
             try:
+                # Validate and correct quantity
+                qty = order['quantity']
+                price = order['price']
+                
+                # Check minimum quantity
+                if qty < min_qty:
+                    logger.warning(f"Quantity {qty} below min {min_qty}, adjusting...")
+                    qty = min_qty
+                
+                # Check minimum notional
+                notional = qty * price
+                if notional < min_notional:
+                    qty = (min_notional / price) * 1.1  # 10% buffer
+                    logger.warning(f"Notional {notional} below min {min_notional}, adjusting qty to {qty}...")
+                
+                # Round to step size
+                if step_size:
+                    qty = round(qty / step_size) * step_size
+                    # Ensure we didn't round down below minimum
+                    if qty < min_qty:
+                        qty = min_qty
+                
                 # Using create_order instead of create_orders (batch) for simplicity in MVP
                 # Batch is supported but requires specific structure
                 res = self.exchange.create_order(
                     symbol=self.symbol,
                     type='limit',
                     side=order['side'],
-                    amount=order['quantity'],
+                    amount=qty,
                     price=order['price'],
                     params={'timeInForce': 'GTX'}  # Post Only
                 )
                 created_orders.append(res)
-                logger.info(f"Placed {order['side']} order at {order['price']}")
+                logger.info(f"Placed {order['side']} order at {order['price']} qty {qty}")
             except Exception as e:
                 logger.error(f"Error placing order {order}: {e}")
         return created_orders

@@ -3,3 +3,8 @@ python-dotenv
 fastapi
 uvicorn
 jinja2
+
+# Testing dependencies
+pytest
+pytest-cov
+pytest-mock

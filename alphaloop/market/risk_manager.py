@@ -1,4 +1,4 @@
-from config import MAX_POSITION
+from alphaloop.core.config import MAX_POSITION
 
 class RiskManager:
     def check_position_limits(self, position_amt):

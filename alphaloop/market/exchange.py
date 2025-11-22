@@ -1,6 +1,7 @@
 import ccxt
+import time
 import logging
-from config import API_KEY, API_SECRET, SYMBOL, LEVERAGE
+from alphaloop.core.config import API_KEY, API_SECRET, SYMBOL, LEVERAGE
 
 logger = logging.getLogger(__name__)
 

@@ -1,0 +1,61 @@
+# Task List
+
+- [x] Design Framework Architecture <!-- id: 0 -->
+    - [x] Analyze current codebase context <!-- id: 1 -->
+    - [x] Define Agent Roles (Strategy, Risk, Compliance, Dev) <!-- id: 2 -->
+    - [x] Define Iterative Feedback Loop Process <!-- id: 3 -->
+    - [x] Create Architecture Diagram/Doc <!-- id: 4 -->
+- [x] Implement Framework Skeleton <!-- id: 5 -->
+    - [x] Set up directory structure for Agents <!-- id: 6 -->
+    - [x] Define Agent Interfaces/Protocols <!-- id: 7 -->
+- [x] Develop Prototype Agents <!-- id: 8 -->
+    - [x] Strategy Agent (Signal Generation) <!-- id: 9 -->
+    - [x] Risk Agent (Validation) <!-- id: 10 -->
+    - [x] Execution Agent (Order Management) <!-- id: 11 -->
+- [x] Establish Feedback Loop <!-- id: 12 -->
+    - [x] Implement Performance Metrics Logging <!-- id: 13 -->
+    - [x] Implement Optimization Logic <!-- id: 14 -->
+- [ ] Enhance Framework with PM Agent <!-- id: 15 -->
+    - [ ] Define PM Agent Role (Backlog, Reporting) <!-- id: 16 -->
+    - [x] Define PM Agent Role (Backlog, Reporting) <!-- id: 16 -->
+    - [x] Update Design Document <!-- id: 17 -->
+- [ ] Expand Framework with QA and Ops Agents <!-- id: 18 -->
+    - [ ] Define QA Agent Role (Testing, Validation) <!-- id: 19 -->
+    - [ ] Define Ops Agent Role (Deployment, Monitoring) <!-- id: 20 -->
+    - [x] Define Ops Agent Role (Deployment, Monitoring) <!-- id: 20 -->
+    - [x] Update Design Document <!-- id: 21 -->
+- [x] Create Agent Roles & Hierarchy Document <!-- id: 22 -->
+    - [x] Define detailed responsibilities <!-- id: 23 -->
+    - [x] Create Hierarchy/Interaction Diagram <!-- id: 24 -->
+- [x] Create Business Workflow Document <!-- id: 25 -->
+    - [x] Define New Feature Flow <!-- id: 26 -->
+    - [x] Define Optimization Flow <!-- id: 27 -->
+    - [x] Define Incident Response Flow <!-- id: 28 -->
+- [x] Import External Documentation <!-- id: 29 -->
+    - [x] Read Google Doc Content <!-- id: 30 -->
+    - [x] Create Project Artifact <!-- id: 31 -->
+- [ ] Align Agents with Evaluation Layers <!-- id: 32 -->
+    - [ ] Add Infrastructure Agent (Layer 1) <!-- id: 33 -->
+    - [ ] Add Execution Agent (Layer 2) <!-- id: 34 -->
+    - [x] Update Roles & Hierarchy Document <!-- id: 35 -->
+- [x] Extract Metrics Specification <!-- id: 36 -->
+    - [x] Create Metrics Document <!-- id: 37 -->
+    - [x] Add Data Agent (Analytics) <!-- id: 38 -->
+    - [x] Update Design & Hierarchy Docs <!-- id: 39 -->
+- [ ] Remediation & Enhancement <!-- id: 40 -->
+    - [x] Refactor Configuration (Centralize Limits) <!-- id: 41 -->
+    - [x] Implement Structured Logging (JSON) <!-- id: 42 -->
+    - [x] Implement Data Agent Logic <!-- id: 43 -->
+    - [x] Update Quant/Risk Agents to use new Metrics <!-- id: 44 -->
+- [ ] Implement Pluggable Metrics System <!-- id: 45 -->
+    - [x] Define Metrics Configuration (config.py) <!-- id: 46 -->
+    - [x] Create Metrics Registry & Base Class <!-- id: 47 -->
+    - [x] Implement Individual Metric Classes <!-- id: 48 -->
+    - [x] Refactor Data Agent to use Registry <!-- id: 49 -->
+    - [x] Verify Metrics Display <!-- id: 50 -->
+- [x] Documentation Overhaul (Beginner Friendly) <!-- id: 51 -->
+    - [x] Create Master README (The Map) <!-- id: 52 -->
+    - [x] Refine Framework Design (The Concept) <!-- id: 53 -->
+    - [x] Refine Roles & Hierarchy (The Team) <!-- id: 54 -->
+    - [x] Refine Workflows (The Process) <!-- id: 55 -->
+```

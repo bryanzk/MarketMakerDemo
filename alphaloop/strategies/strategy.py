@@ -1,5 +1,5 @@
-from config import SPREAD_PCT, QUANTITY
-from utils import round_step_size, round_tick_size
+from alphaloop.core.config import SPREAD_PCT, QUANTITY
+from alphaloop.core.utils import round_step_size, round_tick_size
 
 class FixedSpreadStrategy:
     def __init__(self):

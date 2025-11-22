@@ -1,243 +1,86 @@
-# Binance Futures Market Maker
+# AlphaLoop: Agentic Trading Framework / 智能体交易框架
 
-一个用于币安期货市场的做市机器人，采用固定价差策略，支持 Web UI 实时监控和控制。
-
-![Version](https://img.shields.io/badge/version-1.0.0-blue)
-![Status](https://img.shields.io/badge/status-MVP-green)
-![Python](https://img.shields.io/badge/python-3.11-blue)
-![License](https://img.shields.io/badge/license-MIT-brightgreen)
+## 👋 Welcome / 欢迎
+Welcome to **AlphaLoop**. If you are new here, think of this project not just as a piece of software, but as a **digital hedge fund** where every employee is an AI Agent.
+欢迎来到 **AlphaLoop**。如果您是初学者，请不要仅仅将本项目视为软件，而应将其视为一个**数字对冲基金**，其中的每位员工都是一个 AI 智能体。
 
 ---
 
-## 📖 项目概述
+## 🗺️ Navigation Map / 导航地图
+To understand this project, follow this path:
+要理解本项目，请遵循以下路径：
 
-**策略**: 固定价差双边做市（Fixed-Spread Market Making）
+### 1. The Concept (概念)
+*   **[Framework Design / 框架设计](docs/alphaloop/framework_design.md)**
+    *   *What is this?* A high-level overview of the "Agent-First" philosophy.
+    *   *Analogy*: The "Brain" of the organization.
+    *   *内容*：“智能体优先”理念的高层概述。
+    *   *类比*：组织的“大脑”。
 
-在 ETH/USDT 永续合约上，围绕市场中间价上下各 0.2% 的位置持续挂出买卖限价单（Post-Only），通过赚取买卖价差获利，同时设置绝对仓位限制控制风险。
+### 2. The Team (团队)
+*   **[Agent Roles & Hierarchy / 智能体角色与层级](docs/alphaloop/agent_roles_and_hierarchy.md)**
+    *   *Who works here?* Meet the Quant, the Risk Manager, the Trader, and the Engineer.
+    *   *Analogy*: The "Org Chart".
+    *   *内容*：认识量化、风控、交易员和工程师。
+    *   *类比*：“组织架构图”。
 
-**适用场景**: 主流币种（ETH、BTC）的流动性做市
+### 3. The Process (流程)
+*   **[Agent Workflows / 智能体工作流](docs/alphaloop/agent_workflows.md)**
+    *   *How do they work together?* See how a strategy goes from an idea to production.
+    *   *Analogy*: The "Standard Operating Procedures (SOPs)".
+    *   *内容*：查看策略如何从想法变为生产。
+    *   *类比*：“标准作业程序 (SOP)”。
+
+### 4. The Scoreboard (计分板)
+*   **[Metrics Specification / 度量指标规范](docs/alphaloop/metrics_specification.md)**
+    *   *How do we measure success?* The specific numbers we track (Sharpe, Slippage, Latency).
+    *   *Analogy*: The "KPI Dashboard".
+    *   *内容*：我们追踪的具体数字（夏普比率、滑点、延迟）。
+    *   *类比*：“KPI 仪表板”。
+
+### 5. The Evaluation (评估)
+*   **[Evaluation Framework / 评估框架](docs/alphaloop/evaluation_framework.md)**
+    *   *How do we grade the system?* A 4-layer deep dive into system health.
+    *   *Analogy*: The "Quarterly Review".
+    *   *内容*：深入系统健康的 4 层评估。
+    *   *类比*：“季度审查”。
 
 ---
 
-## ✨ 核心功能
+## 🚀 Quick Start / 快速开始
 
-### 已实现 (MVP + Phase 2)
+### Prerequisites / 先决条件
+*   Python 3.9+
+*   `pip install -r requirements.txt`
 
-- ✅ **固定价差策略**: 围绕中间价上下 0.2% 挂单
-- ✅ **自动订单管理**: 价格变动时自动调整订单
-- ✅ **仓位风险控制**: ±0.2 ETH 绝对仓位限制
-- ✅ **Web UI 控制面板**:
-  - 实时数据监控（价格、仓位、余额、PnL）
-  - Start/Stop 控制
-  - 参数动态调整（价差、数量、杠杆）
-  - 已实现盈亏追踪
-- ✅ **安全停止机制**: Stop 时自动撤销所有订单
-- ✅ **错误处理**: 异常时自动停止并撤单
-- ✅ **杠杆控制**: 1-125x 杠杆设置
-
-### 计划中 (Phase 3)
-
-- 📋 库存倾斜（Inventory Skew）
-- 📋 文件日志
-- 📋 PnL 持久化
-
----
-
-## 🚀 快速开始
-
-### 1. 前置要求
-
-- Python 3.11+
-- Binance Futures Testnet 账户（[注册地址](https://testnet.binancefuture.com/zh-CN/futures/ETHUSDT)）
-
-### 2. 安装依赖
+### Running the Simulation / 运行模拟
+The core of this project is the `AlphaLoop`, a continuous cycle of trading, analysis, and optimization.
+本项目核心是 `AlphaLoop`，一个交易、分析和优化的连续循环。
 
 ```bash
-# 克隆项目
-git clone <your-repo-url>
-cd market_maker
-
-# 安装依赖
-pip install -r requirements.txt
+# Run the autonomous loop
+python3 agent_framework.py
 ```
 
-### 3. 配置 API 密钥
+### What to Watch / 观察内容
+Check the logs to see the agents talking to each other:
+检查日志以查看智能体之间的对话：
+1.  **QuantAgent**: "Win rate is low, I propose widening the spread." (胜率低，我建议扩大价差。)
+2.  **RiskAgent**: "Checking... Approved." (检查中... 批准。)
+3.  **DataAgent**: "Calculated Sharpe Ratio: 1.5." (计算出的夏普比率：1.5。)
 
-```bash
-# 复制示例配置文件
-cp .env.example .env
+---
 
-# 编辑 .env 填入你的 API Key 和 Secret
-# BINANCE_API_KEY=your_testnet_api_key
-# BINANCE_API_SECRET=your_testnet_api_secret
+## 🏗️ Architecture / 架构
+
+```mermaid
+graph TD
+    User[User/用户] -->|Sets Goals/设定目标| PM[PM Agent/项目经理]
+    
+    subgraph "The Loop / 循环"
+        Data[Data Agent] -->|Metrics| Quant[Quant Agent]
+        Quant -->|Proposal| Risk[Risk Agent]
+        Risk -->|Approval| Exec[Execution System]
+        Exec -->|Trade Logs| Data
+    end
 ```
-
-### 4. 启动服务器
-
-```bash
-python3.11 server.py
-```
-
-### 5. 访问 Web UI
-
-打开浏览器访问: **http://localhost:8000**
-
----
-
-## 📁 项目结构
-
-```
-market_maker/
-├── config.py           # 配置管理（API 密钥、交易参数）
-├── utils.py            # 工具函数（精度处理）
-├── exchange.py         # 交易所接口（Binance API 封装）
-├── strategy.py         # 策略逻辑（固定价差计算）
-├── risk.py             # 风险管理（仓位限制）
-├── order_manager.py    # 订单同步（Diff 算法）
-├── main.py             # 主程序（BotEngine）
-├── server.py           # FastAPI 服务器
-├── templates/
-│   └── index.html      # Web UI 界面
-├── requirements.txt    # Python 依赖
-└── .env.example        # 环境变量示例
-```
-
----
-
-## ⚙️ 配置参数
-
-在 `config.py` 中调整策略参数：
-
-| 参数 | 默认值 | 说明 |
-|------|--------|------|
-| `SYMBOL` | "ETH/USDT:USDT" | 交易对（永续合约） |
-| `QUANTITY` | 0.02 | 每单数量（ETH） |
-| `SPREAD_PCT` | 0.002 | 价差百分比（0.2%） |
-| `MAX_POSITION` | 0.5 | 最大仓位（ETH） |
-| `LEVERAGE` | 5 | 杠杆倍数 |
-| `REFRESH_INTERVAL` | 2 | 刷新间隔（秒） |
-
-**⚠️ 风险提示**: 
-- 测试网仅供学习，不涉及真实资金
-- 实盘前务必充分测试和理解策略风险
-
----
-
-## 📊 使用指南
-
-### 启动 Bot
-
-1. 访问 http://localhost:8000
-2. 点击 **"Start Bot"** 按钮
-3. 观察 "Active Orders" 表格，确认订单已挂出
-
-### 调整参数
-
-**价差与数量**:
-- 在 "Control Panel" 输入新的 Spread 和 Qty
-- 点击 "Update Config"
-
-**杠杆倍数**:
-- 在 "Leverage (1-125x)" 输入框输入杠杆
-- 点击 "Update Leverage"
-
-### 停止 Bot
-
-点击 **"Stop Bot"** 按钮，系统会：
-1. 停止主循环
-2. **自动撤销所有挂单**
-3. 更新状态为 "STOPPED"
-
----
-
-## 📈 监控指标
-
-### 实时数据卡片
-
-- **Mid Price**: 当前市场中间价
-- **Position**: 当前持仓（正数=多头，负数=空头）
-- **Balance**: 可用余额（USDT）
-- **Unrealized PnL**: 未实现盈亏
-- **Total Realized PnL**: 已实现盈亏（自设定起始时间）
-- **Leverage**: 当前杠杆倍数
-
-### Active Orders 表格
-
-显示当前所有挂单的详细信息（ID、方向、价格、数量）
-
----
-
-## 🏗️ 架构设计
-
-详见 [architecture.md](./docs/architecture.md) - 包含完整的架构图和模块说明。
-
-**核心流程**:
-```
-获取数据 → 计算策略 → 风险检查 → 订单同步 → 执行操作 → 更新状态
-```
-
----
-
-## 🔧 开发
-
-### 命令行模式
-
-不使用 Web UI，直接运行 Bot：
-
-```bash
-python3.11 main.py
-```
-
-### 调试工具
-
-项目包含多个调试脚本：
-- `debug_markets.py`: 查看可用交易对
-- `debug_realized_pnl.py`: 查看盈亏历史
-
----
-
-## 📚 文档
-
-- [交易策略说明](./docs/trading_strategy.md) - 详细的策略解释（专家级 + 新手友好）
-- [架构文档](./docs/architecture.md) - 系统架构和数据流图
-- [实现计划](./docs/implementation_plan.md) - 技术实现细节
-- [功能演示](./docs/walkthrough.md) - Phase 2 实现与验证
-
----
-
-## 🛣️ Roadmap
-
-- [x] **Phase 1**: Core MVP（命令行做市）
-- [x] **Phase 2**: Web UI（监控面板 + 控制）
-- [ ] **Phase 3**: 高级功能（库存倾斜、日志、PnL 持久化）
-- [ ] **Future**: 多币种支持、动态价差、回测系统
-
----
-
-## ⚠️ 免责声明
-
-本项目仅供学习和研究使用。加密货币交易存在高风险，可能导致本金损失。作者不对任何交易损失承担责任。
-
-使用本项目即表示您：
-- 了解加密货币交易的风险
-- 仅在测试网环境进行初步测试
-- 对自己的交易决策负全责
-
----
-
-## 📄 License
-
-MIT License - 详见 [LICENSE](./LICENSE) 文件
-
----
-
-## 🙏 致谢
-
-- [CCXT](https://github.com/ccxt/ccxt) - 统一的加密货币交易所 API
-- [FastAPI](https://fastapi.tiangolo.com/) - 现代化的 Python Web 框架
-- [Binance](https://www.binance.com/) - 提供 Testnet 环境
-
----
-
-**开发者**: [@kezheng](https://github.com/kezheng)  
-**最后更新**: 2025-11-20

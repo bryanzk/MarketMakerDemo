@@ -1,5 +1,5 @@
 import pytest
-from risk import RiskManager
+from alphaloop.market.risk_manager import RiskManager
 
 
 class TestRiskManager:

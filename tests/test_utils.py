@@ -1,5 +1,6 @@
 import pytest
-from utils import round_tick_size, round_step_size
+from alphaloop.core.utils import round_step_size, round_tick_size
+from alphaloop.core.utils import round_step_size, round_tick_size
 
 
 class TestUtils:

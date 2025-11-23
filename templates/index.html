@@ -191,6 +191,11 @@
         </div>
 
         <div id="errorDisplay" class="error-message" style="display: none;"></div>
+        <div id="alertDisplay" class="error-message"
+            style="display: none; background-color: #fff3cd; color: #856404; border: 1px solid #ffeeba;">
+            <strong>⚠️ Alert:</strong> <span id="alertMessage"></span>
+            <div id="alertSuggestion" style="font-size: 12px; margin-top: 5px;"></div>
+        </div>
 
         <div class="card-grid">
             <div class="card">
@@ -438,12 +443,37 @@
                         statusBadge.className = "status-badge status-active";
                         startBtn.disabled = true;
                         stopBtn.disabled = false;
-                    } else {
-                        statusBadge.innerText = "STOPPED";
                         statusBadge.className = "status-badge status-inactive";
                         startBtn.disabled = false;
                         stopBtn.disabled = true;
                     }
+                }
+
+                // Update Alert Display
+                const alertDisplay = document.getElementById('alertDisplay');
+                if (data.alert) {
+                    document.getElementById('alertMessage').innerText = data.alert.message;
+
+                    let suggestionHtml = `<div style="margin-top: 5px;">${data.alert.suggestion || ''}</div>`;
+
+                    // Check for structured suggestions options
+                    if (data.alert.options) {
+                        suggestionHtml += `<div style="display: flex; gap: 5px; margin-top: 10px;">`;
+                        data.alert.options.forEach(opt => {
+                            suggestionHtml += `
+                                <button class="btn" style="padding: 5px 10px; font-size: 11px; background: #fff; border: 1px solid #d1d5db;"
+                                    onclick="applySuggestionOption(${opt.spread})">
+                                    <strong>${opt.label}</strong><br>${(opt.spread * 100).toFixed(2)}%
+                                </button>
+                            `;
+                        });
+                        suggestionHtml += `</div>`;
+                    }
+
+                    document.getElementById('alertSuggestion').innerHTML = suggestionHtml;
+                    alertDisplay.style.display = 'block';
+                } else {
+                    alertDisplay.style.display = 'none';
                 }
 
                 const tbody = document.querySelector('#ordersTable tbody');
@@ -473,8 +503,6 @@
 
             try {
                 await fetch(`/api/control?action=${action}`, { method: 'POST' });
-                // Wait a bit for the bot to actually start/stop
-                await new Promise(resolve => setTimeout(resolve, 500));
                 fetchStatus();
             } catch (e) {
                 console.error(e);
@@ -488,12 +516,26 @@
         async function updateConfig() {
             const spread = parseFloat(document.getElementById('spreadInput').value);
             const qty = parseFloat(document.getElementById('qtyInput').value);
-            await fetch('/api/config', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ spread, quantity: qty })
-            });
-            showToast('Config Updated!', 'success');
+
+            try {
+                const res = await fetch('/api/config', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ spread, quantity: qty })
+                });
+
+                const data = await res.json();
+
+                if (data.error) {
+                    showToast(data.error, 'error');
+                } else {
+                    showToast('Config Updated Successfully!', 'success');
+                    // Clear alert display if it was showing
+                    document.getElementById('alertDisplay').style.display = 'none';
+                }
+            } catch (e) {
+                showToast('Network Error', 'error');
+            }
         }
 
         async function updateLeverage() {
@@ -596,6 +638,11 @@
             } catch (e) {
                 console.error(e);
             }
+        }
+
+        async function applySuggestionOption(spread) {
+            document.getElementById('spreadInput').value = spread;
+            await updateConfig();
         }
 
         async function applySuggestion() {

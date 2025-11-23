@@ -15,6 +15,16 @@ class AlphaLoop:
         self.quant = QuantAgent()
         self.risk = RiskAgent()
         self.data = DataAgent()
+        self.alert = None
+        
+    def get_status(self):
+        return {
+            "active": True, # Mock active state
+            "mid_price": 2000.0, # Mock
+            "position": 0.5, # Mock
+            "pnl": 150.0, # Mock
+            "alert": self.alert
+        }
         
     def run_cycle(self):
         logger.info("Starting AlphaLoop Cycle")
@@ -41,15 +51,20 @@ class AlphaLoop:
             return
             
         # 3. Risk Validation
-        approved = self.risk.validate_proposal(proposal)
+        approved, reason = self.risk.validate_proposal(proposal)
         
         if approved:
             # 4. Deployment (Apply changes)
             logger.info(f"Applying new config", extra={'extra_data': {'proposal': proposal}})
             self.strategy.spread = proposal['spread']
-            # In a real system, this would commit code or update a config file/DB
+            self.alert = None # Clear alert on success
         else:
-            logger.warning("Proposal rejected by Risk. Keeping current config.")
+            logger.warning(f"Proposal rejected: {reason}")
+            self.alert = {
+                "type": "warning",
+                "message": f"Risk Rejection: {reason}",
+                "suggestion": "Check your strategy settings or market volatility."
+            }
             
     def run_continuous(self, cycles=5):
         for i in range(cycles):

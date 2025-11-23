@@ -1,7 +1,11 @@
 # Financial Agentic Framework: "AlphaLoop" / 金融智能体框架："AlphaLoop"
 
-## 1. Executive Summary / 执行摘要
-This framework applies financial industry best practices (Segregation of Duties, Model Risk Management, CI/CD) to a multi-agent software development lifecycle. The goal is to create a self-optimizing system that converges on business objectives (e.g., Sharpe Ratio, PnL) while strictly adhering to risk and compliance constraints.
+## 1. Introduction / 简介
+This document outlines the design of the **AlphaLoop** agentic framework, which powers the **MarketMakerDemo** bot.
+本文档概述了 **AlphaLoop** 智能体框架的设计，该框架驱动着 **MarketMakerDemo** 机器人。
+
+The core philosophy is to model the software development and operational lifecycle of a trading system using specialized AI agents.
+核心理念是使用专门的 AI 智能体对交易系统的软件开发和运营生命周期进行建模。This framework applies financial industry best practices (Segregation of Duties, Model Risk Management, CI/CD) to a multi-agent software development lifecycle. The goal is to create a self-optimizing system that converges on business objectives (e.g., Sharpe Ratio, PnL) while strictly adhering to risk and compliance constraints.
 
 本框架将金融行业的最佳实践（职责分离、模型风险管理、CI/CD）应用于多智能体软件开发生命周期。其目标是创建一个自我优化的系统，在严格遵守风险和合规约束的同时，收敛于业务目标（如夏普比率、PnL）。
 

@@ -1,49 +1,42 @@
-# AlphaLoop: Agentic Trading Framework / 智能体交易框架
+# MarketMakerDemo / 做市商演示
 
-## 👋 Welcome / 欢迎
-Welcome to **AlphaLoop**. If you are new here, think of this project not just as a piece of software, but as a **digital hedge fund** where every employee is an AI Agent.
-欢迎来到 **AlphaLoop**。如果您是初学者，请不要仅仅将本项目视为软件，而应将其视为一个**数字对冲基金**，其中的每位员工都是一个 AI 智能体。
+## 🤖 Introduction / 简介
+**MarketMakerDemo** is an autonomous, self-optimizing market making bot designed for crypto markets. Unlike traditional bots with static logic, this system continuously analyzes its own performance and adapts its strategy in real-time.
+**MarketMakerDemo** 是一个专为加密市场设计的自主、自我优化的做市商机器人。与具有静态逻辑的传统机器人不同，该系统持续分析自身性能并实时调整策略。
+
+It is powered by **AlphaLoop**, an agentic framework where specialized AI agents (Quant, Risk, Operations) collaborate to manage the trading business.
+它由 **AlphaLoop** 驱动，这是一个智能体框架，专门的 AI 智能体（量化、风控、运营）在此协作管理交易业务。
 
 ---
 
-## 🗺️ Navigation Map / 导航地图
-To understand this project, follow this path:
-要理解本项目，请遵循以下路径：
+## 🧠 Powered by AlphaLoop / 由 AlphaLoop 驱动
+This bot is not just a script; it's a digital organization.
+这个机器人不仅仅是一个脚本；它是一个数字组织。
 
-### 1. The Concept (概念)
-*   **[Framework Design / 框架设计](docs/alphaloop/framework_design.md)**
-    *   *What is this?* A high-level overview of the "Agent-First" philosophy.
-    *   *Analogy*: The "Brain" of the organization.
-    *   *内容*：“智能体优先”理念的高层概述。
-    *   *类比*：组织的“大脑”。
+### The Core Loop / 核心循环
+1.  **Trade**: The bot executes a `FixedSpreadStrategy`.
+2.  **Analyze**: The **Quant Agent** reviews performance metrics (Sharpe Ratio, Win Rate).
+3.  **Propose**: If performance is suboptimal, the Quant proposes changes (e.g., "Widen spread to 0.3%").
+4.  **Validate**: The **Risk Agent** checks the proposal against strict safety limits.
+5.  **Optimize**: If approved, the system updates its configuration instantly.
+
+---
+
+## 🗺️ Documentation / 文档
+Explore the internal workings of the bot and its framework:
+探索机器人及其框架的内部工作原理：
+
+### 1. The Framework (框架)
+*   **[Framework Design / 框架设计](docs/alphaloop/framework_design.md)**: The "Agent-First" architecture behind the bot.
 
 ### 2. The Team (团队)
-*   **[Agent Roles & Hierarchy / 智能体角色与层级](docs/alphaloop/agent_roles_and_hierarchy.md)**
-    *   *Who works here?* Meet the Quant, the Risk Manager, the Trader, and the Engineer.
-    *   *Analogy*: The "Org Chart".
-    *   *内容*：认识量化、风控、交易员和工程师。
-    *   *类比*：“组织架构图”。
+*   **[Agent Roles / 智能体角色](docs/alphaloop/agent_roles_and_hierarchy.md)**: Meet the AI agents managing your money.
 
 ### 3. The Process (流程)
-*   **[Agent Workflows / 智能体工作流](docs/alphaloop/agent_workflows.md)**
-    *   *How do they work together?* See how a strategy goes from an idea to production.
-    *   *Analogy*: The "Standard Operating Procedures (SOPs)".
-    *   *内容*：查看策略如何从想法变为生产。
-    *   *类比*：“标准作业程序 (SOP)”。
+*   **[Workflows / 工作流](docs/alphaloop/agent_workflows.md)**: How agents collaborate to optimize strategies.
 
-### 4. The Scoreboard (计分板)
-*   **[Metrics Specification / 度量指标规范](docs/alphaloop/metrics_specification.md)**
-    *   *How do we measure success?* The specific numbers we track (Sharpe, Slippage, Latency).
-    *   *Analogy*: The "KPI Dashboard".
-    *   *内容*：我们追踪的具体数字（夏普比率、滑点、延迟）。
-    *   *类比*：“KPI 仪表板”。
-
-### 5. The Evaluation (评估)
-*   **[Evaluation Framework / 评估框架](docs/alphaloop/evaluation_framework.md)**
-    *   *How do we grade the system?* A 4-layer deep dive into system health.
-    *   *Analogy*: The "Quarterly Review".
-    *   *内容*：深入系统健康的 4 层评估。
-    *   *类比*：“季度审查”。
+### 4. Metrics (指标)
+*   **[Metrics Specification / 指标规范](docs/alphaloop/metrics_specification.md)**: The KPIs we track (Slippage, Latency, Sharpe).
 
 ---
 
@@ -53,21 +46,17 @@ To understand this project, follow this path:
 *   Python 3.9+
 *   `pip install -r requirements.txt`
 
-### Running the Simulation / 运行模拟
-The core of this project is the `AlphaLoop`, a continuous cycle of trading, analysis, and optimization.
-本项目核心是 `AlphaLoop`，一个交易、分析和优化的连续循环。
-
+### Running the Bot / 运行机器人
 ```bash
-# Run the autonomous loop
-python3 agent_framework.py
+# Launch the autonomous market maker
+python3 run.py
 ```
 
 ### What to Watch / 观察内容
-Check the logs to see the agents talking to each other:
-检查日志以查看智能体之间的对话：
-1.  **QuantAgent**: "Win rate is low, I propose widening the spread." (胜率低，我建议扩大价差。)
-2.  **RiskAgent**: "Checking... Approved." (检查中... 批准。)
-3.  **DataAgent**: "Calculated Sharpe Ratio: 1.5." (计算出的夏普比率：1.5。)
+Check the logs to see the agents in action:
+1.  **QuantAgent**: "Win rate is low (42%), I propose widening the spread to 0.25%."
+2.  **RiskAgent**: "Validating proposal... Spread is within limits (Max 5%). APPROVED."
+3.  **System**: "Applying new configuration. Spread updated to 0.25%."
 
 ---
 
@@ -75,12 +64,14 @@ Check the logs to see the agents talking to each other:
 
 ```mermaid
 graph TD
-    User[User/用户] -->|Sets Goals/设定目标| PM[PM Agent/项目经理]
+    Market[Crypto Market] <-->|Orders/Fills| Exec[Execution Engine]
+    Exec -->|Trade Data| Data[Data Agent]
     
-    subgraph "The Loop / 循环"
-        Data[Data Agent] -->|Metrics| Quant[Quant Agent]
+    subgraph "AlphaLoop Framework"
+        Data -->|Metrics| Quant[Quant Agent]
         Quant -->|Proposal| Risk[Risk Agent]
-        Risk -->|Approval| Exec[Execution System]
-        Exec -->|Trade Logs| Data
+        Risk -->|Approval| Config[Configuration]
     end
+    
+    Config -->|Updates| Exec
 ```

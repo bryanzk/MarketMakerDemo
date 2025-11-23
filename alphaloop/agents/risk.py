@@ -23,12 +23,14 @@ class RiskAgent:
         max_spread = RISK_LIMITS['MAX_SPREAD']
         
         if spread < min_spread:
-            logger.warning(f"REJECTED: Spread too tight", extra={'extra_data': {'spread': spread, 'min': min_spread}})
-            return False
+            reason = f"Spread {spread*100:.2f}% is too tight (Min {min_spread*100:.2f}%)"
+            logger.warning(f"REJECTED: {reason}", extra={'extra_data': {'spread': spread, 'min': min_spread}})
+            return False, reason
             
         if spread > max_spread:
-            logger.warning(f"REJECTED: Spread too wide", extra={'extra_data': {'spread': spread, 'max': max_spread}})
-            return False
+            reason = f"Spread {spread*100:.2f}% is too wide (Max {max_spread*100:.2f}%)"
+            logger.warning(f"REJECTED: {reason}", extra={'extra_data': {'spread': spread, 'max': max_spread}})
+            return False, reason
             
         logger.info("APPROVED")
-        return True
+        return True, "Approved"

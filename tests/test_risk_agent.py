@@ -9,14 +9,20 @@ class TestRiskAgent:
     def test_validate_proposal_approved(self):
         # Spread within limits
         proposal = {'spread': 0.002} # 0.2%
-        assert self.agent.validate_proposal(proposal) == True
+        approved, reason = self.agent.validate_proposal(proposal)
+        assert approved == True
+        assert reason == "Approved"
         
     def test_validate_proposal_too_tight(self):
         # Spread too tight
         proposal = {'spread': 0.0001} # 0.01%
-        assert self.agent.validate_proposal(proposal) == False
+        approved, reason = self.agent.validate_proposal(proposal)
+        assert approved == False
+        assert "too tight" in reason
         
     def test_validate_proposal_too_wide(self):
         # Spread too wide
         proposal = {'spread': 0.1} # 10%
-        assert self.agent.validate_proposal(proposal) == False
+        approved, reason = self.agent.validate_proposal(proposal)
+        assert approved == False
+        assert "too wide" in reason

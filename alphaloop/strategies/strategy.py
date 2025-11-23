@@ -1,10 +1,11 @@
-from alphaloop.core.config import SPREAD_PCT, QUANTITY
+from alphaloop.core.config import SPREAD_PCT, QUANTITY, LEVERAGE
 from alphaloop.core.utils import round_step_size, round_tick_size
 
 class FixedSpreadStrategy:
     def __init__(self):
         self.spread = SPREAD_PCT
         self.quantity = QUANTITY
+        self.leverage = LEVERAGE
 
     def calculate_target_orders(self, market_data):
         """

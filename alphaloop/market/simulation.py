@@ -1,6 +1,7 @@
 import random
-from alphaloop.strategies.strategy import FixedSpreadStrategy
+
 from alphaloop.market.performance import PerformanceTracker
+from alphaloop.strategies.strategy import FixedSpreadStrategy
 
 
 class MarketSimulator:

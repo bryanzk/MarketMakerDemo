@@ -1,4 +1,5 @@
 import numpy as np
+
 from alphaloop.metrics.base import Metric
 
 

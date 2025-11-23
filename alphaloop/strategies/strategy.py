@@ -1,4 +1,4 @@
-from alphaloop.core.config import SPREAD_PCT, QUANTITY, LEVERAGE
+from alphaloop.core.config import LEVERAGE, QUANTITY, SPREAD_PCT
 from alphaloop.core.utils import round_step_size, round_tick_size
 
 

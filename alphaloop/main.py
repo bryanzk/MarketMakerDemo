@@ -1,13 +1,14 @@
 import sys
 import time
 from collections import deque
-from alphaloop.market.simulation import MarketSimulator
-from alphaloop.market.exchange import BinanceClient
-from alphaloop.strategies.strategy import FixedSpreadStrategy
+
+from alphaloop.agents.data import DataAgent
 from alphaloop.agents.quant import QuantAgent
 from alphaloop.agents.risk import RiskAgent
-from alphaloop.agents.data import DataAgent
 from alphaloop.core.logger import setup_logger
+from alphaloop.market.exchange import BinanceClient
+from alphaloop.market.simulation import MarketSimulator
+from alphaloop.strategies.strategy import FixedSpreadStrategy
 
 logger = setup_logger("AlphaLoop")
 

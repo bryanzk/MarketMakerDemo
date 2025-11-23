@@ -1,4 +1,4 @@
-from decimal import Decimal, ROUND_DOWN, ROUND_FLOOR
+from decimal import ROUND_DOWN, ROUND_FLOOR, Decimal
 
 
 def round_step_size(quantity, step_size):

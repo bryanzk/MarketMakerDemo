@@ -1,6 +1,7 @@
 import json
+
+from alphaloop.core.llm import GeminiProvider, LLMGateway
 from alphaloop.core.logger import setup_logger
-from alphaloop.core.llm import LLMGateway, GeminiProvider
 
 logger = setup_logger("QuantAgent")
 

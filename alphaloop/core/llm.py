@@ -1,6 +1,7 @@
 import os
 from abc import ABC, abstractmethod
 from typing import Optional
+
 import google.generativeai as genai
 
 

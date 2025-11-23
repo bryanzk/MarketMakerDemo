@@ -3,14 +3,18 @@ from abc import ABC, abstractmethod
 from typing import Optional
 import google.generativeai as genai
 
+
 class LLMProvider(ABC):
     """Abstract base class for LLM providers"""
+
     @abstractmethod
     def generate(self, prompt: str) -> str:
         pass
 
+
 class GeminiProvider(LLMProvider):
     """Google Gemini implementation of LLMProvider"""
+
     def __init__(self, api_key: Optional[str] = None, model: str = "gemini-1.5-pro"):
         self.api_key = api_key or os.getenv("GEMINI_API_KEY")
         if not self.api_key:
@@ -25,8 +29,10 @@ class GeminiProvider(LLMProvider):
         except Exception as e:
             raise RuntimeError(f"Gemini API error: {e}")
 
+
 class LLMGateway:
     """Gateway service for interacting with LLMs"""
+
     def __init__(self, provider: LLMProvider):
         self.provider = provider
 

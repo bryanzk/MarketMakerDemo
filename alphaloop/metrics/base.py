@@ -1,11 +1,12 @@
 from abc import ABC, abstractmethod
 
+
 class Metric(ABC):
     def __init__(self, name, config):
         self.name = name
         self.config = config
-        self.enabled = config.get('enabled', False)
-        
+        self.enabled = config.get("enabled", False)
+
     @abstractmethod
     def calculate(self, data):
         """

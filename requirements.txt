@@ -5,9 +5,9 @@ fastapi
 uvicorn
 jinja2
 httpx
+python-dotenv
 google-generativeai
 # Testing dependencies
 pytest
 pytest-cov
 pytest-mock
-numpy

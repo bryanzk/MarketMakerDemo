@@ -29,6 +29,7 @@ jobs:
     
     - name: Check coverage threshold
       run: |
+        pip install coverage
         coverage report --fail-under=70
     
     - name: Upload coverage to Codecov

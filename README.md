@@ -59,7 +59,17 @@ This project has comprehensive documentation. **If you are new to the system**, 
    - Technical details of implementations
    - 最近的更改和计划功能
 
-6. **AlphaLoop Framework Documentation** (docs/alphaloop/)
+6. **[Development Protocol](docs/development_protocol.md)**
+   - Mandatory development standards
+   - Testing requirements and coverage goals
+   - 强制性开发标准和测试要求
+
+7. **[CI/CD Process](docs/cicd.md)** 🆕
+   - Automated testing and deployment pipeline
+   - Quality gates and pre-commit checklist
+   - 自动化测试和部署流程
+
+8. **AlphaLoop Framework Documentation** (docs/alphaloop/)
    - **[Framework Design](docs/alphaloop/framework_design.md)**: The "Agent-First" architecture
      - 框架设计 - "智能体优先"架构
    - **[Agent Roles and Hierarchy](docs/alphaloop/agent_roles_and_hierarchy.md)**: Meet the AI agents

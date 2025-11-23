@@ -376,6 +376,54 @@
                 </div>
             </div>
 
+            <!-- Order History -->
+            <div class="card" style="grid-column: span 2;">
+                <h3>Order History</h3>
+                <div style="margin-bottom: 10px; display: flex; gap: 10px; flex-wrap: wrap;">
+                    <select id="historySymbolFilter" onchange="fetchOrderHistory()"
+                        style="padding: 5px; border-radius: 4px;">
+                        <option value="">All Symbols</option>
+                        <option value="ETH/USDT:USDT">ETH/USDT</option>
+                        <option value="BTC/USDT:USDT">BTC/USDT</option>
+                    </select>
+                    <select id="historyStatusFilter" onchange="fetchOrderHistory()"
+                        style="padding: 5px; border-radius: 4px;">
+                        <option value="">All Status</option>
+                        <option value="placed">Placed</option>
+                        <option value="cancelled">Cancelled</option>
+                        <option value="filled">Filled</option>
+                    </select>
+                    <select id="historyTimeFilter" onchange="fetchOrderHistory()"
+                        style="padding: 5px; border-radius: 4px;">
+                        <option value="">All Time</option>
+                        <option value="3600">Last 1h</option>
+                        <option value="21600">Last 6h</option>
+                        <option value="86400">Last 24h</option>
+                    </select>
+                </div>
+                <div id="orderHistoryContainer"
+                    style="height: 200px; overflow-y: auto; background: #f9fafb; border: 1px solid #e5e7eb;">
+                    <table style="width: 100%; font-size: 12px; border-collapse: collapse;">
+                        <thead style="position: sticky; top: 0; background: #fff; border-bottom: 2px solid #e5e7eb;">
+                            <tr>
+                                <th style="padding: 8px; text-align: left;">Time</th>
+                                <th style="padding: 8px; text-align: left;">Symbol</th>
+                                <th style="padding: 8px; text-align: left;">Side</th>
+                                <th style="padding: 8px; text-align: right;">Price</th>
+                                <th style="padding: 8px; text-align: right;">Qty</th>
+                                <th style="padding: 8px; text-align: center;">Status</th>
+                            </tr>
+                        </thead>
+                        <tbody id="orderHistoryBody">
+                            <tr>
+                                <td colspan="6" style="text-align: center; padding: 20px; color: #9ca3af;">No orders yet
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
             <!-- Strategy Settings -->
             <div class="card" style="grid-column: span 2;">
                 <h3>PnL Trend Chart</h3>
@@ -751,13 +799,64 @@
             }
         }
 
+        async function fetchOrderHistory() {
+            try {
+                const symbolFilter = document.getElementById('historySymbolFilter').value;
+                const statusFilter = document.getElementById('historyStatusFilter').value;
+                const timeFilter = document.getElementById('historyTimeFilter').value;
+
+                let url = '/api/order-history?';
+                if (symbolFilter) url += `symbol=${symbolFilter}&`;
+                if (statusFilter) url += `status=${statusFilter}&`;
+                if (timeFilter) {
+                    const fromTime = Date.now() / 1000 - parseInt(timeFilter);
+                    url += `from_time=${fromTime}&`;
+                }
+
+                const res = await fetch(url);
+                const orders = await res.json();
+
+                const tbody = document.getElementById('orderHistoryBody');
+                if (orders.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 20px; color: #9ca3af;">No orders found</td></tr>';
+                    return;
+                }
+
+                tbody.innerHTML = orders.map(order => {
+                    const time = new Date(order.timestamp * 1000).toLocaleTimeString();
+                    const statusClass = order.status === 'placed' ? 'green' : order.status === 'cancelled' ? 'red' : 'blue';
+                    const statusColor = order.status === 'placed' ? '#10b981' : order.status === 'cancelled' ? '#ef4444' : '#3b82f6';
+
+                    return `
+                        <tr style="border-bottom: 1px solid #e5e7eb;">
+                            <td style="padding: 8px;">${time}</td>
+                            <td style="padding: 8px;">${order.symbol}</td>
+                            <td style="padding: 8px; color: ${order.side === 'buy' ? '#10b981' : '#ef4444'}; font-weight: bold;">${order.side.toUpperCase()}</td>
+                            <td style="padding: 8px; text-align: right;">${order.price.toFixed(2)}</td>
+                            <td style="padding: 8px; text-align: right;">${order.quantity.toFixed(4)}</td>
+                            <td style="padding: 8px; text-align: center;">
+                                <span style="background: ${statusColor}; color: white; padding: 2px 8px; border-radius: 4px; font-size: 11px;">
+                                    ${order.status.toUpperCase()}
+                                </span>
+                            </td>
+                        </tr>
+                    `;
+                }).join('');
+
+            } catch (e) {
+                console.error('Error fetching order history:', e);
+            }
+        }
+
         // Poll every 1 second
         setInterval(fetchStatus, 1000);
         setInterval(fetchSuggestions, 5000); // Fetch suggestions every 5s
         setInterval(fetchPerformance, 2000); // Fetch performance every 2s
+        setInterval(fetchOrderHistory, 3000); // Fetch order history every 3s
         fetchStatus();
         fetchSuggestions();
         fetchPerformance();
+        fetchOrderHistory();
     </script>
 </body>
 

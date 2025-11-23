@@ -1,9 +1,11 @@
 ccxt
-python-dotenv
+pandas
+numpy
 fastapi
 uvicorn
 jinja2
-
+httpx
+google-generativeai
 # Testing dependencies
 pytest
 pytest-cov

@@ -21,6 +21,7 @@ class AlphaLoop:
         self.current_stage = "Idle"
         self.active_orders = []
         self.system_logs = deque(maxlen=50)
+        self.order_history = deque(maxlen=200)  # Store last 200 orders
         # Initialize exchange
         try:
             self.exchange = BinanceClient()
@@ -79,7 +80,8 @@ class AlphaLoop:
             "pnl": pnl,
             "alert": self.alert,
             "orders": self.active_orders,
-            "logs": list(self.system_logs)
+            "logs": list(self.system_logs),
+            "error": None
         }
         
     def run_cycle(self):
@@ -104,6 +106,17 @@ class AlphaLoop:
                 # Place new orders
                 if target_orders:
                     placed_orders = self.exchange.place_orders(target_orders)
+                    # Record placed orders in history
+                    for order in placed_orders:
+                        self.order_history.append({
+                            'id': order.get('id', 'unknown'),
+                            'symbol': self.exchange.symbol,
+                            'side': order.get('side'),
+                            'price': order.get('price'),
+                            'quantity': order.get('amount', order.get('quantity')),
+                            'status': 'placed',
+                            'timestamp': time.time()
+                        })
                     # Fetch updated open orders
                     self.active_orders = self.exchange.fetch_open_orders()
                     # Format for frontend
@@ -133,35 +146,42 @@ class AlphaLoop:
                 o['amount'] = o['quantity']
         
         # 2. Data Ingestion & Analysis
-        self.set_stage("Data Analysis")
+        self.set_stage("Data: Analyzing Market")
         # Assuming sim.run returns trades in stats for now, or we need to modify sim
         # For this prototype, we'll pass the aggregate stats as a mock
         self.data.ingest_data({'price': 1000}, []) # Mock ingestion
         metrics = self.data.calculate_metrics()
         
+        # Log Data Agent findings
+        volatility = metrics.get('volatility', 0)
+        sharpe = metrics.get('sharpe_ratio', 0)
+        self.set_stage(f"Data: Volatility {volatility:.2%}, Sharpe {sharpe:.2f}")
+        
         logger.info(f"Cycle Performance", extra={'extra_data': {'pnl': stats['realized_pnl'], 'metrics': metrics}})
         
         # 3. Quant Analysis & Proposal
-        self.set_stage("Quant Strategy")
         current_config = {'spread': self.strategy.spread}
         # Pass metrics to Quant instead of raw stats
         proposal = self.quant.analyze_and_propose(current_config, {**stats, **metrics})
         
         if not proposal:
+            self.set_stage("Quant: No changes proposed")
             logger.info("No changes proposed. Cycle complete.")
             return
             
+        self.set_stage(f"Quant: Proposing Spread {proposal['spread']:.2%}")
+        
         # 3. Risk Validation
-        self.set_stage("Risk Check")
         approved, reason = self.risk.validate_proposal(proposal)
         
         if approved:
+            self.set_stage("Risk: Approved Proposal")
             # 4. Deployment (Apply changes)
-            self.set_stage("Execution")
             logger.info(f"Applying new config", extra={'extra_data': {'proposal': proposal}})
             self.strategy.spread = proposal['spread']
             self.alert = None # Clear alert on success
         else:
+            self.set_stage(f"Risk: Rejected ({reason})")
             logger.warning(f"Proposal rejected: {reason}")
             self.alert = {
                 "type": "warning",

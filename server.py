@@ -97,6 +97,8 @@ async def control_bot(action: str):
                     "suggestions": suggestions
                 }
             
+            # Risk check passed - clear any previous alerts and start bot
+            bot_engine.alert = None
             is_running = True
             bot_thread = threading.Thread(target=run_bot_loop)
             bot_thread.daemon = True
@@ -133,7 +135,14 @@ async def update_config(config: ConfigUpdate):
 
 @app.post("/api/leverage")
 async def update_leverage(leverage: int):
-    return {"status": "mock_updated", "leverage": leverage}
+    if leverage < 1 or leverage > 125:
+        return {"error": "Leverage must be between 1 and 125"}
+        
+    success = bot_engine.exchange.set_leverage(leverage)
+    if success:
+        return {"status": "updated", "leverage": leverage}
+    else:
+        return {"error": "Failed to update leverage on exchange"}
 
 @app.post("/api/pair")
 async def update_pair(pair: PairUpdate):
@@ -189,6 +198,32 @@ async def get_suggestions():
     suggestion["leverage"] = max(1, min(10, suggestion["leverage"]))
         
     return suggestion
+
+@app.get("/api/order-history")
+async def get_order_history(symbol: str = None, status: str = None, from_time: float = None, to_time: float = None):
+    """
+    Get order history with optional filters
+    :param symbol: Filter by symbol (e.g., 'ETH/USDT:USDT')
+    :param status: Filter by status ('placed', 'cancelled', 'filled')
+    :param from_time: Filter by start timestamp
+    :param to_time: Filter by end timestamp
+    """
+    history = list(bot_engine.order_history)
+    
+    # Apply filters
+    if symbol:
+        history = [o for o in history if o['symbol'] == symbol]
+    if status:
+        history = [o for o in history if o['status'] == status]
+    if from_time:
+        history = [o for o in history if o['timestamp'] >= from_time]
+    if to_time:
+        history = [o for o in history if o['timestamp'] <= to_time]
+    
+    # Sort by timestamp descending (newest first)
+    history.sort(key=lambda x: x['timestamp'], reverse=True)
+    
+    return history
 
 @app.get("/api/performance")
 async def get_performance():

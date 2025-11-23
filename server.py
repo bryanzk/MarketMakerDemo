@@ -137,7 +137,11 @@ async def update_leverage(leverage: int):
 
 @app.post("/api/pair")
 async def update_pair(pair: PairUpdate):
-    return {"status": "mock_updated", "symbol": pair.symbol}
+    success = bot_engine.set_symbol(pair.symbol)
+    if success:
+        return {"status": "updated", "symbol": pair.symbol}
+    else:
+        return {"status": "error", "message": f"Failed to update to symbol {pair.symbol}"}
 
 @app.get("/api/suggestions")
 async def get_suggestions():

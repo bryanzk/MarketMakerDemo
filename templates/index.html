@@ -367,6 +367,16 @@
                     </tbody>
                 </table>
             </div>
+            <!-- System Activity Log -->
+            <div class="card" style="grid-column: span 2;">
+                <h3>System Activity</h3>
+                <div id="systemLogs"
+                    style="height: 150px; overflow-y: auto; background: #f9fafb; border: 1px solid #e5e7eb; padding: 10px; font-family: monospace; font-size: 12px; color: #374151;">
+                    <div style="color: #9ca3af;">Waiting for activity...</div>
+                </div>
+            </div>
+
+            <!-- Strategy Settings -->
             <div class="card" style="grid-column: span 2;">
                 <h3>PnL Trend Chart</h3>
                 <canvas id="pnlChart" style="max-height: 300px;"></canvas>
@@ -469,6 +479,19 @@
                         } else {
                             stageDisplay.style.color = '#6b7280'; // Gray
                         }
+                    }
+
+                    // Update System Logs
+                    const logsContainer = document.getElementById('systemLogs');
+                    if (data.logs && data.logs.length > 0) {
+                        logsContainer.innerHTML = ''; // Clear current
+                        data.logs.forEach(log => {
+                            const line = document.createElement('div');
+                            line.innerHTML = `<span style="color: #6b7280;">[${log.timestamp}]</span> <b>${log.stage}</b>`;
+                            logsContainer.appendChild(line);
+                        });
+                        // Auto-scroll to bottom
+                        logsContainer.scrollTop = logsContainer.scrollHeight;
                     }
                 }
 
@@ -595,48 +618,7 @@
                 showToast('Error: ' + result.error, 'error');
             } else {
                 showToast('Switched to ' + symbol, 'success');
-                // Wait a bit for backend to update status
-                await new Promise(resolve => setTimeout(resolve, 500));
-
-                // Force update leverage input after switch
-                const statusRes = await fetch('/api/status');
-                const statusData = await statusRes.json();
-                if (statusData.leverage) {
-                    document.getElementById('leverageInput').value = statusData.leverage;
-                }
-                if (statusData.max_leverage) {
-                    document.getElementById('leverageInput').max = statusData.max_leverage;
-                    document.getElementById('leverageRange').innerText = `1-${statusData.max_leverage}`;
-                }
-
-                // Auto-adjust quantity if needed
-                if (statusData.limits) {
-                    const qtyInput = document.getElementById('qtyInput');
-                    const minQty = parseFloat(statusData.limits.minQty);
-                    const minNotional = parseFloat(statusData.limits.minNotional);
-                    const price = statusData.mid_price || 100000; // Fallback to avoid div by zero
-
-                    let safeQty = minQty;
-                    if (safeQty * price < minNotional) {
-                        safeQty = (minNotional / price) * 1.1; // 10% buffer
-                    }
-
-                    // Round to step size
-                    const stepSize = parseFloat(statusData.limits.stepSize);
-                    if (stepSize) {
-                        safeQty = Math.ceil(safeQty / stepSize) * stepSize;
-                    }
-
-                    // Update input if current value is too low
-                    if (parseFloat(qtyInput.value) < safeQty) {
-                        qtyInput.value = safeQty.toFixed(stepSize ? -Math.log10(stepSize) : 4);
-                        showToast(`Quantity adjusted to minimum: ${qtyInput.value}`, 'info');
-                    }
-
-                    qtyInput.min = minQty;
-                    qtyInput.step = stepSize;
-                }
-
+                // Immediately refresh status to update mid_price and symbol display
                 fetchStatus();
                 fetchSuggestions(); // Fetch new suggestions for new pair
             }
@@ -649,17 +631,25 @@
                 const res = await fetch('/api/suggestions');
                 const data = await res.json();
 
-                if (data.error) return;
+                if (data.error) {
+                    console.error('Suggestions error:', data.error);
+                    return;
+                }
 
                 currentSuggestion = data;
 
-                document.getElementById('marketCondition').innerText = data.condition;
-                document.getElementById('recSpread').innerText = data.spread + '%';
-                document.getElementById('recLeverage').innerText = data.leverage + 'x';
-                document.getElementById('recReason').innerText = data.reason;
+                document.getElementById('marketCondition').innerText = data.condition || 'N/A';
+                document.getElementById('recSpread').innerText = (data.spread ? data.spread + '%' : '--');
+                document.getElementById('recLeverage').innerText = (data.leverage ? data.leverage + 'x' : '--');
+                document.getElementById('recReason').innerText = data.reason || 'No recommendation available';
 
             } catch (e) {
-                console.error(e);
+                console.error('Error fetching suggestions:', e);
+                // Clear loading state even on error
+                document.getElementById('marketCondition').innerText = 'Error';
+                document.getElementById('recSpread').innerText = '--';
+                document.getElementById('recLeverage').innerText = '--';
+                document.getElementById('recReason').innerText = 'Failed to load suggestions';
             }
         }
 

@@ -22,21 +22,59 @@ This bot is not just a script; it's a digital organization.
 
 ---
 
-## 🗺️ Documentation / 文档
-Explore the internal workings of the bot and its framework:
-探索机器人及其框架的内部工作原理：
+## 📚 Documentation Reading Guide / 文档阅读指南
 
-### 1. The Framework (框架)
-*   **[Framework Design / 框架设计](docs/alphaloop/framework_design.md)**: The "Agent-First" architecture behind the bot.
+This project has comprehensive documentation. **If you are new to the system**, follow this reading order:
+本项目有完整的文档。**如果您是新手**，请按以下顺序阅读：
 
-### 2. The Team (团队)
-*   **[Agent Roles / 智能体角色](docs/alphaloop/agent_roles_and_hierarchy.md)**: Meet the AI agents managing your money.
+### 🎯 For First-Time Readers / 初次阅读者
 
-### 3. The Process (流程)
-*   **[Workflows / 工作流](docs/alphaloop/agent_workflows.md)**: How agents collaborate to optimize strategies.
+**Start Here:**
+1. **[System Flow](docs/system_flow.md)** ⭐ **READ THIS FIRST**
+   - Understand what happens when you click "Start Bot"
+   - See the complete interaction flow with diagrams
+   - **从这里开始** - 了解点击"启动 Bot"后发生的事情
 
-### 4. Metrics (指标)
-*   **[Metrics Specification / 指标规范](docs/alphaloop/metrics_specification.md)**: The KPIs we track (Slippage, Latency, Sharpe).
+2. **[Walkthrough](docs/walkthrough.md)**
+   - See the system in action with real examples
+   - Verification results and proof of work
+   - 查看系统运行的实际示例
+
+3. **[Architecture](docs/architecture.md)**
+   - High-level system design
+   - Component relationships and data flow
+   - 高层系统设计和组件关系
+
+### 🔧 For Developers / 开发者
+
+**After understanding the basics, dive deeper:**
+
+4. **[Trading Strategy](docs/trading_strategy.md)**
+   - How the market-making strategy works
+   - Spread calculation and order placement logic
+   - 做市策略的工作原理
+
+5. **[Implementation Plan](docs/implementation_plan.md)**
+   - Recent changes and planned features
+   - Technical details of implementations
+   - 最近的更改和计划功能
+
+6. **AlphaLoop Framework Documentation** (docs/alphaloop/)
+   - **[Framework Design](docs/alphaloop/framework_design.md)**: The "Agent-First" architecture
+     - 框架设计 - "智能体优先"架构
+   - **[Agent Roles and Hierarchy](docs/alphaloop/agent_roles_and_hierarchy.md)**: Meet the AI agents
+     - 智能体角色和层级 - 了解各个 AI 智能体
+   - **[Agent Workflows](docs/alphaloop/agent_workflows.md)**: How agents collaborate
+     - 智能体工作流 - 智能体如何协作
+   - **[Metrics Specification](docs/alphaloop/metrics_specification.md)**: KPIs we track
+     - 指标规范 - 我们跟踪的 KPI
+   - **[Evaluation Framework](docs/alphaloop/evaluation_framework.md)**: Testing and validation
+     - 评估框架 - 测试和验证
+
+### 📊 Quick Reference / 快速参考
+
+- **Project Review** ([project_review.md](docs/project_review.md)): Status updates and progress tracking
+- **Task List** ([task.md](docs/task.md)): Current development tasks
 
 ---
 

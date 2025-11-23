@@ -2,7 +2,12 @@ import numpy as np
 
 from alphaloop.core.config import METRICS_CONFIG
 from alphaloop.core.logger import setup_logger
-from alphaloop.metrics.definitions import FillRate, SharpeRatio, Slippage, TickToTradeLatency
+from alphaloop.metrics.definitions import (
+    FillRate,
+    SharpeRatio,
+    Slippage,
+    TickToTradeLatency,
+)
 from alphaloop.metrics.registry import MetricsRegistry
 
 logger = setup_logger("DataAgent")

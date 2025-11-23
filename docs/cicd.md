@@ -1,5 +1,7 @@
 # CI/CD 流程文档 | CI/CD Process Documentation
 
+![CI Status](https://github.com/bryanzk/MarketMakerDemo/actions/workflows/ci.yml/badge.svg)
+
 ## 概述 | Overview
 
 AlphaLoop项目采用自动化的持续集成/持续部署（CI/CD）流程，确保代码质量和系统稳定性。

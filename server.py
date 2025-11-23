@@ -37,12 +37,15 @@ def run_bot_loop():
 
 @app.get("/", response_class=HTMLResponse)
 async def read_root(request: Request):
+    # Clear any stale alerts on page load
+    bot_engine.alert = None
     return templates.TemplateResponse("index.html", {"request": request})
 
 @app.get("/api/status")
 async def get_status():
     status = bot_engine.get_status()
     status["active"] = is_running
+    status["stage"] = bot_engine.current_stage
     return status
 
 
@@ -54,7 +57,9 @@ async def control_bot(action: str):
         if not is_running:
             # Validate current config before starting
             current_spread = bot_engine.strategy.spread
+            
             approved, reason = bot_engine.risk.validate_proposal({'spread': current_spread})
+            
             if not approved:
                 # Generate 3 suggestions
                 min_spread = bot_engine.risk.risk_limits['MIN_SPREAD']
@@ -91,13 +96,17 @@ async def control_bot(action: str):
                     "error": f"Risk Rejection: {reason}",
                     "suggestions": suggestions
                 }
+            
             is_running = True
             bot_thread = threading.Thread(target=run_bot_loop)
             bot_thread.daemon = True
             bot_thread.start()
+            
         return {"status": "started"}
     elif action == "stop":
         is_running = False
+        bot_engine.alert = None # Clear alerts on stop
+        bot_engine.current_stage = "Idle"
         return {"status": "stopped"}
     return {"error": "Invalid action"}
 

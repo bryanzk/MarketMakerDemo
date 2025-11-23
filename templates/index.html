@@ -184,9 +184,14 @@
     <div class="container">
         <div class="header">
             <h1>Binance Market Maker (MVP)</h1>
-            <div>
-                <span id="currentSymbol" style="font-weight: bold; margin-right: 10px;">--</span>
-                <span id="botStatus" class="status-badge status-inactive">STOPPED</span>
+            <div style="text-align: right;">
+                <div>
+                    <span id="currentSymbol" style="font-weight: bold; margin-right: 10px;">--</span>
+                    <span id="botStatus" class="status-badge status-inactive">STOPPED</span>
+                </div>
+                <div id="stageDisplay" style="font-size: 12px; color: #6b7280; margin-top: 5px; font-weight: bold;">
+                    Idle
+                </div>
             </div>
         </div>
 
@@ -443,9 +448,27 @@
                         statusBadge.className = "status-badge status-active";
                         startBtn.disabled = true;
                         stopBtn.disabled = false;
+                    } else {
+                        statusBadge.innerText = "STOPPED";
                         statusBadge.className = "status-badge status-inactive";
                         startBtn.disabled = false;
                         stopBtn.disabled = true;
+                    }
+
+                    // Update Stage Display
+                    const stageDisplay = document.getElementById('stageDisplay');
+                    if (data.stage) {
+                        stageDisplay.innerText = data.stage;
+
+                        // Highlight Risk Check
+                        if (data.stage === 'Risk Check') {
+                            stageDisplay.style.color = '#d97706'; // Amber
+                            stageDisplay.innerText = '⚠️ Risk Checking...';
+                        } else if (data.stage === 'Execution') {
+                            stageDisplay.style.color = '#10b981'; // Green
+                        } else {
+                            stageDisplay.style.color = '#6b7280'; // Gray
+                        }
                     }
                 }
 

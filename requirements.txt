@@ -8,3 +8,4 @@ jinja2
 pytest
 pytest-cov
 pytest-mock
+numpy

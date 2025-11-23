@@ -7,6 +7,8 @@ We have successfully implemented a prototype of the **AlphaLoop** framework. Thi
 1.  **Structured Logging**: All agents now output machine-readable JSON logs.
 2.  **Data Agent**: Now calculating `sharpe_ratio` and `slippage_bps` (mocked).
 3.  **Config Management**: Risk limits are centralized in `config.py`.
+4.  **UI Improvements**: Real-time "Stage" indicator and "Active Orders" display.
+5.  **Bug Fixes**: Fixed `orders` missing in API response, resolving frontend crash.
 
 ## 5. Pluggable Metrics Verification
 We implemented a registry-based metrics system. The `DataAgent` now dynamically loads metrics defined in `config.METRICS_CONFIG`.
@@ -80,3 +82,12 @@ Applying new config: {'spread': 0.0022}
 The prototype validates the core concept: **Segregation of Duties** works. The Quant Agent focuses on optimization, while the Risk Agent ensures safety. The system evolves autonomously.
 
 原型验证了核心概念：**职责分离**是有效的。量化智能体专注于优化，而风控智能体确保安全。系统能够自主进化。
+
+## Troubleshooting / 故障排除
+### Risk Alert Delay / 风控警报延迟
+Users may notice a delay (e.g., 30s) before a risk alert appears. This is **expected behavior** when the strategy starts with a valid configuration but progressively adapts (widens spread) until it hits a risk limit.
+用户可能会注意到风控警报出现前有延迟（例如 30 秒）。这是**预期行为**，当策略以有效配置启动，但逐渐调整（扩大价差）直到触及风控限制时会发生这种情况。
+
+### Missing Orders / 订单丢失
+Ensure `AlphaLoop.get_status()` returns the `orders` field. We fixed a bug where missing orders caused the frontend to crash.
+确保 `AlphaLoop.get_status()` 返回 `orders` 字段。我们修复了一个因缺少订单导致前端崩溃的错误。

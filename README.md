@@ -1,7 +1,9 @@
 # MarketMakerDemo / 做市商演示
 
 ![CI Status](https://github.com/bryanzk/MarketMakerDemo/actions/workflows/ci.yml/badge.svg)
+## 📄 Project Baseline
 
+The project baseline overview is documented in [Project Baseline](docs/project_baseline.md).
 
 ## 🤖 Introduction / 简介
 **MarketMakerDemo** is an autonomous, self-optimizing market making bot designed for crypto markets. Unlike traditional bots with static logic, this system continuously analyzes its own performance and adapts its strategy in real-time.

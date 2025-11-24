@@ -233,31 +233,31 @@ class BinanceClient:
     def fetch_funding_rate_for_symbol(self, symbol):
         """
         Fetches the funding rate for a specific symbol without changing current symbol.
-        
+
         Args:
             symbol: Trading symbol (e.g., 'BTC/USDT:USDT')
-        
+
         Returns: float (e.g., 0.0001 for 0.01%)
         """
         try:
             # Convert CCXT symbol to Binance format (e.g., 'BTC/USDT:USDT' -> 'BTCUSDT')
             if symbol not in self.exchange.markets:
                 self.exchange.load_markets()
-            
+
             if symbol not in self.exchange.markets:
                 logger.error(f"Symbol {symbol} not found in markets")
                 return 0.0
-            
+
             market_id = self.exchange.markets[symbol]["id"]
-            
+
             info = self.exchange.fapiPublicGetPremiumIndex({"symbol": market_id})
-            
+
             predicted = info.get("predictedFundingRate")
             last = info.get("lastFundingRate")
-            
+
             predicted_val = float(predicted) if predicted is not None else None
             last_val = float(last) if last is not None else 0.0
-            
+
             return predicted_val if predicted_val is not None else last_val
         except Exception as e:
             logger.error(f"Error fetching funding rate for {symbol}: {e}")
@@ -266,27 +266,27 @@ class BinanceClient:
     def fetch_bulk_funding_rates(self, symbols):
         """
         Fetches funding rates for multiple symbols efficiently.
-        
+
         Args:
             symbols: List of trading symbols (e.g., ['BTC/USDT:USDT', 'ETH/USDT:USDT'])
-        
+
         Returns: dict mapping symbol to funding rate
         """
         try:
             # Fetch all funding rates at once (no symbol parameter = all symbols)
             all_rates = self.exchange.fapiPublicGetPremiumIndex()
-            
+
             # Ensure markets are loaded
             if not self.exchange.markets:
                 self.exchange.load_markets()
-            
+
             # Build reverse mapping: market_id -> symbol
             id_to_symbol = {
-                self.exchange.markets[sym]["id"]: sym 
-                for sym in symbols 
+                self.exchange.markets[sym]["id"]: sym
+                for sym in symbols
                 if sym in self.exchange.markets
             }
-            
+
             # Extract rates for requested symbols
             result = {}
             for rate_info in all_rates:
@@ -295,17 +295,19 @@ class BinanceClient:
                     symbol = id_to_symbol[market_id]
                     predicted = rate_info.get("predictedFundingRate")
                     last = rate_info.get("lastFundingRate")
-                    
+
                     predicted_val = float(predicted) if predicted is not None else None
                     last_val = float(last) if last is not None else 0.0
-                    
-                    result[symbol] = predicted_val if predicted_val is not None else last_val
-            
+
+                    result[symbol] = (
+                        predicted_val if predicted_val is not None else last_val
+                    )
+
             # Fill in 0.0 for any missing symbols
             for symbol in symbols:
                 if symbol not in result:
                     result[symbol] = 0.0
-            
+
             return result
         except Exception as e:
             logger.error(f"Error fetching bulk funding rates: {e}")

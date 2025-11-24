@@ -15,6 +15,8 @@ QUANTITY = 0.02  # Order quantity in base asset (e.g., ETH)
 SPREAD_PCT = 0.2 / 100  # 0.2% spread (converted to decimal: 0.002)
 MAX_POSITION = 0.5  # Max absolute position size (ETH)
 LEVERAGE = 5  # Leverage multiplier
+SKEW_FACTOR = 100  # Factor to skew quotes based on funding rate (skew = rate * factor)
+STRATEGY_TYPE = "fixed_spread"  # Options: "fixed_spread", "funding_rate"
 
 # System Parameters
 REFRESH_INTERVAL = 2  # Seconds between loops

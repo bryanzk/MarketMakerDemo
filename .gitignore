@@ -43,3 +43,11 @@ debug_*.py
 
 # Logs
 *.log
+
+# Testing coverage
+htmlcov/
+.coverage
+.pytest_cache/
+
+# Generated API documentation
+docs/api/

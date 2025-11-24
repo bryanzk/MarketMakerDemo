@@ -5,9 +5,11 @@ from collections import deque
 from alphaloop.agents.data import DataAgent
 from alphaloop.agents.quant import QuantAgent
 from alphaloop.agents.risk import RiskAgent
+from alphaloop.core.config import STRATEGY_TYPE
 from alphaloop.core.logger import setup_logger
 from alphaloop.market.exchange import BinanceClient
 from alphaloop.market.simulation import MarketSimulator
+from alphaloop.strategies.funding import FundingRateStrategy
 from alphaloop.strategies.strategy import FixedSpreadStrategy
 
 logger = setup_logger("AlphaLoop")
@@ -15,7 +17,12 @@ logger = setup_logger("AlphaLoop")
 
 class AlphaLoop:
     def __init__(self):
-        self.strategy = FixedSpreadStrategy()
+        if STRATEGY_TYPE == "funding_rate":
+            self.strategy = FundingRateStrategy()
+            logger.info("Using Strategy: Funding Rate Skew")
+        else:
+            self.strategy = FixedSpreadStrategy()
+            logger.info("Using Strategy: Fixed Spread")
         self.quant = QuantAgent()
         self.risk = RiskAgent()
         self.data = DataAgent()
@@ -33,6 +40,35 @@ class AlphaLoop:
             logger.error(f"Failed to connect to exchange: {e}. Using simulation mode.")
             self.exchange = None
             self.use_real_exchange = False
+
+    def set_strategy(self, strategy_type):
+        """Switch strategy at runtime, preserving common parameters."""
+        # Preserve current settings
+        current_spread = self.strategy.spread
+        current_quantity = self.strategy.quantity
+        current_leverage = self.strategy.leverage
+        
+        new_strategy = None
+        if strategy_type == "funding_rate":
+            new_strategy = FundingRateStrategy()
+            logger.info("Switched to Strategy: Funding Rate Skew")
+        elif strategy_type == "fixed_spread":
+            new_strategy = FixedSpreadStrategy()
+            logger.info("Switched to Strategy: Fixed Spread")
+        else:
+            logger.error(f"Unknown strategy type: {strategy_type}")
+            return False
+            
+        # Restore settings
+        new_strategy.spread = current_spread
+        new_strategy.quantity = current_quantity
+        new_strategy.leverage = current_leverage
+        
+        # If switching TO funding rate, we might want to ensure skew_factor is set from config or default
+        # But FundingRateStrategy.__init__ already does that.
+        
+        self.strategy = new_strategy
+        return True
 
     def set_symbol(self, symbol):
         """Update the trading symbol"""
@@ -58,12 +94,16 @@ class AlphaLoop:
         pnl = 0.0
         current_symbol = "ETH/USDT:USDT"  # Default
 
+        funding_rate = 0.0
+
         if self.use_real_exchange:
             try:
                 current_symbol = self.exchange.symbol
                 market_data = self.exchange.fetch_market_data()
                 if market_data and market_data["mid_price"]:
                     mid_price = market_data["mid_price"]
+                
+                funding_rate = self.exchange.fetch_funding_rate()
 
                 account_data = self.exchange.fetch_account_data()
                 if account_data:
@@ -78,6 +118,7 @@ class AlphaLoop:
             "active": True,
             "symbol": current_symbol,
             "mid_price": mid_price,
+            "funding_rate": funding_rate,
             "position": position,
             "pnl": pnl,
             "alert": self.alert,
@@ -99,10 +140,28 @@ class AlphaLoop:
                     logger.error("Failed to fetch market data")
                     return
 
-                # Calculate target orders based on current market
-                target_orders = self.strategy.calculate_target_orders(market_data)
+                # Fetch funding rate
+                funding_rate = self.exchange.fetch_funding_rate()
+
+                # Calculate target orders based on current market and funding rate
+                # FixedSpreadStrategy will ignore funding_rate if it doesn't accept it, 
+                # but we should handle that gracefully or ensure both accept it.
+                # Since we didn't update FixedSpreadStrategy signature, we need to check.
+                if hasattr(self.strategy.calculate_target_orders, '__code__') and \
+                   'funding_rate' in self.strategy.calculate_target_orders.__code__.co_varnames:
+                    target_orders = self.strategy.calculate_target_orders(market_data, funding_rate=funding_rate)
+                else:
+                    target_orders = self.strategy.calculate_target_orders(market_data)
 
                 # Cancel existing orders
+                # First, update their status in history
+                for order in self.active_orders:
+                    # Find the order in history and update status
+                    # This is O(N) but N is small (200). For production, use a dict.
+                    for hist_order in self.order_history:
+                        if hist_order['id'] == order['id']:
+                            hist_order['status'] = 'cancelled'
+                            
                 self.exchange.cancel_all_orders()
 
                 # Place new orders

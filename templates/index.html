@@ -240,6 +240,14 @@
                     <h3>Win Rate</h3>
                     <div class="value" id="winRate">--</div>
                 </div>
+                <div class="card">
+                    <h3>Funding Rate</h3>
+                    <div class="value" id="fundingRate">--</div>
+                </div>
+                <div class="card">
+                    <h3>Est. Daily Yield</h3>
+                    <div class="value" id="dailyYield">--</div>
+                </div>
             </div>
 
             <div class="card-grid">
@@ -271,8 +279,25 @@
                     </div>
                     <hr>
                     <div style="margin-top: 15px;">
+                        <label>Strategy:
+                            <select id="strategySelect" onchange="toggleStrategyParams()"
+                                style="padding: 5px; border-radius: 4px; width: 100%; margin-top: 5px;">
+                                <option value="fixed_spread">Fixed Spread</option>
+                                <option value="funding_rate">Funding Rate Skew</option>
+                            </select>
+                        </label>
+                    </div>
+                    <hr>
+                    <div style="margin-top: 15px;">
                         <label>Spread (%): <input type="number" id="spreadInput" step="0.001" value="0.002"></label>
                         <label>Qty: <input type="number" id="qtyInput" step="0.01" value="0.02"></label>
+
+                        <div id="skewFactorContainer" style="display: none; margin-top: 10px;">
+                            <label>Skew Factor: <input type="number" id="skewFactorInput" step="10" value="100"></label>
+                            <div style="font-size: 11px; color: #6b7280; margin-top: 2px;">Controls funding rate impact
+                                on price skew.</div>
+                        </div>
+
                         <button class="btn btn-primary" style="margin-top: 10px; width: 100%;"
                             onclick="updateConfig()">Update Config</button>
                     </div>
@@ -534,6 +559,16 @@
             setTimeout(function () { x.className = x.className.replace("show", "").replace(type, ""); }, 3000);
         }
 
+        function toggleStrategyParams() {
+            const strategy = document.getElementById('strategySelect').value;
+            const skewContainer = document.getElementById('skewFactorContainer');
+            if (strategy === 'funding_rate') {
+                skewContainer.style.display = 'block';
+            } else {
+                skewContainer.style.display = 'none';
+            }
+        }
+
         async function fetchStatus() {
             try {
                 const res = await fetch('/api/status');
@@ -547,6 +582,31 @@
                 document.getElementById('pnl').innerText = data.pnl ? data.pnl.toFixed(4) : '--';
                 document.getElementById('pnl').innerText = data.pnl ? data.pnl.toFixed(4) : '--';
                 document.getElementById('currentSymbol').innerText = data.symbol || '--';
+
+                // Update Funding Rate and Yield
+                if (data.funding_rate !== undefined) {
+                    const rate = data.funding_rate * 100;
+                    document.getElementById('fundingRate').innerText = rate.toFixed(4) + '%';
+                    document.getElementById('dailyYield').innerText = (rate * 3).toFixed(4) + '%';
+
+                    // Color code funding rate
+                    const fundingElem = document.getElementById('fundingRate');
+                    if (rate > 0) fundingElem.style.color = '#ef4444'; // Red (paying)
+                    else if (rate < 0) fundingElem.style.color = '#10b981'; // Green (receiving)
+                    else fundingElem.style.color = '#1f2937';
+                }
+
+                // Update Strategy UI if not focused (to avoid overwriting user input while typing)
+                const strategySelect = document.getElementById('strategySelect');
+                if (document.activeElement !== strategySelect && data.strategy_type) {
+                    strategySelect.value = data.strategy_type;
+                    toggleStrategyParams();
+                }
+
+                const skewInput = document.getElementById('skewFactorInput');
+                if (document.activeElement !== skewInput && data.skew_factor !== undefined) {
+                    skewInput.value = data.skew_factor;
+                }
 
                 // Update Leverage Input Max and Value if not focused
                 const leverageInput = document.getElementById('leverageInput');
@@ -702,12 +762,19 @@
         async function updateConfig() {
             const spread = parseFloat(document.getElementById('spreadInput').value);
             const qty = parseFloat(document.getElementById('qtyInput').value);
+            const strategy = document.getElementById('strategySelect').value;
+            const skewFactor = parseFloat(document.getElementById('skewFactorInput').value);
 
             try {
                 const res = await fetch('/api/config', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ spread, quantity: qty })
+                    body: JSON.stringify({
+                        spread,
+                        quantity: qty,
+                        strategy_type: strategy,
+                        skew_factor: skewFactor
+                    })
                 });
 
                 const data = await res.json();
@@ -974,8 +1041,14 @@
 
                 tbody.innerHTML = orders.map(order => {
                     const time = new Date(order.timestamp * 1000).toLocaleTimeString();
-                    const statusClass = order.status === 'placed' ? 'green' : order.status === 'cancelled' ? 'red' : 'blue';
-                    const statusColor = order.status === 'placed' ? '#10b981' : order.status === 'cancelled' ? '#ef4444' : '#3b82f6';
+                    let statusColor = '#3b82f6'; // Default Blue (Placed)
+                    let statusText = order.status.toUpperCase();
+
+                    if (order.status === 'cancelled') {
+                        statusColor = '#9ca3af'; // Gray
+                    } else if (order.status === 'filled') {
+                        statusColor = '#10b981'; // Green
+                    }
 
                     return `
                         <tr style="border-bottom: 1px solid #e5e7eb;">
@@ -986,7 +1059,7 @@
                             <td style="padding: 8px; text-align: right;">${order.quantity.toFixed(4)}</td>
                             <td style="padding: 8px; text-align: center;">
                                 <span style="background: ${statusColor}; color: white; padding: 2px 8px; border-radius: 4px; font-size: 11px;">
-                                    ${order.status.toUpperCase()}
+                                    ${statusText}
                                 </span>
                             </td>
                         </tr>

@@ -80,7 +80,13 @@ This project has comprehensive documentation. **If you are new to the system**, 
    - 监控指标和图表
    - KPI 的专业定义
 
-9. **AlphaLoop Framework Documentation** (docs/alphaloop/)
+9. **[API Reference Documentation](docs/api_reference.md)** 🆕
+   - Auto-generated API docs (pdoc)
+   - Interactive API documentation (FastAPI)
+   - 自动生成的 API 文档
+   - 交互式 API 文档
+
+10. **AlphaLoop Framework Documentation** (docs/alphaloop/)
    - **[Framework Design](docs/alphaloop/framework_design.md)**: The "Agent-First" architecture
      - 框架设计 - "智能体优先"架构
    - **[Agent Roles and Hierarchy](docs/alphaloop/agent_roles_and_hierarchy.md)**: Meet the AI agents

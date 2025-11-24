@@ -186,6 +186,18 @@ class BinanceClient:
             logger.error(f"Error fetching market data: {e}")
             return None
 
+    def fetch_funding_rate(self):
+        """
+        Fetches the current funding rate for the symbol.
+        Returns: float (e.g., 0.0001 for 0.01%)
+        """
+        try:
+            funding_info = self.exchange.fetch_funding_rate(self.symbol)
+            return funding_info["fundingRate"]
+        except Exception as e:
+            logger.error(f"Error fetching funding rate: {e}")
+            return 0.0
+
     def fetch_ticker_stats(self):
         """
         Fetches 24h ticker statistics.

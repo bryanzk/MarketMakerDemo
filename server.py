@@ -10,6 +10,8 @@ import time
 
 # Import the bot engine class
 from alphaloop.main import AlphaLoop
+from alphaloop.strategies.funding import FundingRateStrategy
+from alphaloop.strategies.strategy import FixedSpreadStrategy
 
 app = FastAPI()
 
@@ -25,6 +27,8 @@ is_running = False
 class ConfigUpdate(BaseModel):
     spread: float
     quantity: float
+    strategy_type: str = "fixed_spread"
+    skew_factor: float = 100.0
 
 class PairUpdate(BaseModel):
     symbol: str
@@ -46,6 +50,12 @@ async def get_status():
     status = bot_engine.get_status()
     status["active"] = is_running
     status["stage"] = bot_engine.current_stage
+    
+    # Add strategy info
+    status["strategy_type"] = "funding_rate" if isinstance(bot_engine.strategy, FundingRateStrategy) else "fixed_spread"
+    if hasattr(bot_engine.strategy, "skew_factor"):
+        status["skew_factor"] = bot_engine.strategy.skew_factor
+        
     return status
 
 
@@ -118,15 +128,31 @@ async def update_config(config: ConfigUpdate):
     new_spread = config.spread / 100
     
     # 1. Validate with Risk Agent FIRST
-    proposal = {'spread': new_spread}
+    proposal = {
+        'spread': new_spread,
+        'skew_factor': config.skew_factor if config.strategy_type == "funding_rate" else None
+    }
     approved, reason = bot_engine.risk.validate_proposal(proposal)
     
     if not approved:
         return {"error": f"Risk Rejection: {reason}"}
 
     # 2. Apply if approved
+    
+    # Check if strategy type changed
+    current_strategy_type = "funding_rate" if isinstance(bot_engine.strategy, FundingRateStrategy) else "fixed_spread"
+    if config.strategy_type != current_strategy_type:
+        success = bot_engine.set_strategy(config.strategy_type)
+        if not success:
+            return {"error": f"Failed to switch strategy to {config.strategy_type}"}
+            
+    # Update parameters
     bot_engine.strategy.spread = new_spread
     bot_engine.strategy.quantity = config.quantity
+    
+    # Update skew factor if applicable
+    if hasattr(bot_engine.strategy, "skew_factor"):
+        bot_engine.strategy.skew_factor = config.skew_factor
     
     # Clear any existing alerts since we fixed it
     bot_engine.alert = None

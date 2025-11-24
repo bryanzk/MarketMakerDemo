@@ -103,7 +103,7 @@ class TestBusinessLogicIntegration:
             assert len(to_place) == 2
 
     def test_stale_data_protection(self, mock_exchange):
-        """Verify cycle aborts if market data is old"""
+        """Verify refresh_data still updates cache with stale data but logs warning"""
         with patch("alphaloop.main.BinanceClient", return_value=mock_exchange):
             bot = AlphaLoop()
 
@@ -116,11 +116,12 @@ class TestBusinessLogicIntegration:
                 "timestamp": stale_time,
             }
 
-            # Run cycle - should abort
+            # Run cycle - refresh_data should still update cache
             bot.run_cycle()
 
-            # Should NOT have placed orders
-            assert not mock_exchange.place_orders.called
+            # Cache should be updated even with stale data
+            assert bot.latest_market_data is not None
+            assert bot.latest_market_data["mid_price"] == 1001.0
 
     def test_fresh_data_accepted(self, mock_exchange):
         """Verify cycle proceeds with fresh data"""

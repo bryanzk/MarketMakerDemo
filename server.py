@@ -189,6 +189,8 @@ async def update_leverage(leverage: int):
 async def update_pair(pair: PairUpdate):
     success = bot_engine.set_symbol(pair.symbol)
     if success:
+        # Immediately refresh data so UI gets updated even if bot is stopped
+        bot_engine.refresh_data()
         return {"status": "updated", "symbol": pair.symbol}
     else:
         return {"status": "error", "message": f"Failed to update to symbol {pair.symbol}"}
@@ -308,6 +310,63 @@ async def get_performance():
         "metrics": metrics,
         "pnl_history": pnl_history
     }
+
+@app.get("/api/funding-rates")
+async def get_funding_rates():
+    """
+    Get funding rates for all supported trading pairs, sorted by absolute value.
+    This helps identify the best pairs for funding rate arbitrage strategies.
+    """
+    # Define supported symbols
+    symbols = [
+        "BTC/USDT:USDT",
+        "ETH/USDT:USDT",
+        "SOL/USDT:USDT",
+        "DOGE/USDT:USDT",
+        "1000SHIB/USDT:USDT",
+        "1000PEPE/USDT:USDT",
+        "WIF/USDT:USDT",
+        "1000FLOKI/USDT:USDT",
+    ]
+    
+    try:
+        # Check if exchange is available
+        if not hasattr(bot_engine, 'exchange') or bot_engine.exchange is None:
+            return {"error": "Exchange not available"}
+        
+        # Fetch bulk funding rates
+        funding_rates = bot_engine.exchange.fetch_bulk_funding_rates(symbols)
+        
+        # Build response with metadata
+        result = []
+        for symbol, rate in funding_rates.items():
+            # Determine trading direction preference
+            if rate > 0.0001:  # Positive funding rate (> 0.01%)
+                direction = "short_favored"  # Shorts receive funding
+            elif rate < -0.0001:  # Negative funding rate (< -0.01%)
+                direction = "long_favored"  # Longs receive funding
+            else:
+                direction = "neutral"
+            
+            result.append({
+                "symbol": symbol,
+                "funding_rate": rate,
+                "daily_yield": rate * 3,  # 3 funding periods per day
+                "direction": direction,
+                "abs_rate": abs(rate),  # For sorting
+            })
+        
+        # Sort by absolute funding rate (highest arbitrage opportunity first)
+        result.sort(key=lambda x: x["abs_rate"], reverse=True)
+        
+        # Remove abs_rate from response (used only for sorting)
+        for item in result:
+            del item["abs_rate"]
+        
+        return result
+    
+    except Exception as e:
+        return {"error": str(e)}
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=3000)

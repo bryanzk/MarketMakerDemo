@@ -492,7 +492,8 @@
                     <div style="font-size: 13px; color: #6b7280;">Current Funding Rate</div>
                     <div class="value" id="fundingRateFunding">--</div>
                     <div class="sub-text">Positive = Paying, Negative = Receiving</div>
-                    <div style="font-size: 13px; color: #6b7280; margin-top: 10px;">Est. Daily Yield (Funding Only)</div>
+                    <div style="font-size: 13px; color: #6b7280; margin-top: 10px;">Est. Daily Yield (Funding Only)
+                    </div>
                     <div class="value" id="dailyFundingYield">--</div>
                 </div>
                 <div class="card">
@@ -513,8 +514,7 @@
                 </div>
                 <div class="card">
                     <h3>Funding Condition</h3>
-                    <div id="fundingConditionBadge"
-                        class="status-badge"
+                    <div id="fundingConditionBadge" class="status-badge"
                         style="background: #e5e7eb; color: #374151; font-size: 12px;">
                         Loading...
                     </div>
@@ -540,9 +540,7 @@
                             Bot</button>
                         <button id="stopFundingBtn" class="btn btn-danger" onclick="controlBot('stop')" disabled>Stop
                             Bot</button>
-                        <button class="btn" style="margin-left:auto;" onclick="switchToFundingStrategy()">
-                            仅切换为 Funding 策略
-                        </button>
+
                     </div>
 
                     <hr>
@@ -553,18 +551,7 @@
                             Trading Pair (Funding Tab):
                             <select id="pairSelectFunding" onchange="updateFundingPair()"
                                 style="padding: 5px; border-radius: 4px; margin-left: 5px;">
-                                <optgroup label="Mainstream">
-                                    <option value="BTC/USDT:USDT">BTC/USDT</option>
-                                    <option value="ETH/USDT:USDT" selected>ETH/USDT</option>
-                                    <option value="SOL/USDT:USDT">SOL/USDT</option>
-                                </optgroup>
-                                <optgroup label="Memecoins">
-                                    <option value="DOGE/USDT:USDT">DOGE/USDT</option>
-                                    <option value="1000SHIB/USDT:USDT">1000SHIB/USDT</option>
-                                    <option value="1000PEPE/USDT:USDT">1000PEPE/USDT</option>
-                                    <option value="WIF/USDT:USDT">WIF/USDT</option>
-                                    <option value="1000FLOKI/USDT:USDT">1000FLOKI/USDT</option>
-                                </optgroup>
+                                <option value="">Loading funding rates...</option>
                             </select>
                         </label>
                     </div>
@@ -765,11 +752,12 @@
                 // 切到 Dashboard 时刷新绩效数据
                 fetchPerformance();
             } else if (tabName === 'funding') {
-                // Funding Skew 策略视角：状态 + 绩效 + 建议 + Funding 专用订单历史
+                // Funding Skew 策略视角：状态 + 绩效 + 建议 + Funding 专用订单历史 + 动态交易对加载
                 fetchStatus();
                 fetchPerformance();
                 fetchSuggestions();
                 fetchFundingOrderHistory();
+                loadFundingPairs(); // Load funding rates and update pair dropdown
             }
         }
 
@@ -790,13 +778,7 @@
             }
         }
 
-        function switchToFundingStrategy() {
-            const strategySelect = document.getElementById('strategySelect');
-            if (!strategySelect) return;
-            strategySelect.value = 'funding_rate';
-            toggleStrategyParams();
-            showToast('已切换为 Funding Rate Skew 策略', 'success');
-        }
+
 
         async function startFixedSpreadBot() {
             // 确保当前策略为 Fixed Spread，并使用 Trade Tab 上的参数
@@ -1438,6 +1420,59 @@
             await updateLeverage();
         }
 
+        async function loadFundingPairs() {
+            try {
+                const res = await fetch('/api/funding-rates');
+                const data = await res.json();
+
+                if (data.error) {
+                    console.error('Error loading funding rates:', data.error);
+                    return;
+                }
+
+                const select = document.getElementById('pairSelectFunding');
+                if (!select) return;
+
+                // Get current selection
+                const currentSymbol = select.value || 'ETH/USDT:USDT';
+
+                // Build options HTML
+                let optionsHTML = '';
+
+                // High funding rate group (top 3 by absolute value)
+                const topPairs = data.slice(0, 3);
+                if (topPairs.length > 0) {
+                    optionsHTML += '<optgroup label="🔥 High Funding Rate (Recommended)">';
+                    topPairs.forEach(item => {
+                        const rate = (item.funding_rate * 100).toFixed(3);
+                        const symbol = item.symbol.split('/')[0];
+                        const indicator = item.direction === 'short_favored' ? '▼' : item.direction === 'long_favored' ? '▲' : '─';
+                        optionsHTML += `<option value="${item.symbol}">${symbol} [${rate > 0 ? '+' : ''}${rate}%] ${indicator}</option>`;
+                    });
+                    optionsHTML += '</optgroup>';
+                }
+
+                // All pairs group
+                optionsHTML += '<optgroup label="All Pairs">';
+                data.forEach(item => {
+                    const rate = (item.funding_rate * 100).toFixed(3);
+                    const symbol = item.symbol.split('/')[0];
+                    optionsHTML += `<option value="${item.symbol}">${symbol} [${rate > 0 ? '+' : ''}${rate}%]</option>`;
+                });
+                optionsHTML += '</optgroup>';
+
+                select.innerHTML = optionsHTML;
+
+                // Restore or select highest funding rate pair
+                if (data.length > 0) {
+                    const hasCurrentSymbol = data.some(item => item.symbol === currentSymbol);
+                    select.value = hasCurrentSymbol ? currentSymbol : data[0].symbol;
+                }
+            } catch (e) {
+                console.error('Error loading funding pairs:', e);
+            }
+        }
+
         let pnlChart = null;
         let dashPnlChart = null;
         let dashTradeDistChart = null;
@@ -1707,11 +1742,13 @@
         setInterval(fetchPerformance, 2000); // Fetch performance every 2s
         setInterval(fetchOrderHistory, 3000); // Fetch order history every 3s
         setInterval(fetchFundingOrderHistory, 3000); // Fetch funding strategy order history every 3s
+        setInterval(loadFundingPairs, 60000); // Reload funding pairs every 60s
         fetchStatus();
         fetchSuggestions();
         fetchPerformance();
         fetchOrderHistory();
         fetchFundingOrderHistory();
+        loadFundingPairs(); // Initial load of funding pairs
     </script>
 </body>
 

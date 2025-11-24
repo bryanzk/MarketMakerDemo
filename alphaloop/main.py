@@ -43,6 +43,11 @@ class AlphaLoop:
             logger.error(f"Failed to connect to exchange: {e}. Using simulation mode.")
             self.exchange = None
             self.use_real_exchange = False
+        
+        # Data Cache for Non-Blocking Status
+        self.latest_market_data = None
+        self.latest_funding_rate = 0.0
+        self.latest_account_data = None
 
     def set_strategy(self, strategy_type):
         """Switch strategy at runtime, preserving common parameters."""
@@ -81,6 +86,10 @@ class AlphaLoop:
             success = self.exchange.set_symbol(symbol)
             if success:
                 logger.info(f"Symbol updated to {symbol}")
+                # Invalidate cache to prevent stale data
+                self.latest_market_data = None
+                self.latest_funding_rate = 0.0
+                self.latest_account_data = None
                 return True
             else:
                 logger.error(f"Failed to update symbol to {symbol}")
@@ -93,12 +102,11 @@ class AlphaLoop:
         self.system_logs.append({"timestamp": timestamp, "stage": stage_name})
 
     def get_status(self):
-        # Fetch real data if exchange is available
+        # Use cached data to avoid blocking the API server
         mid_price = 2000.0
         position = 0.0
         pnl = 0.0
-        current_symbol = "ETH/USDT:USDT"  # Default
-
+        current_symbol = "ETH/USDT:USDT"
         funding_rate = 0.0
 
         # Derive current strategy type for status & history
@@ -109,22 +117,20 @@ class AlphaLoop:
         )
 
         if self.use_real_exchange:
-            try:
+            if self.exchange:
                 current_symbol = self.exchange.symbol
-                market_data = self.exchange.fetch_market_data()
-                if market_data and market_data["mid_price"]:
-                    mid_price = market_data["mid_price"]
+            
+            # Use Cached Data
+            if self.latest_market_data and self.latest_market_data["mid_price"]:
+                mid_price = self.latest_market_data["mid_price"]
+            
+            funding_rate = self.latest_funding_rate
 
-                funding_rate = self.exchange.fetch_funding_rate()
-
-                account_data = self.exchange.fetch_account_data()
-                if account_data:
-                    position = account_data["position_amt"]
-                    # Calculate unrealized PnL if we have a position
-                    if position != 0 and account_data["entry_price"] != 0:
-                        pnl = (mid_price - account_data["entry_price"]) * position
-            except Exception as e:
-                logger.error(f"Error fetching real-time data: {e}")
+            if self.latest_account_data:
+                position = self.latest_account_data["position_amt"]
+                # Calculate unrealized PnL if we have a position
+                if position != 0 and self.latest_account_data["entry_price"] != 0:
+                    pnl = (mid_price - self.latest_account_data["entry_price"]) * position
 
         return {
             "active": True,
@@ -149,27 +155,58 @@ class AlphaLoop:
         if self.use_real_exchange:
             self.set_stage("Execution")
             # 1. Real Exchange Mode: Fetch market data and place orders
+    def refresh_data(self):
+        """Fetch fresh data from exchange and update cache."""
+        if not self.use_real_exchange or not self.exchange:
+            return False
+
+        try:
+            # Fetch current market data
+            market_data = self.exchange.fetch_market_data()
+            if not market_data or not market_data["mid_price"]:
+                logger.error("Failed to fetch market data")
+                return False
+
+            # Validate data freshness (protect against stale data)
+            current_time_ms = time.time() * 1000
+            data_timestamp = market_data.get("timestamp", current_time_ms)
+            data_age_seconds = (current_time_ms - data_timestamp) / 1000
+
+            if data_age_seconds > 5.0:  # 5 second threshold
+                logger.warning(
+                    f"Market data is stale ({data_age_seconds:.1f}s old)."
+                )
+                # We still update cache but might want to warn caller
+                
+            # Fetch funding rate
+            funding_rate = self.exchange.fetch_funding_rate()
+            
+            # Fetch Account Data (for PnL and Position)
+            account_data = self.exchange.fetch_account_data()
+
+            # Update Cache
+            self.latest_market_data = market_data
+            self.latest_funding_rate = funding_rate
+            self.latest_account_data = account_data
+            return True
+        except Exception as e:
+            logger.error(f"Error refreshing data: {e}")
+            return False
+
+    def run_cycle(self):
+        logger.info("Starting AlphaLoop Cycle")
+
+        if self.use_real_exchange:
+            self.set_stage("Execution")
+            # 1. Real Exchange Mode: Fetch market data and place orders
             try:
-                # Fetch current market data
-                market_data = self.exchange.fetch_market_data()
-                if not market_data or not market_data["mid_price"]:
-                    logger.error("Failed to fetch market data")
+                # Refresh Data
+                if not self.refresh_data():
                     return
 
-                # Validate data freshness (protect against stale data)
-                current_time_ms = time.time() * 1000
-                data_timestamp = market_data.get("timestamp", current_time_ms)
-                data_age_seconds = (current_time_ms - data_timestamp) / 1000
-
-                if data_age_seconds > 5.0:  # 5 second threshold
-                    logger.warning(
-                        f"Market data is stale ({data_age_seconds:.1f}s old). Skipping cycle."
-                    )
-                    return
-
-                # Fetch funding rate
-                funding_rate = self.exchange.fetch_funding_rate()
-
+                market_data = self.latest_market_data
+                funding_rate = self.latest_funding_rate
+                
                 # Calculate target orders based on current market and funding rate
                 # FixedSpreadStrategy will ignore funding_rate if it doesn't accept it,
                 # but we should handle that gracefully or ensure both accept it.

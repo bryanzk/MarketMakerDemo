@@ -74,7 +74,13 @@ This project has comprehensive documentation. **If you are new to the system**, 
    - Quality gates and pre-commit checklist
    - 自动化测试和部署流程
 
-8. **AlphaLoop Framework Documentation** (docs/alphaloop/)
+8. **[Dashboard Guide](docs/dashboard.md)** 🆕
+   - Monitoring metrics and charts
+   - Professional definitions of KPIs
+   - 监控指标和图表
+   - KPI 的专业定义
+
+9. **AlphaLoop Framework Documentation** (docs/alphaloop/)
    - **[Framework Design](docs/alphaloop/framework_design.md)**: The "Agent-First" architecture
      - 框架设计 - "智能体优先"架构
    - **[Agent Roles and Hierarchy](docs/alphaloop/agent_roles_and_hierarchy.md)**: Meet the AI agents

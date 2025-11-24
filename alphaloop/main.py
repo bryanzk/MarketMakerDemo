@@ -103,7 +103,9 @@ class AlphaLoop:
 
         # Derive current strategy type for status & history
         strategy_type = (
-            "funding_rate" if isinstance(self.strategy, FundingRateStrategy) else "fixed_spread"
+            "funding_rate"
+            if isinstance(self.strategy, FundingRateStrategy)
+            else "fixed_spread"
         )
 
         if self.use_real_exchange:

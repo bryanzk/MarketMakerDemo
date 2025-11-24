@@ -20,9 +20,13 @@ def mock_bot():
     }
     mock.start = Mock()
     mock.stop = Mock()
+    # Use a simple Mock with limited attributes to avoid recursion
     mock.strategy = Mock()
     mock.strategy.spread = 0.002
     mock.strategy.quantity = 0.02
+    mock.strategy.skew_factor = 100.0
+    # Explicitly set __name__ to prevent recursion
+    type(mock.strategy).__name__ = "FixedSpreadStrategy"
     mock.exchange = Mock() # Changed from client to exchange
     mock.exchange.set_leverage = Mock(return_value=True)
     mock.set_symbol = Mock(return_value=True)

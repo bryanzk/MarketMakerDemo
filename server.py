@@ -51,8 +51,9 @@ async def get_status():
     status["active"] = is_running
     status["stage"] = bot_engine.current_stage
     
-    # Add strategy info
-    status["strategy_type"] = "funding_rate" if isinstance(bot_engine.strategy, FundingRateStrategy) else "fixed_spread"
+    # Add strategy info - use type name check to avoid recursion with mocks
+    strategy_type_name = type(bot_engine.strategy).__name__
+    status["strategy_type"] = "funding_rate" if strategy_type_name == "FundingRateStrategy" else "fixed_spread"
     if hasattr(bot_engine.strategy, "skew_factor"):
         status["skew_factor"] = bot_engine.strategy.skew_factor
         

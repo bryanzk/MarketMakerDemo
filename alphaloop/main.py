@@ -101,6 +101,11 @@ class AlphaLoop:
 
         funding_rate = 0.0
 
+        # Derive current strategy type for status & history
+        strategy_type = (
+            "funding_rate" if isinstance(self.strategy, FundingRateStrategy) else "fixed_spread"
+        )
+
         if self.use_real_exchange:
             try:
                 current_symbol = self.exchange.symbol
@@ -126,6 +131,10 @@ class AlphaLoop:
             "funding_rate": funding_rate,
             "position": position,
             "pnl": pnl,
+            "strategy_type": strategy_type,
+            "spread": getattr(self.strategy, "spread", None),
+            "quantity": getattr(self.strategy, "quantity", None),
+            "leverage": getattr(self.strategy, "leverage", None),
             "alert": self.alert,
             "orders": self.active_orders,
             "logs": list(self.system_logs),
@@ -201,6 +210,11 @@ class AlphaLoop:
                 if to_place:
                     placed_orders = self.exchange.place_orders(to_place)
                     # Record placed orders in history
+                    strategy_type = (
+                        "funding_rate"
+                        if isinstance(self.strategy, FundingRateStrategy)
+                        else "fixed_spread"
+                    )
                     for order in placed_orders:
                         self.order_history.append(
                             {
@@ -211,6 +225,7 @@ class AlphaLoop:
                                 "quantity": order.get("amount", order.get("quantity")),
                                 "status": "placed",
                                 "timestamp": time.time(),
+                                "strategy_type": strategy_type,
                             }
                         )
                     # Fetch updated open orders

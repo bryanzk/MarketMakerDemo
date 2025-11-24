@@ -163,3 +163,46 @@ class TestBusinessLogicIntegration:
             assert bot.strategy.spread == 0.005
             assert bot.strategy.quantity == 0.1
             assert bot.strategy.leverage == 10
+
+    def test_get_status_includes_strategy_config(self, mock_exchange):
+        """Status should expose core strategy config for UI"""
+        with patch("alphaloop.main.BinanceClient", return_value=mock_exchange):
+            bot = AlphaLoop()
+
+            # Custom config
+            bot.strategy.spread = 0.003
+            bot.strategy.quantity = 0.2
+            bot.strategy.leverage = 5
+
+            status = bot.get_status()
+
+            assert status["spread"] == 0.003
+            assert status["quantity"] == 0.2
+            assert status["leverage"] == 5
+            assert status["strategy_type"] in ("fixed_spread", "funding_rate")
+
+    def test_order_history_includes_strategy_type(self, mock_exchange):
+        """Order history entries should include strategy_type for filtering"""
+        with patch("alphaloop.main.BinanceClient", return_value=mock_exchange):
+            bot = AlphaLoop()
+
+            # Ensure we are running funding strategy
+            bot.set_strategy("funding_rate")
+
+            # Fresh market data & orders
+            fresh_time = time.time() * 1000
+            mock_exchange.fetch_market_data.return_value = {
+                "best_bid": 1000.0,
+                "best_ask": 1002.0,
+                "mid_price": 1001.0,
+                "timestamp": fresh_time,
+            }
+            mock_exchange.place_orders.return_value = [
+                {"id": "ord1", "side": "buy", "price": 999.0, "amount": 0.01}
+            ]
+
+            bot.run_cycle()
+
+            assert len(bot.order_history) > 0
+            last_order = bot.order_history[-1]
+            assert last_order.get("strategy_type") == "funding_rate"

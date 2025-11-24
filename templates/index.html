@@ -183,8 +183,15 @@
 <body>
     <div class="container">
         <div class="tab-nav" style="margin-bottom:20px;">
-            <button class="btn btn-primary" id="tradeTabBtn" onclick="showTab('trade')">Trade</button>
-            <button class="btn" id="dashboardTabBtn" onclick="showTab('dashboard')">Dashboard</button>
+            <button class="btn btn-primary" id="tradeTabBtn" onclick="showTab('trade')">
+                Fixed Spread Strategy
+            </button>
+            <button class="btn" id="fundingTabBtn" onclick="showTab('funding')">
+                Funding Rate Skew Strategy
+            </button>
+            <button class="btn" id="dashboardTabBtn" onclick="showTab('dashboard')">
+                Performance Dashboard
+            </button>
         </div>
         <div id="tradeTab">
             <div class="header">
@@ -254,7 +261,7 @@
                 <div class="card">
                     <h3>Control Panel</h3>
                     <div style="display: flex; gap: 10px; margin-bottom: 15px;">
-                        <button id="startBtn" class="btn btn-success" onclick="controlBot('start')">Start Bot</button>
+                        <button id="startBtn" class="btn btn-success" onclick="startFixedSpreadBot()">Start Bot</button>
                         <button id="stopBtn" class="btn btn-danger" onclick="controlBot('stop')" disabled>Stop
                             Bot</button>
                     </div>
@@ -464,6 +471,197 @@
                 </div>
             </div>
         </div>
+        <div id="fundingTab" style="display: none;">
+            <div class="header">
+                <h1>Funding Rate Skew Strategy</h1>
+                <div style="text-align: right;">
+                    <div>
+                        <span id="currentSymbolFunding" style="font-weight: bold; margin-right: 10px;">--</span>
+                        <span id="botStatusFunding" class="status-badge status-inactive">STOPPED</span>
+                    </div>
+                    <div id="stageDisplayFunding"
+                        style="font-size: 12px; color: #6b7280; margin-top: 5px; font-weight: bold;">
+                        Idle
+                    </div>
+                </div>
+            </div>
+
+            <div class="card-grid">
+                <div class="card">
+                    <h3>Funding Overview</h3>
+                    <div style="font-size: 13px; color: #6b7280;">Current Funding Rate</div>
+                    <div class="value" id="fundingRateFunding">--</div>
+                    <div class="sub-text">Positive = Paying, Negative = Receiving</div>
+                    <div style="font-size: 13px; color: #6b7280; margin-top: 10px;">Est. Daily Yield (Funding Only)</div>
+                    <div class="value" id="dailyFundingYield">--</div>
+                </div>
+                <div class="card">
+                    <h3>Position & Notional</h3>
+                    <div style="font-size: 13px; color: #6b7280;">Net Position</div>
+                    <div class="value" id="positionFunding">--</div>
+                    <div class="sub-text">Base asset (e.g., ETH)</div>
+                    <div style="font-size: 13px; color: #6b7280; margin-top: 10px;">Notional Value</div>
+                    <div class="value" id="notionalFunding">--</div>
+                </div>
+                <div class="card">
+                    <h3>Spread & Skew</h3>
+                    <div style="font-size: 13px; color: #6b7280;">Base Spread</div>
+                    <div class="value" id="spreadFunding">--</div>
+                    <div class="sub-text">From current strategy config</div>
+                    <div style="font-size: 13px; color: #6b7280; margin-top: 10px;">Funding Skew Factor</div>
+                    <div class="value" id="skewFunding">--</div>
+                </div>
+                <div class="card">
+                    <h3>Funding Condition</h3>
+                    <div id="fundingConditionBadge"
+                        class="status-badge"
+                        style="background: #e5e7eb; color: #374151; font-size: 12px;">
+                        Loading...
+                    </div>
+                    <div id="fundingConditionText"
+                        style="font-size: 12px; color: #6b7280; margin-top: 10px; line-height: 1.5;">
+                        This tab focuses on Funding Rate Skew strategy. When funding is positive, the bot prefers short
+                        bias; when negative, it prefers long bias.
+                    </div>
+                </div>
+            </div>
+
+            <div class="card-grid">
+                <div class="card" style="grid-column: span 2;">
+                    <h3>Funding Strategy Control</h3>
+                    <p style="font-size: 13px; color: #6b7280; line-height: 1.6; margin-top: 5px;">
+                        在这里你可以直接启动 / 停止 Bot，并专门为 Funding Rate Skew 策略调整参数。
+                        底层仍然复用与 Trade 页相同的后端配置接口。
+                    </p>
+
+                    <!-- Bot Start / Stop -->
+                    <div style="display: flex; gap: 10px; margin-top: 15px; margin-bottom: 10px;">
+                        <button id="startFundingBtn" class="btn btn-success" onclick="startFundingBot()">Start
+                            Bot</button>
+                        <button id="stopFundingBtn" class="btn btn-danger" onclick="controlBot('stop')" disabled>Stop
+                            Bot</button>
+                        <button class="btn" style="margin-left:auto;" onclick="switchToFundingStrategy()">
+                            仅切换为 Funding 策略
+                        </button>
+                    </div>
+
+                    <hr>
+
+                    <!-- Pair Select -->
+                    <div style="margin-top: 10px;">
+                        <label style="font-size: 13px;">
+                            Trading Pair (Funding Tab):
+                            <select id="pairSelectFunding" onchange="updateFundingPair()"
+                                style="padding: 5px; border-radius: 4px; margin-left: 5px;">
+                                <optgroup label="Mainstream">
+                                    <option value="BTC/USDT:USDT">BTC/USDT</option>
+                                    <option value="ETH/USDT:USDT" selected>ETH/USDT</option>
+                                    <option value="SOL/USDT:USDT">SOL/USDT</option>
+                                </optgroup>
+                                <optgroup label="Memecoins">
+                                    <option value="DOGE/USDT:USDT">DOGE/USDT</option>
+                                    <option value="1000SHIB/USDT:USDT">1000SHIB/USDT</option>
+                                    <option value="1000PEPE/USDT:USDT">1000PEPE/USDT</option>
+                                    <option value="WIF/USDT:USDT">WIF/USDT</option>
+                                    <option value="1000FLOKI/USDT:USDT">1000FLOKI/USDT</option>
+                                </optgroup>
+                            </select>
+                        </label>
+                    </div>
+
+                    <hr>
+
+                    <!-- Funding-specific Parameters -->
+                    <div style="margin-top: 10px;">
+                        <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                            <label style="font-size: 13px;">
+                                Spread (%):
+                                <input type="number" id="spreadFundingInput" step="0.001" value="0.002"
+                                    style="margin-left: 5px; width: 90px;">
+                            </label>
+                            <label style="font-size: 13px;">
+                                Qty:
+                                <input type="number" id="qtyFundingInput" step="0.01" value="0.02"
+                                    style="margin-left: 5px; width: 90px;">
+                            </label>
+                            <label style="font-size: 13px;">
+                                Skew Factor:
+                                <input type="number" id="skewFactorFundingInput" step="10" value="100"
+                                    style="margin-left: 5px; width: 90px;">
+                            </label>
+                        </div>
+                        <div style="font-size: 11px; color: #6b7280; margin-top: 4px;">
+                            调整后点击下方按钮，会以 Funding Rate Skew 策略类型更新后端配置。
+                        </div>
+                        <button class="btn btn-primary" style="margin-top: 10px; width: 100%;"
+                            onclick="updateFundingConfig()">
+                            Update Funding Config
+                        </button>
+                    </div>
+
+                    <hr>
+
+                    <!-- Leverage for Funding -->
+                    <div style="margin-top: 10px;">
+                        <label style="font-size: 13px;">
+                            Leverage (Funding):
+                            <input type="number" id="leverageFundingInput" min="1" max="125" value="5"
+                                style="margin-left: 5px; width: 80px;">
+                        </label>
+                        <button class="btn btn-primary" style="margin-top: 10px; width: 100%;"
+                            onclick="updateFundingLeverage()">
+                            Update Funding Leverage
+                        </button>
+                    </div>
+
+                    <div style="margin-top: 15px; font-size: 12px; color: #6b7280;">
+                        提示：Funding Tab 的参数更新会同步到底层策略，你也可以在 Trade 页看到效果。
+                    </div>
+                </div>
+                <div class="card" style="grid-column: span 2;">
+                    <h3>Funding Strategy Order History</h3>
+                    <div style="margin-bottom: 10px; display: flex; gap: 10px; flex-wrap: wrap;">
+                        <select id="fundingHistoryStatusFilter" onchange="fetchFundingOrderHistory()"
+                            style="padding: 5px; border-radius: 4px;">
+                            <option value="">All Status</option>
+                            <option value="placed">Placed</option>
+                            <option value="cancelled">Cancelled</option>
+                            <option value="filled">Filled</option>
+                        </select>
+                        <select id="fundingHistoryTimeFilter" onchange="fetchFundingOrderHistory()"
+                            style="padding: 5px; border-radius: 4px;">
+                            <option value="">All Time</option>
+                            <option value="3600">Last 1h</option>
+                            <option value="21600">Last 6h</option>
+                            <option value="86400">Last 24h</option>
+                        </select>
+                    </div>
+                    <div id="fundingOrderHistoryContainer"
+                        style="height: 200px; overflow-y: auto; background: #f9fafb; border: 1px solid #e5e7eb;">
+                        <table style="width: 100%; font-size: 12px; border-collapse: collapse;">
+                            <thead
+                                style="position: sticky; top: 0; background: #fff; border-bottom: 2px solid #e5e7eb;">
+                                <tr>
+                                    <th style="padding: 8px; text-align: left;">Time</th>
+                                    <th style="padding: 8px; text-align: left;">Symbol</th>
+                                    <th style="padding: 8px; text-align: left;">Side</th>
+                                    <th style="padding: 8px; text-align: right;">Price</th>
+                                    <th style="padding: 8px; text-align: right;">Qty</th>
+                                    <th style="padding: 8px; text-align: center;">Status</th>
+                                </tr>
+                            </thead>
+                            <tbody id="fundingOrderHistoryBody">
+                                <tr>
+                                    <td colspan="6" style="text-align: center; padding: 20px; color: #9ca3af;">
+                                        No funding strategy orders yet
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
 
     <div id="dashboardTab" style="display: none;">
@@ -539,16 +737,39 @@
     <div id="toast" class="toast">Notification</div>
 
     <script>
+        function isTabVisible(tabId) {
+            const el = document.getElementById(tabId);
+            if (!el) return false;
+            // 默认没有显式 display 的视为可见
+            return el.style.display === '' || el.style.display === 'block';
+        }
+
         function showTab(tabName) {
             document.getElementById('tradeTab').style.display = tabName === 'trade' ? 'block' : 'none';
+            document.getElementById('fundingTab').style.display = tabName === 'funding' ? 'block' : 'none';
             document.getElementById('dashboardTab').style.display = tabName === 'dashboard' ? 'block' : 'none';
 
             // Update buttons
             document.getElementById('tradeTabBtn').className = tabName === 'trade' ? 'btn btn-primary' : 'btn';
+            document.getElementById('fundingTabBtn').className = tabName === 'funding' ? 'btn btn-primary' : 'btn';
             document.getElementById('dashboardTabBtn').className = tabName === 'dashboard' ? 'btn btn-primary' : 'btn';
 
-            if (tabName === 'dashboard') {
+            // 不同 Tab 切换时，主动刷新与当前策略相关的关键数据，保证决策时看到的是最新状态
+            if (tabName === 'trade') {
+                // Fixed Spread 策略视角：状态 + 绩效 + 建议 + 全局订单历史
+                fetchStatus();
                 fetchPerformance();
+                fetchSuggestions();
+                fetchOrderHistory();
+            } else if (tabName === 'dashboard') {
+                // 切到 Dashboard 时刷新绩效数据
+                fetchPerformance();
+            } else if (tabName === 'funding') {
+                // Funding Skew 策略视角：状态 + 绩效 + 建议 + Funding 专用订单历史
+                fetchStatus();
+                fetchPerformance();
+                fetchSuggestions();
+                fetchFundingOrderHistory();
             }
         }
 
@@ -569,6 +790,56 @@
             }
         }
 
+        function switchToFundingStrategy() {
+            const strategySelect = document.getElementById('strategySelect');
+            if (!strategySelect) return;
+            strategySelect.value = 'funding_rate';
+            toggleStrategyParams();
+            showToast('已切换为 Funding Rate Skew 策略', 'success');
+        }
+
+        async function startFixedSpreadBot() {
+            // 确保当前策略为 Fixed Spread，并使用 Trade Tab 上的参数
+            const strategySelect = document.getElementById('strategySelect');
+            if (strategySelect) {
+                strategySelect.value = 'fixed_spread';
+                toggleStrategyParams();
+            }
+            // 直接用主控制面板当前参数更新配置，然后启动
+            await updateConfig();
+            await controlBot('start');
+        }
+
+        async function startFundingBot() {
+            // 将 Funding Tab 上的参数同步到主控制面板输入
+            const spreadFundingInput = document.getElementById('spreadFundingInput');
+            const qtyFundingInput = document.getElementById('qtyFundingInput');
+            const skewFactorFundingInput = document.getElementById('skewFactorFundingInput');
+
+            const mainSpread = document.getElementById('spreadInput');
+            const mainQty = document.getElementById('qtyInput');
+            const mainSkew = document.getElementById('skewFactorInput');
+            const strategySelect = document.getElementById('strategySelect');
+
+            if (spreadFundingInput && mainSpread) {
+                mainSpread.value = spreadFundingInput.value;
+            }
+            if (qtyFundingInput && mainQty) {
+                mainQty.value = qtyFundingInput.value;
+            }
+            if (skewFactorFundingInput && mainSkew) {
+                mainSkew.value = skewFactorFundingInput.value;
+            }
+            if (strategySelect) {
+                strategySelect.value = 'funding_rate';
+                toggleStrategyParams();
+            }
+
+            // 以 Funding Rate 策略更新配置并启动
+            await updateFundingConfig();
+            await controlBot('start');
+        }
+
         async function fetchStatus() {
             try {
                 const res = await fetch('/api/status');
@@ -583,17 +854,70 @@
                 document.getElementById('pnl').innerText = data.pnl ? data.pnl.toFixed(4) : '--';
                 document.getElementById('currentSymbol').innerText = data.symbol || '--';
 
+                // Mirror into Funding tab: symbol, position, notional
+                const currentSymbolFunding = document.getElementById('currentSymbolFunding');
+                if (currentSymbolFunding) {
+                    currentSymbolFunding.innerText = data.symbol || '--';
+                }
+                const positionFunding = document.getElementById('positionFunding');
+                const notionalFunding = document.getElementById('notionalFunding');
+                if (positionFunding) {
+                    positionFunding.innerText = data.position;
+                }
+                if (notionalFunding && data.mid_price && data.position !== undefined) {
+                    const notional = data.mid_price * data.position;
+                    notionalFunding.innerText = notional.toFixed(2) + ' USDT';
+                }
+
                 // Update Funding Rate and Yield
                 if (data.funding_rate !== undefined) {
                     const rate = data.funding_rate * 100;
                     document.getElementById('fundingRate').innerText = rate.toFixed(4) + '%';
                     document.getElementById('dailyYield').innerText = (rate * 3).toFixed(4) + '%';
 
+                    // Funding tab mirrors funding metrics
+                    const fundingRateFunding = document.getElementById('fundingRateFunding');
+                    const dailyFundingYield = document.getElementById('dailyFundingYield');
+                    if (fundingRateFunding) {
+                        fundingRateFunding.innerText = rate.toFixed(4) + '%';
+                    }
+                    if (dailyFundingYield) {
+                        dailyFundingYield.innerText = (rate * 3).toFixed(4) + '%';
+                    }
+
                     // Color code funding rate
                     const fundingElem = document.getElementById('fundingRate');
                     if (rate > 0) fundingElem.style.color = '#ef4444'; // Red (paying)
                     else if (rate < 0) fundingElem.style.color = '#10b981'; // Green (receiving)
                     else fundingElem.style.color = '#1f2937';
+
+                    // Funding condition badge
+                    const conditionBadge = document.getElementById('fundingConditionBadge');
+                    const conditionText = document.getElementById('fundingConditionText');
+                    if (conditionBadge && conditionText) {
+                        let conditionLabel = 'Neutral Funding';
+                        let badgeBg = '#e5e7eb';
+                        let badgeColor = '#374151';
+                        if (rate > 0.03) {
+                            conditionLabel = 'Positive Funding (Short-biased)';
+                            badgeBg = '#fee2e2';
+                            badgeColor = '#991b1b';
+                            conditionText.innerText = '资金费率为正，空头一侧获得资金费用，策略可以适当偏空（卖出一侧更积极报价）。';
+                        } else if (rate < -0.03) {
+                            conditionLabel = 'Negative Funding (Long-biased)';
+                            badgeBg = '#d1fae5';
+                            badgeColor = '#065f46';
+                            conditionText.innerText = '资金费率为负，多头一侧获得资金费用，策略可以适当偏多（买入一侧更积极报价）。';
+                        } else {
+                            conditionLabel = 'Near-Neutral Funding';
+                            badgeBg = '#e5e7eb';
+                            badgeColor = '#374151';
+                            conditionText.innerText = '资金费率接近中性，可以视为普通做市环境，以基础 Fixed Spread 配置为主。';
+                        }
+                        conditionBadge.innerText = conditionLabel;
+                        conditionBadge.style.backgroundColor = badgeBg;
+                        conditionBadge.style.color = badgeColor;
+                    }
                 }
 
                 // Update Strategy UI if not focused (to avoid overwriting user input while typing)
@@ -604,25 +928,72 @@
                 }
 
                 const skewInput = document.getElementById('skewFactorInput');
+                const skewFundingInput = document.getElementById('skewFactorFundingInput');
                 if (document.activeElement !== skewInput && data.skew_factor !== undefined) {
                     skewInput.value = data.skew_factor;
+                }
+                if (skewFundingInput && document.activeElement !== skewFundingInput && data.skew_factor !== undefined) {
+                    skewFundingInput.value = data.skew_factor;
+                }
+
+                // Sync spread & qty from backend into both tabs，保证看到的是引擎当前真实配置
+                const spreadInput = document.getElementById('spreadInput');
+                const spreadFundingInput = document.getElementById('spreadFundingInput');
+                const qtyInputEl = document.getElementById('qtyInput');
+                const qtyFundingInput = document.getElementById('qtyFundingInput');
+                const spreadFunding = document.getElementById('spreadFunding');
+                const skewFunding = document.getElementById('skewFunding');
+
+                if (data.spread !== undefined && data.spread !== null) {
+                    const spreadPct = data.spread * 100;
+                    // 主控制面板输入（避免打字时被覆盖）
+                    if (spreadInput && document.activeElement !== spreadInput) {
+                        spreadInput.value = spreadPct.toFixed(3);
+                    }
+                    // Funding Tab 输入
+                    if (spreadFundingInput && document.activeElement !== spreadFundingInput) {
+                        spreadFundingInput.value = spreadPct.toFixed(3);
+                    }
+                    // Funding Tab 的「Spread & Skew」展示卡片
+                    if (spreadFunding) {
+                        spreadFunding.innerText = spreadPct.toFixed(3) + '%';
+                    }
+                }
+
+                if (data.quantity !== undefined && data.quantity !== null) {
+                    if (qtyInputEl && document.activeElement !== qtyInputEl) {
+                        qtyInputEl.value = data.quantity;
+                    }
+                    if (qtyFundingInput && document.activeElement !== qtyFundingInput) {
+                        qtyFundingInput.value = data.quantity;
+                    }
+                }
+
+                if (skewFunding && data.skew_factor !== undefined) {
+                    skewFunding.innerText = data.skew_factor;
                 }
 
                 // Update Leverage Input Max and Value if not focused
                 const leverageInput = document.getElementById('leverageInput');
+                const leverageFundingInput = document.getElementById('leverageFundingInput');
                 if (data.max_leverage) {
                     leverageInput.max = data.max_leverage;
+                    if (leverageFundingInput) {
+                        leverageFundingInput.max = data.max_leverage;
+                    }
                     document.getElementById('leverageRange').innerText = `1-${data.max_leverage}`;
                 }
                 if (document.activeElement !== leverageInput && data.leverage) {
                     leverageInput.value = data.leverage;
                 }
+                if (leverageFundingInput && document.activeElement !== leverageFundingInput && data.leverage) {
+                    leverageFundingInput.value = data.leverage;
+                }
 
                 // Update Qty Input Limits
-                const qtyInput = document.getElementById('qtyInput');
                 if (data.limits) {
-                    if (data.limits.minQty) qtyInput.min = data.limits.minQty;
-                    if (data.limits.stepSize) qtyInput.step = data.limits.stepSize;
+                    if (data.limits.minQty && qtyInputEl) qtyInputEl.min = data.limits.minQty;
+                    if (data.limits.stepSize && qtyInputEl) qtyInputEl.step = data.limits.stepSize;
 
                     // Update Binance Constraints Display
                     document.getElementById('constraintMinQty').innerText = data.limits.minQty || '--';
@@ -634,13 +1005,32 @@
                 // Update Internal Constraints Display
                 document.getElementById('constraintMaxPos').innerText = '0.5';  // From config.py MAX_POSITION
                 document.getElementById('constraintLeverage').innerText = data.leverage ? data.leverage + 'x' : '--';
-                document.getElementById('constraintSpread').innerText = document.getElementById('spreadInput').value + '%';
-                document.getElementById('constraintQty').innerText = document.getElementById('qtyInput').value;
+
+                const constraintSpread = document.getElementById('constraintSpread');
+                const constraintQty = document.getElementById('constraintQty');
+                if (constraintSpread) {
+                    if (data.spread !== undefined && data.spread !== null) {
+                        const spreadPct = data.spread * 100;
+                        constraintSpread.innerText = spreadPct.toFixed(3) + '%';
+                    } else if (spreadInput) {
+                        constraintSpread.innerText = spreadInput.value + '%';
+                    }
+                }
+                if (constraintQty) {
+                    if (data.quantity !== undefined && data.quantity !== null) {
+                        constraintQty.innerText = data.quantity;
+                    } else if (qtyInputEl) {
+                        constraintQty.innerText = qtyInputEl.value;
+                    }
+                }
 
                 const statusBadge = document.getElementById('botStatus');
+                const statusBadgeFunding = document.getElementById('botStatusFunding');
                 const errorDisplay = document.getElementById('errorDisplay');
                 const startBtn = document.getElementById('startBtn');
                 const stopBtn = document.getElementById('stopBtn');
+                const startFundingBtn = document.getElementById('startFundingBtn');
+                const stopFundingBtn = document.getElementById('stopFundingBtn');
 
                 // Update error display
                 if (data.error) {
@@ -648,36 +1038,74 @@
                     errorDisplay.style.display = 'block';
                     statusBadge.innerText = "ERROR";
                     statusBadge.className = "status-badge status-error";
+                    if (statusBadgeFunding) {
+                        statusBadgeFunding.innerText = "ERROR";
+                        statusBadgeFunding.className = "status-badge status-error";
+                    }
                     startBtn.disabled = false;
                     stopBtn.disabled = true;
+                    if (startFundingBtn && stopFundingBtn) {
+                        startFundingBtn.disabled = false;
+                        stopFundingBtn.disabled = true;
+                    }
                 } else {
                     errorDisplay.style.display = 'none';
 
                     if (data.active) {
                         statusBadge.innerText = "RUNNING";
                         statusBadge.className = "status-badge status-active";
+                        if (statusBadgeFunding) {
+                            statusBadgeFunding.innerText = "RUNNING";
+                            statusBadgeFunding.className = "status-badge status-active";
+                        }
                         startBtn.disabled = true;
                         stopBtn.disabled = false;
+                        if (startFundingBtn && stopFundingBtn) {
+                            startFundingBtn.disabled = true;
+                            stopFundingBtn.disabled = false;
+                        }
                     } else {
                         statusBadge.innerText = "STOPPED";
                         statusBadge.className = "status-badge status-inactive";
+                        if (statusBadgeFunding) {
+                            statusBadgeFunding.innerText = "STOPPED";
+                            statusBadgeFunding.className = "status-badge status-inactive";
+                        }
                         startBtn.disabled = false;
                         stopBtn.disabled = true;
+                        if (startFundingBtn && stopFundingBtn) {
+                            startFundingBtn.disabled = false;
+                            stopFundingBtn.disabled = true;
+                        }
                     }
 
                     // Update Stage Display
                     const stageDisplay = document.getElementById('stageDisplay');
+                    const stageDisplayFunding = document.getElementById('stageDisplayFunding');
                     if (data.stage) {
                         stageDisplay.innerText = data.stage;
+                        if (stageDisplayFunding) {
+                            stageDisplayFunding.innerText = data.stage;
+                        }
 
                         // Highlight Risk Check
                         if (data.stage === 'Risk Check') {
                             stageDisplay.style.color = '#d97706'; // Amber
                             stageDisplay.innerText = '⚠️ Risk Checking...';
+                            if (stageDisplayFunding) {
+                                stageDisplayFunding.style.color = '#d97706';
+                                stageDisplayFunding.innerText = '⚠️ Risk Checking...';
+                            }
                         } else if (data.stage === 'Execution') {
                             stageDisplay.style.color = '#10b981'; // Green
+                            if (stageDisplayFunding) {
+                                stageDisplayFunding.style.color = '#10b981';
+                            }
                         } else {
                             stageDisplay.style.color = '#6b7280'; // Gray
+                            if (stageDisplayFunding) {
+                                stageDisplayFunding.style.color = '#6b7280';
+                            }
                         }
                     }
 
@@ -737,14 +1165,28 @@
         async function controlBot(action) {
             const startBtn = document.getElementById('startBtn');
             const stopBtn = document.getElementById('stopBtn');
+            const startFundingBtn = document.getElementById('startFundingBtn');
+            const stopFundingBtn = document.getElementById('stopFundingBtn');
 
             // Immediately update button states for responsive feedback
             if (action === 'start') {
-                startBtn.disabled = true;
-                startBtn.innerText = 'Starting...';
+                if (startBtn) {
+                    startBtn.disabled = true;
+                    startBtn.innerText = 'Starting...';
+                }
+                if (startFundingBtn) {
+                    startFundingBtn.disabled = true;
+                    startFundingBtn.innerText = 'Starting...';
+                }
             } else {
-                stopBtn.disabled = true;
-                stopBtn.innerText = 'Stopping...';
+                if (stopBtn) {
+                    stopBtn.disabled = true;
+                    stopBtn.innerText = 'Stopping...';
+                }
+                if (stopFundingBtn) {
+                    stopFundingBtn.disabled = true;
+                    stopFundingBtn.innerText = 'Stopping...';
+                }
             }
 
             try {
@@ -754,8 +1196,10 @@
                 console.error(e);
             } finally {
                 // Reset button text
-                startBtn.innerText = 'Start Bot';
-                stopBtn.innerText = 'Stop Bot';
+                if (startBtn) startBtn.innerText = 'Start Bot';
+                if (stopBtn) stopBtn.innerText = 'Stop Bot';
+                if (startFundingBtn) startFundingBtn.innerText = 'Start Bot';
+                if (stopFundingBtn) stopFundingBtn.innerText = 'Stop Bot';
             }
         }
 
@@ -791,6 +1235,53 @@
             }
         }
 
+        async function updateFundingConfig() {
+            const spreadInput = document.getElementById('spreadFundingInput');
+            const qtyInput = document.getElementById('qtyFundingInput');
+            const skewInput = document.getElementById('skewFactorFundingInput');
+
+            const spread = parseFloat(spreadInput.value);
+            const qty = parseFloat(qtyInput.value);
+            const skewFactor = parseFloat(skewInput.value);
+            const strategy = 'funding_rate';
+
+            try {
+                const res = await fetch('/api/config', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        spread,
+                        quantity: qty,
+                        strategy_type: strategy,
+                        skew_factor: skewFactor
+                    })
+                });
+
+                const data = await res.json();
+
+                if (data.error) {
+                    showToast(data.error, 'error');
+                } else {
+                    showToast('Funding Config Updated Successfully!', 'success');
+                    // 同步主控制面板的输入值与策略选择
+                    const mainSpread = document.getElementById('spreadInput');
+                    const mainQty = document.getElementById('qtyInput');
+                    const mainSkew = document.getElementById('skewFactorInput');
+                    const strategySelect = document.getElementById('strategySelect');
+                    if (mainSpread) mainSpread.value = spreadInput.value;
+                    if (mainQty) mainQty.value = qtyInput.value;
+                    if (mainSkew) mainSkew.value = skewInput.value;
+                    if (strategySelect) {
+                        strategySelect.value = strategy;
+                        toggleStrategyParams();
+                    }
+                    document.getElementById('alertDisplay').style.display = 'none';
+                }
+            } catch (e) {
+                showToast('Network Error', 'error');
+            }
+        }
+
         async function updateLeverage() {
             const leverage = parseInt(document.getElementById('leverageInput').value);
             if (leverage < 1 || leverage > 125) {
@@ -808,6 +1299,31 @@
             } else {
                 showToast('Leverage updated to ' + leverage + 'x', 'success');
                 // Wait a bit for backend to update status
+                await new Promise(resolve => setTimeout(resolve, 500));
+                fetchStatus();
+            }
+        }
+
+        async function updateFundingLeverage() {
+            const leverageInputFunding = document.getElementById('leverageFundingInput');
+            const leverage = parseInt(leverageInputFunding.value);
+            if (leverage < 1 || leverage > 125) {
+                showToast('Leverage must be between 1 and 125', 'error');
+                return;
+            }
+            const res = await fetch('/api/leverage', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(leverage)
+            });
+            const result = await res.json();
+            if (result.error) {
+                showToast('Error: ' + result.error, 'error');
+            } else {
+                showToast('Leverage updated to ' + leverage + 'x', 'success');
+                // 同步主控制面板的杠杆输入
+                const mainLev = document.getElementById('leverageInput');
+                if (mainLev) mainLev.value = leverageInputFunding.value;
                 await new Promise(resolve => setTimeout(resolve, 500));
                 fetchStatus();
             }
@@ -831,32 +1347,76 @@
             }
         }
 
+        async function updateFundingPair() {
+            const fundingSelect = document.getElementById('pairSelectFunding');
+            if (!fundingSelect) return;
+            const symbol = fundingSelect.value;
+
+            // 同步主控制面板的交易对选择
+            const mainSelect = document.getElementById('pairSelect');
+            if (mainSelect) {
+                mainSelect.value = symbol;
+            }
+
+            const res = await fetch('/api/pair', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ symbol })
+            });
+            const result = await res.json();
+            if (result.error) {
+                showToast('Error: ' + result.error, 'error');
+            } else {
+                showToast('Switched to ' + symbol, 'success');
+                fetchStatus();
+                fetchSuggestions();
+            }
+        }
+
         let currentSuggestion = null;
 
         async function fetchSuggestions() {
             try {
+                // 建议区域只在 Trade Tab 中展示；如果当前不在该 Tab，可以保持上次结果，不必强制刷新
+                if (!isTabVisible('tradeTab')) {
+                    return;
+                }
+
                 const res = await fetch('/api/suggestions');
                 const data = await res.json();
 
+                const marketCondEl = document.getElementById('marketCondition');
+                const recSpreadEl = document.getElementById('recSpread');
+                const recLevEl = document.getElementById('recLeverage');
+                const recReasonEl = document.getElementById('recReason');
+
                 if (data.error) {
                     console.error('Suggestions error:', data.error);
+                    if (marketCondEl) marketCondEl.innerText = 'Error';
+                    if (recSpreadEl) recSpreadEl.innerText = '--';
+                    if (recLevEl) recLevEl.innerText = '--';
+                    if (recReasonEl) recReasonEl.innerText = data.error;
                     return;
                 }
 
                 currentSuggestion = data;
 
-                document.getElementById('marketCondition').innerText = data.condition || 'N/A';
-                document.getElementById('recSpread').innerText = (data.spread ? data.spread + '%' : '--');
-                document.getElementById('recLeverage').innerText = (data.leverage ? data.leverage + 'x' : '--');
-                document.getElementById('recReason').innerText = data.reason || 'No recommendation available';
+                if (marketCondEl) marketCondEl.innerText = data.condition || 'N/A';
+                if (recSpreadEl) recSpreadEl.innerText = (data.spread !== undefined && data.spread !== null ? data.spread + '%' : '--');
+                if (recLevEl) recLevEl.innerText = (data.leverage ? data.leverage + 'x' : '--');
+                if (recReasonEl) recReasonEl.innerText = data.reason || 'No recommendation available';
 
             } catch (e) {
                 console.error('Error fetching suggestions:', e);
                 // Clear loading state even on error
-                document.getElementById('marketCondition').innerText = 'Error';
-                document.getElementById('recSpread').innerText = '--';
-                document.getElementById('recLeverage').innerText = '--';
-                document.getElementById('recReason').innerText = 'Failed to load suggestions';
+                const marketCondEl = document.getElementById('marketCondition');
+                const recSpreadEl = document.getElementById('recSpread');
+                const recLevEl = document.getElementById('recLeverage');
+                const recReasonEl = document.getElementById('recReason');
+                if (marketCondEl) marketCondEl.innerText = 'Error';
+                if (recSpreadEl) recSpreadEl.innerText = '--';
+                if (recLevEl) recLevEl.innerText = '--';
+                if (recReasonEl) recReasonEl.innerText = 'Failed to load suggestions';
             }
         }
 
@@ -884,6 +1444,11 @@
 
         async function fetchPerformance() {
             try {
+                // 仅当有需要展示绩效的 Tab 可见时才请求，避免页面空闲时的无谓轮询
+                if (!isTabVisible('tradeTab') && !isTabVisible('dashboardTab') && !isTabVisible('fundingTab')) {
+                    return;
+                }
+
                 const res = await fetch('/api/performance');
                 const data = await res.json();
 
@@ -1018,6 +1583,10 @@
 
         async function fetchOrderHistory() {
             try {
+                // 订单历史只在 Trade Tab 中展示
+                if (!isTabVisible('tradeTab')) {
+                    return;
+                }
                 const symbolFilter = document.getElementById('historySymbolFilter').value;
                 const statusFilter = document.getElementById('historyStatusFilter').value;
                 const timeFilter = document.getElementById('historyTimeFilter').value;
@@ -1071,15 +1640,78 @@
             }
         }
 
+        async function fetchFundingOrderHistory() {
+            try {
+                // Funding 策略订单历史只在 Funding Tab 可见时请求
+                if (!isTabVisible('fundingTab')) {
+                    return;
+                }
+                const statusFilter = document.getElementById('fundingHistoryStatusFilter').value;
+                const timeFilter = document.getElementById('fundingHistoryTimeFilter').value;
+
+                // 默认运行 ETHUSDT 的 Funding 策略，也可以用当前 Funding Tab 的 symbol
+                const currentSymbolFunding = document.getElementById('currentSymbolFunding').innerText || '';
+                const symbolParam = currentSymbolFunding || 'ETH/USDT:USDT';
+
+                let url = `/api/order-history?symbol=${encodeURIComponent(symbolParam)}&strategy_type=funding_rate&`;
+                if (statusFilter) url += `status=${statusFilter}&`;
+                if (timeFilter) {
+                    const fromTime = Date.now() / 1000 - parseInt(timeFilter);
+                    url += `from_time=${fromTime}&`;
+                }
+
+                const res = await fetch(url);
+                const orders = await res.json();
+
+                const tbody = document.getElementById('fundingOrderHistoryBody');
+                if (!orders || orders.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 20px; color: #9ca3af;">No funding strategy orders found</td></tr>';
+                    return;
+                }
+
+                tbody.innerHTML = orders.map(order => {
+                    const time = new Date(order.timestamp * 1000).toLocaleTimeString();
+                    let statusColor = '#3b82f6'; // Default Blue (Placed)
+                    let statusText = order.status.toUpperCase();
+
+                    if (order.status === 'cancelled') {
+                        statusColor = '#9ca3af'; // Gray
+                    } else if (order.status === 'filled') {
+                        statusColor = '#10b981'; // Green
+                    }
+
+                    return `
+                        <tr style="border-bottom: 1px solid #e5e7eb;">
+                            <td style="padding: 8px;">${time}</td>
+                            <td style="padding: 8px;">${order.symbol}</td>
+                            <td style="padding: 8px; color: ${order.side === 'buy' ? '#10b981' : '#ef4444'}; font-weight: bold;">${order.side.toUpperCase()}</td>
+                            <td style="padding: 8px; text-align: right;">${order.price.toFixed(2)}</td>
+                            <td style="padding: 8px; text-align: right;">${order.quantity.toFixed(4)}</td>
+                            <td style="padding: 8px; text-align: center;">
+                                <span style="background: ${statusColor}; color: white; padding: 2px 8px; border-radius: 4px; font-size: 11px;">
+                                    ${statusText}
+                                </span>
+                            </td>
+                        </tr>
+                    `;
+                }).join('');
+
+            } catch (e) {
+                console.error('Error fetching funding order history:', e);
+            }
+        }
+
         // Poll every 1 second
         setInterval(fetchStatus, 1000);
         setInterval(fetchSuggestions, 5000); // Fetch suggestions every 5s
         setInterval(fetchPerformance, 2000); // Fetch performance every 2s
         setInterval(fetchOrderHistory, 3000); // Fetch order history every 3s
+        setInterval(fetchFundingOrderHistory, 3000); // Fetch funding strategy order history every 3s
         fetchStatus();
         fetchSuggestions();
         fetchPerformance();
         fetchOrderHistory();
+        fetchFundingOrderHistory();
     </script>
 </body>
 

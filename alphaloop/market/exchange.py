@@ -193,12 +193,30 @@ class BinanceClient:
 
     def fetch_funding_rate(self):
         """
-        Fetches the current funding rate for the symbol.
+        Fetches the funding rate signal for the symbol.
+
+        Prefer the **predicted funding rate for the next interval** (Binance "Funding (8h)"),
+        and fall back to the last funding rate if prediction is not available.
+
         Returns: float (e.g., 0.0001 for 0.01%)
         """
         try:
-            funding_info = self.exchange.fetch_funding_rate(self.symbol)
-            return funding_info["fundingRate"]
+            # Use raw premium index endpoint so we can read both predictedFundingRate and lastFundingRate
+            # https://binance-docs.github.io/apidocs/futures/en/#mark-price-and-funded-rate
+            info = self.exchange.fapiPublicGetPremiumIndex(
+                {"symbol": self.market["id"]}
+            )
+
+            predicted = info.get("predictedFundingRate")
+            last = info.get("lastFundingRate")
+
+            # Binance returns strings, normalise to float
+            predicted_val = float(predicted) if predicted is not None else None
+            last_val = float(last) if last is not None else 0.0
+
+            # Strategy should react to the upcoming funding environment,
+            # so we use predicted if available, otherwise last as a safe fallback.
+            return predicted_val if predicted_val is not None else last_val
         except Exception as e:
             logger.error(f"Error fetching funding rate: {e}")
             return 0.0

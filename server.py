@@ -51,11 +51,15 @@ async def get_status():
     status["active"] = is_running
     status["stage"] = bot_engine.current_stage
     
-    # Add strategy info - use type name check to avoid recursion with mocks
+    # Add strategy info & core config for UI display
     strategy_type_name = type(bot_engine.strategy).__name__
     status["strategy_type"] = "funding_rate" if strategy_type_name == "FundingRateStrategy" else "fixed_spread"
     if hasattr(bot_engine.strategy, "skew_factor"):
         status["skew_factor"] = bot_engine.strategy.skew_factor
+    # Expose current spread, quantity, leverage from engine strategy
+    status["spread"] = getattr(bot_engine.strategy, "spread", None)
+    status["quantity"] = getattr(bot_engine.strategy, "quantity", None)
+    status["leverage"] = getattr(bot_engine.strategy, "leverage", None)
         
     return status
 
@@ -227,13 +231,20 @@ async def get_suggestions():
     return suggestion
 
 @app.get("/api/order-history")
-async def get_order_history(symbol: str = None, status: str = None, from_time: float = None, to_time: float = None):
+async def get_order_history(
+    symbol: str = None,
+    status: str = None,
+    from_time: float = None,
+    to_time: float = None,
+    strategy_type: str = None,
+):
     """
     Get order history with optional filters
     :param symbol: Filter by symbol (e.g., 'ETH/USDT:USDT')
     :param status: Filter by status ('placed', 'cancelled', 'filled')
     :param from_time: Filter by start timestamp
     :param to_time: Filter by end timestamp
+    :param strategy_type: Filter by strategy type ('fixed_spread', 'funding_rate')
     """
     history = list(bot_engine.order_history)
     
@@ -246,6 +257,8 @@ async def get_order_history(symbol: str = None, status: str = None, from_time: f
         history = [o for o in history if o['timestamp'] >= from_time]
     if to_time:
         history = [o for o in history if o['timestamp'] <= to_time]
+    if strategy_type:
+        history = [o for o in history if o.get("strategy_type") == strategy_type]
     
     # Sort by timestamp descending (newest first)
     history.sort(key=lambda x: x['timestamp'], reverse=True)

@@ -44,7 +44,7 @@ class RiskAgent:
         # Validate Skew Factor if present
         skew_factor = proposed_config.get("skew_factor")
         if skew_factor is not None:
-            max_skew = 500.0 # Hardcoded limit for now, could be in config
+            max_skew = 500.0  # Hardcoded limit for now, could be in config
             if skew_factor < 0:
                 reason = f"Skew Factor {skew_factor} cannot be negative"
                 return False, reason

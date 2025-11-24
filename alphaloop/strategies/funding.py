@@ -27,9 +27,9 @@ class FundingRateStrategy:
         # Standard: Bid = Mid - Spread/2, Ask = Mid + Spread/2
         # Skewed: Bid = Mid - Spread/2 - Skew, Ask = Mid + Spread/2 - Skew
         # If Skew > 0: Bid is lower (harder to fill), Ask is lower (easier to fill). Correct.
-        
+
         skew_offset = funding_rate * self.skew_factor * mid_price
-        
+
         # Calculate raw prices with skew
         bid_price = mid_price * (1 - self.spread / 2) - skew_offset
         ask_price = mid_price * (1 + self.spread / 2) - skew_offset

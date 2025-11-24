@@ -47,7 +47,7 @@ class AlphaLoop:
         current_spread = self.strategy.spread
         current_quantity = self.strategy.quantity
         current_leverage = self.strategy.leverage
-        
+
         new_strategy = None
         if strategy_type == "funding_rate":
             new_strategy = FundingRateStrategy()
@@ -58,15 +58,15 @@ class AlphaLoop:
         else:
             logger.error(f"Unknown strategy type: {strategy_type}")
             return False
-            
+
         # Restore settings
         new_strategy.spread = current_spread
         new_strategy.quantity = current_quantity
         new_strategy.leverage = current_leverage
-        
+
         # If switching TO funding rate, we might want to ensure skew_factor is set from config or default
         # But FundingRateStrategy.__init__ already does that.
-        
+
         self.strategy = new_strategy
         return True
 
@@ -102,7 +102,7 @@ class AlphaLoop:
                 market_data = self.exchange.fetch_market_data()
                 if market_data and market_data["mid_price"]:
                     mid_price = market_data["mid_price"]
-                
+
                 funding_rate = self.exchange.fetch_funding_rate()
 
                 account_data = self.exchange.fetch_account_data()
@@ -144,12 +144,17 @@ class AlphaLoop:
                 funding_rate = self.exchange.fetch_funding_rate()
 
                 # Calculate target orders based on current market and funding rate
-                # FixedSpreadStrategy will ignore funding_rate if it doesn't accept it, 
+                # FixedSpreadStrategy will ignore funding_rate if it doesn't accept it,
                 # but we should handle that gracefully or ensure both accept it.
                 # Since we didn't update FixedSpreadStrategy signature, we need to check.
-                if hasattr(self.strategy.calculate_target_orders, '__code__') and \
-                   'funding_rate' in self.strategy.calculate_target_orders.__code__.co_varnames:
-                    target_orders = self.strategy.calculate_target_orders(market_data, funding_rate=funding_rate)
+                if (
+                    hasattr(self.strategy.calculate_target_orders, "__code__")
+                    and "funding_rate"
+                    in self.strategy.calculate_target_orders.__code__.co_varnames
+                ):
+                    target_orders = self.strategy.calculate_target_orders(
+                        market_data, funding_rate=funding_rate
+                    )
                 else:
                     target_orders = self.strategy.calculate_target_orders(market_data)
 
@@ -159,9 +164,9 @@ class AlphaLoop:
                     # Find the order in history and update status
                     # This is O(N) but N is small (200). For production, use a dict.
                     for hist_order in self.order_history:
-                        if hist_order['id'] == order['id']:
-                            hist_order['status'] = 'cancelled'
-                            
+                        if hist_order["id"] == order["id"]:
+                            hist_order["status"] = "cancelled"
+
                 self.exchange.cancel_all_orders()
 
                 # Place new orders

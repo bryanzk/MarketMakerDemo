@@ -86,7 +86,13 @@ This project has comprehensive documentation. **If you are new to the system**, 
    - 自动生成的 API 文档
    - 交互式 API 文档
 
-10. **AlphaLoop Framework Documentation** (docs/alphaloop/)
+10. **[Strategy Development Guide](docs/strategy_development_guide.md)** 🆕
+   - Step-by-step guide for adding new trading strategies
+   - Integration requirements and best practices
+   - 添加新交易策略的分步指南
+   - 集成要求和最佳实践
+
+11. **AlphaLoop Framework Documentation** (docs/alphaloop/)
    - **[Framework Design](docs/alphaloop/framework_design.md)**: The "Agent-First" architecture
      - 框架设计 - "智能体优先"架构
    - **[Agent Roles and Hierarchy](docs/alphaloop/agent_roles_and_hierarchy.md)**: Meet the AI agents

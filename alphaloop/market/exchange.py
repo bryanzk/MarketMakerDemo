@@ -492,7 +492,9 @@ class BinanceClient:
                 }
             except Exception as e:
                 # Unexpected error - log with traceback
-                logger.error(f"Unexpected error placing order {order}: {e}", exc_info=True)
+                logger.error(
+                    f"Unexpected error placing order {order}: {e}", exc_info=True
+                )
                 self.last_order_error = {
                     "type": "unknown_error",
                     "message": str(e),
@@ -509,7 +511,9 @@ class BinanceClient:
                 self.exchange.cancel_order(oid, self.symbol)
                 logger.info(f"Canceled order {oid}")
             except OrderNotFound as e:
-                logger.warning(f"Order {oid} not found (may be already filled/canceled): {e}")
+                logger.warning(
+                    f"Order {oid} not found (may be already filled/canceled): {e}"
+                )
             except NetworkError as e:
                 logger.error(f"Network error canceling order {oid}: {e}")
                 self.last_api_error = {

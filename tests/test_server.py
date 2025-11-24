@@ -259,12 +259,19 @@ class TestServer:
             assert data['status'] == 'error'
     
     def test_get_performance_stats(self, mock_bot):
-        """Test GET /api/performance endpoint"""
+        """Test GET /api/performance endpoint with detailed dashboard metrics"""
         # server.py uses bot_engine.data.trade_history
         mock_bot.data.trade_history = [
-            {'pnl': 10.0}, {'pnl': 20.0}
+            {'pnl': 10.0, 'timestamp': 1600000000}, 
+            {'pnl': -5.0, 'timestamp': 1600000060},
+            {'pnl': 20.0, 'timestamp': 1600000120}
         ]
-        mock_bot.data.calculate_metrics.return_value = {'sharpe_ratio': 1.5}
+        mock_bot.data.calculate_metrics.return_value = {
+            'sharpe_ratio': 1.5,
+            'tick_to_trade_latency': 5.0,
+            'slippage_bps': 1.2,
+            'fill_rate': 0.95
+        }
         
         with patch('server.bot_engine', mock_bot):
             from server import app
@@ -274,5 +281,21 @@ class TestServer:
             
             assert response.status_code == 200
             data = response.json()
-            assert data['total_trades'] == 2
-            assert data['realized_pnl'] == 30.0
+            
+            # Check basic stats
+            assert data['total_trades'] == 3
+            assert data['realized_pnl'] == 25.0
+            assert data['winning_trades'] == 2
+            assert data['losing_trades'] == 1
+            assert abs(data['win_rate'] - 66.66) < 0.01
+            
+            # Check metrics
+            assert data['metrics']['sharpe_ratio'] == 1.5
+            assert data['metrics']['tick_to_trade_latency'] == 5.0
+            
+            # Check PnL history structure
+            assert len(data['pnl_history']) == 4 # Initial point + 3 trades
+            # Initial point
+            assert data['pnl_history'][0][1] == 0
+            # Last point
+            assert data['pnl_history'][-1][1] == 25.0

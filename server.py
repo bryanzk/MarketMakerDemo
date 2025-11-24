@@ -229,13 +229,34 @@ async def get_order_history(symbol: str = None, status: str = None, from_time: f
 async def get_performance():
     # Get metrics from DataAgent
     metrics = bot_engine.data.calculate_metrics()
-    # Add some mock trade counts since DataAgent tracks history
-    total_trades = len(bot_engine.data.trade_history)
     
+    # Calculate additional stats from trade history
+    trades = bot_engine.data.trade_history
+    total_trades = len(trades)
+    winning_trades = len([t for t in trades if t['pnl'] > 0])
+    losing_trades = len([t for t in trades if t['pnl'] <= 0])
+    
+    realized_pnl = sum(t['pnl'] for t in trades)
+    
+    # Construct PnL history for chart
+    pnl_history = []
+    cumulative_pnl = 0
+    # Add initial point
+    if trades:
+        pnl_history.append([trades[0]['timestamp'] * 1000 - 1000, 0])
+        
+    for t in trades:
+        cumulative_pnl += t['pnl']
+        pnl_history.append([t['timestamp'] * 1000, cumulative_pnl])
+        
     return {
-        "realized_pnl": sum(t['pnl'] for t in bot_engine.data.trade_history),
+        "realized_pnl": realized_pnl,
         "total_trades": total_trades,
-        "metrics": metrics
+        "winning_trades": winning_trades,
+        "losing_trades": losing_trades,
+        "win_rate": (winning_trades / total_trades * 100) if total_trades > 0 else 0,
+        "metrics": metrics,
+        "pnl_history": pnl_history
     }
 
 if __name__ == "__main__":

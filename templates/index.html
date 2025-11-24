@@ -182,252 +182,331 @@
 
 <body>
     <div class="container">
-        <div class="header">
-            <h1>Binance Market Maker (MVP)</h1>
-            <div style="text-align: right;">
-                <div>
-                    <span id="currentSymbol" style="font-weight: bold; margin-right: 10px;">--</span>
-                    <span id="botStatus" class="status-badge status-inactive">STOPPED</span>
-                </div>
-                <div id="stageDisplay" style="font-size: 12px; color: #6b7280; margin-top: 5px; font-weight: bold;">
-                    Idle
-                </div>
-            </div>
+        <div class="tab-nav" style="margin-bottom:20px;">
+            <button class="btn btn-primary" id="tradeTabBtn" onclick="showTab('trade')">Trade</button>
+            <button class="btn" id="dashboardTabBtn" onclick="showTab('dashboard')">Dashboard</button>
         </div>
-
-        <div id="errorDisplay" class="error-message" style="display: none;"></div>
-        <div id="alertDisplay" class="error-message"
-            style="display: none; background-color: #fff3cd; color: #856404; border: 1px solid #ffeeba;">
-            <strong>⚠️ Alert:</strong> <span id="alertMessage"></span>
-            <div id="alertSuggestion" style="font-size: 12px; margin-top: 5px;"></div>
-        </div>
-
-        <div class="card-grid">
-            <div class="card">
-                <h3>Mid Price</h3>
-                <div class="value" id="midPrice">--</div>
-            </div>
-            <div class="card">
-                <h3>Position (ETH)</h3>
-                <div class="value" id="position">--</div>
-            </div>
-            <div class="card">
-                <h3>Balance (USDT)</h3>
-                <div class="value" id="balance">--</div>
-            </div>
-            <div class="card">
-                <h3>Unrealized PnL</h3>
-                <div class="value" id="pnl">--</div>
-            </div>
-            <div class="card">
-                <h3>Leverage</h3>
-                <div class="value" id="leverage">--</div>
-            </div>
-            <div class="card">
-                <h3>Realized PnL</h3>
-                <div class="value" id="realizedPnl">--</div>
-            </div>
-            <div class="card">
-                <h3>Total Trades</h3>
-                <div class="value" id="totalTrades">--</div>
-            </div>
-            <div class="card">
-                <h3>Win Rate</h3>
-                <div class="value" id="winRate">--</div>
-            </div>
-        </div>
-
-        <div class="card-grid">
-            <div class="card">
-                <h3>Control Panel</h3>
-                <div style="display: flex; gap: 10px; margin-bottom: 15px;">
-                    <button id="startBtn" class="btn btn-success" onclick="controlBot('start')">Start Bot</button>
-                    <button id="stopBtn" class="btn btn-danger" onclick="controlBot('stop')" disabled>Stop Bot</button>
-                </div>
-                <hr>
-                <div style="margin-top: 15px;">
-                    <label>Trading Pair:
-                        <select id="pairSelect" onchange="updatePair()" style="padding: 5px; border-radius: 4px;">
-                            <optgroup label="Mainstream">
-                                <option value="BTC/USDT:USDT">BTC/USDT</option>
-                                <option value="ETH/USDT:USDT" selected>ETH/USDT</option>
-                                <option value="SOL/USDT:USDT">SOL/USDT</option>
-                            </optgroup>
-                            <optgroup label="Memecoins">
-                                <option value="DOGE/USDT:USDT">DOGE/USDT</option>
-                                <option value="1000SHIB/USDT:USDT">1000SHIB/USDT</option>
-                                <option value="1000PEPE/USDT:USDT">1000PEPE/USDT</option>
-                                <option value="WIF/USDT:USDT">WIF/USDT</option>
-                                <option value="1000FLOKI/USDT:USDT">1000FLOKI/USDT</option>
-                            </optgroup>
-                        </select>
-                    </label>
-                </div>
-                <hr>
-                <div style="margin-top: 15px;">
-                    <label>Spread (%): <input type="number" id="spreadInput" step="0.001" value="0.002"></label>
-                    <label>Qty: <input type="number" id="qtyInput" step="0.01" value="0.02"></label>
-                    <button class="btn btn-primary" style="margin-top: 10px; width: 100%;"
-                        onclick="updateConfig()">Update Config</button>
-                </div>
-                <hr>
-                <div style="margin-top: 15px;">
-                    <label>Leverage (<span id="leverageRange">1-125</span>x): <input type="number" id="leverageInput"
-                            min="1" max="125" value="5"></label>
-                    <button class="btn btn-primary" style="margin-top: 10px; width: 100%;"
-                        onclick="updateLeverage()">Update Leverage</button>
-                </div>
-            </div>
-            <div class="card">
-                <h3>Strategy Suggestions</h3>
-                <div id="suggestionBox" style="margin-top: 10px;">
-                    <div style="font-size: 14px; font-weight: bold; margin-bottom: 5px;">Market Condition:</div>
-                    <div id="marketCondition" class="status-badge" style="background: #e5e7eb; color: #374151;">
-                        Loading...</div>
-
-                    <div style="margin-top: 15px; font-size: 14px; font-weight: bold;">Recommendation:</div>
-                    <div style="font-size: 13px; margin-top: 5px;">
-                        Spread: <span id="recSpread" style="font-weight: bold;">--</span> |
-                        Leverage: <span id="recLeverage" style="font-weight: bold;">--</span>
+        <div id="tradeTab">
+            <div class="header">
+                <h1>Binance Market Maker (MVP)</h1>
+                <div style="text-align: right;">
+                    <div>
+                        <span id="currentSymbol" style="font-weight: bold; margin-right: 10px;">--</span>
+                        <span id="botStatus" class="status-badge status-inactive">STOPPED</span>
                     </div>
-
-                    <div style="margin-top: 15px; font-size: 14px; font-weight: bold;">Reasoning:</div>
-                    <div id="recReason" style="font-size: 12px; color: #6b7280; margin-top: 5px; line-height: 1.4;">
-                        --
+                    <div id="stageDisplay" style="font-size: 12px; color: #6b7280; margin-top: 5px; font-weight: bold;">
+                        Idle
                     </div>
-
-                    <button class="btn btn-success" style="margin-top: 15px; width: 100%; font-size: 12px;"
-                        onclick="applySuggestion()">Apply Recommendation</button>
-                </div>
-            </div>
-            <div class="card">
-                <h3>Trading Constraints</h3>
-
-                <div style="margin-top: 10px;">
-                    <div style="font-size: 14px; font-weight: bold; margin-bottom: 5px; color: #3b82f6;">📊 Binance
-                        Exchange Limits</div>
-                    <table style="width: 100%; font-size: 12px; margin-top: 5px;">
-                        <tr>
-                            <td style="padding: 3px 0; color: #6b7280;">Min Quantity:</td>
-                            <td style="text-align: right; font-weight: bold;" id="constraintMinQty">--</td>
-                        </tr>
-                        <tr>
-                            <td style="padding: 3px 0; color: #6b7280;">Max Quantity:</td>
-                            <td style="text-align: right; font-weight: bold;" id="constraintMaxQty">--</td>
-                        </tr>
-                        <tr>
-                            <td style="padding: 3px 0; color: #6b7280;">Step Size:</td>
-                            <td style="text-align: right; font-weight: bold;" id="constraintStepSize">--</td>
-                        </tr>
-                        <tr>
-                            <td style="padding: 3px 0; color: #6b7280;">Min Notional:</td>
-                            <td style="text-align: right; font-weight: bold;" id="constraintMinNotional">--</td>
-                        </tr>
-                    </table>
-                </div>
-
-                <hr style="margin: 15px 0; border: none; border-top: 1px solid #e5e7eb;">
-
-                <div>
-                    <div style="font-size: 14px; font-weight: bold; margin-bottom: 5px; color: #10b981;">⚙️ Internal
-                        Limits</div>
-                    <table style="width: 100%; font-size: 12px; margin-top: 5px;">
-                        <tr>
-                            <td style="padding: 3px 0; color: #6b7280;">Max Position:</td>
-                            <td style="text-align: right; font-weight: bold;" id="constraintMaxPos">--</td>
-                        </tr>
-                        <tr>
-                            <td style="padding: 3px 0; color: #6b7280;">Current Leverage:</td>
-                            <td style="text-align: right; font-weight: bold;" id="constraintLeverage">--</td>
-                        </tr>
-                        <tr>
-                            <td style="padding: 3px 0; color: #6b7280;">Current Spread:</td>
-                            <td style="text-align: right; font-weight: bold;" id="constraintSpread">--</td>
-                        </tr>
-                        <tr>
-                            <td style="padding: 3px 0; color: #6b7280;">Order Quantity:</td>
-                            <td style="text-align: right; font-weight: bold;" id="constraintQty">--</td>
-                        </tr>
-                    </table>
-                </div>
-            </div>
-            <div class="card" style="grid-column: span 2;">
-                <h3>Active Orders</h3>
-                <table id="ordersTable">
-                    <thead>
-                        <tr>
-                            <th>ID</th>
-                            <th>Side</th>
-                            <th>Price</th>
-                            <th>Qty</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <!-- Orders here -->
-                    </tbody>
-                </table>
-            </div>
-            <!-- System Activity Log -->
-            <div class="card" style="grid-column: span 2;">
-                <h3>System Activity</h3>
-                <div id="systemLogs"
-                    style="height: 150px; overflow-y: auto; background: #f9fafb; border: 1px solid #e5e7eb; padding: 10px; font-family: monospace; font-size: 12px; color: #374151;">
-                    <div style="color: #9ca3af;">Waiting for activity...</div>
                 </div>
             </div>
 
-            <!-- Order History -->
-            <div class="card" style="grid-column: span 2;">
-                <h3>Order History</h3>
-                <div style="margin-bottom: 10px; display: flex; gap: 10px; flex-wrap: wrap;">
-                    <select id="historySymbolFilter" onchange="fetchOrderHistory()"
-                        style="padding: 5px; border-radius: 4px;">
-                        <option value="">All Symbols</option>
-                        <option value="ETH/USDT:USDT">ETH/USDT</option>
-                        <option value="BTC/USDT:USDT">BTC/USDT</option>
-                    </select>
-                    <select id="historyStatusFilter" onchange="fetchOrderHistory()"
-                        style="padding: 5px; border-radius: 4px;">
-                        <option value="">All Status</option>
-                        <option value="placed">Placed</option>
-                        <option value="cancelled">Cancelled</option>
-                        <option value="filled">Filled</option>
-                    </select>
-                    <select id="historyTimeFilter" onchange="fetchOrderHistory()"
-                        style="padding: 5px; border-radius: 4px;">
-                        <option value="">All Time</option>
-                        <option value="3600">Last 1h</option>
-                        <option value="21600">Last 6h</option>
-                        <option value="86400">Last 24h</option>
-                    </select>
+            <div id="errorDisplay" class="error-message" style="display: none;"></div>
+            <div id="alertDisplay" class="error-message"
+                style="display: none; background-color: #fff3cd; color: #856404; border: 1px solid #ffeeba;">
+                <strong>⚠️ Alert:</strong> <span id="alertMessage"></span>
+                <div id="alertSuggestion" style="font-size: 12px; margin-top: 5px;"></div>
+            </div>
+
+            <div class="card-grid">
+                <div class="card">
+                    <h3>Mid Price</h3>
+                    <div class="value" id="midPrice">--</div>
                 </div>
-                <div id="orderHistoryContainer"
-                    style="height: 200px; overflow-y: auto; background: #f9fafb; border: 1px solid #e5e7eb;">
-                    <table style="width: 100%; font-size: 12px; border-collapse: collapse;">
-                        <thead style="position: sticky; top: 0; background: #fff; border-bottom: 2px solid #e5e7eb;">
+                <div class="card">
+                    <h3>Position (ETH)</h3>
+                    <div class="value" id="position">--</div>
+                </div>
+                <div class="card">
+                    <h3>Balance (USDT)</h3>
+                    <div class="value" id="balance">--</div>
+                </div>
+                <div class="card">
+                    <h3>Unrealized PnL</h3>
+                    <div class="value" id="pnl">--</div>
+                </div>
+                <div class="card">
+                    <h3>Leverage</h3>
+                    <div class="value" id="leverage">--</div>
+                </div>
+                <div class="card">
+                    <h3>Realized PnL</h3>
+                    <div class="value" id="realizedPnl">--</div>
+                </div>
+                <div class="card">
+                    <h3>Total Trades</h3>
+                    <div class="value" id="totalTrades">--</div>
+                </div>
+                <div class="card">
+                    <h3>Win Rate</h3>
+                    <div class="value" id="winRate">--</div>
+                </div>
+            </div>
+
+            <div class="card-grid">
+                <div class="card">
+                    <h3>Control Panel</h3>
+                    <div style="display: flex; gap: 10px; margin-bottom: 15px;">
+                        <button id="startBtn" class="btn btn-success" onclick="controlBot('start')">Start Bot</button>
+                        <button id="stopBtn" class="btn btn-danger" onclick="controlBot('stop')" disabled>Stop
+                            Bot</button>
+                    </div>
+                    <hr>
+                    <div style="margin-top: 15px;">
+                        <label>Trading Pair:
+                            <select id="pairSelect" onchange="updatePair()" style="padding: 5px; border-radius: 4px;">
+                                <optgroup label="Mainstream">
+                                    <option value="BTC/USDT:USDT">BTC/USDT</option>
+                                    <option value="ETH/USDT:USDT" selected>ETH/USDT</option>
+                                    <option value="SOL/USDT:USDT">SOL/USDT</option>
+                                </optgroup>
+                                <optgroup label="Memecoins">
+                                    <option value="DOGE/USDT:USDT">DOGE/USDT</option>
+                                    <option value="1000SHIB/USDT:USDT">1000SHIB/USDT</option>
+                                    <option value="1000PEPE/USDT:USDT">1000PEPE/USDT</option>
+                                    <option value="WIF/USDT:USDT">WIF/USDT</option>
+                                    <option value="1000FLOKI/USDT:USDT">1000FLOKI/USDT</option>
+                                </optgroup>
+                            </select>
+                        </label>
+                    </div>
+                    <hr>
+                    <div style="margin-top: 15px;">
+                        <label>Spread (%): <input type="number" id="spreadInput" step="0.001" value="0.002"></label>
+                        <label>Qty: <input type="number" id="qtyInput" step="0.01" value="0.02"></label>
+                        <button class="btn btn-primary" style="margin-top: 10px; width: 100%;"
+                            onclick="updateConfig()">Update Config</button>
+                    </div>
+                    <hr>
+                    <div style="margin-top: 15px;">
+                        <label>Leverage (<span id="leverageRange">1-125</span>x): <input type="number"
+                                id="leverageInput" min="1" max="125" value="5"></label>
+                        <button class="btn btn-primary" style="margin-top: 10px; width: 100%;"
+                            onclick="updateLeverage()">Update Leverage</button>
+                    </div>
+                </div>
+                <div class="card">
+                    <h3>Strategy Suggestions</h3>
+                    <div id="suggestionBox" style="margin-top: 10px;">
+                        <div style="font-size: 14px; font-weight: bold; margin-bottom: 5px;">Market Condition:</div>
+                        <div id="marketCondition" class="status-badge" style="background: #e5e7eb; color: #374151;">
+                            Loading...</div>
+
+                        <div style="margin-top: 15px; font-size: 14px; font-weight: bold;">Recommendation:</div>
+                        <div style="font-size: 13px; margin-top: 5px;">
+                            Spread: <span id="recSpread" style="font-weight: bold;">--</span> |
+                            Leverage: <span id="recLeverage" style="font-weight: bold;">--</span>
+                        </div>
+
+                        <div style="margin-top: 15px; font-size: 14px; font-weight: bold;">Reasoning:</div>
+                        <div id="recReason" style="font-size: 12px; color: #6b7280; margin-top: 5px; line-height: 1.4;">
+                            --
+                        </div>
+
+                        <button class="btn btn-success" style="margin-top: 15px; width: 100%; font-size: 12px;"
+                            onclick="applySuggestion()">Apply Recommendation</button>
+                    </div>
+                </div>
+                <div class="card">
+                    <h3>Trading Constraints</h3>
+
+                    <div style="margin-top: 10px;">
+                        <div style="font-size: 14px; font-weight: bold; margin-bottom: 5px; color: #3b82f6;">📊 Binance
+                            Exchange Limits</div>
+                        <table style="width: 100%; font-size: 12px; margin-top: 5px;">
                             <tr>
-                                <th style="padding: 8px; text-align: left;">Time</th>
-                                <th style="padding: 8px; text-align: left;">Symbol</th>
-                                <th style="padding: 8px; text-align: left;">Side</th>
-                                <th style="padding: 8px; text-align: right;">Price</th>
-                                <th style="padding: 8px; text-align: right;">Qty</th>
-                                <th style="padding: 8px; text-align: center;">Status</th>
+                                <td style="padding: 3px 0; color: #6b7280;">Min Quantity:</td>
+                                <td style="text-align: right; font-weight: bold;" id="constraintMinQty">--</td>
+                            </tr>
+                            <tr>
+                                <td style="padding: 3px 0; color: #6b7280;">Max Quantity:</td>
+                                <td style="text-align: right; font-weight: bold;" id="constraintMaxQty">--</td>
+                            </tr>
+                            <tr>
+                                <td style="padding: 3px 0; color: #6b7280;">Step Size:</td>
+                                <td style="text-align: right; font-weight: bold;" id="constraintStepSize">--</td>
+                            </tr>
+                            <tr>
+                                <td style="padding: 3px 0; color: #6b7280;">Min Notional:</td>
+                                <td style="text-align: right; font-weight: bold;" id="constraintMinNotional">--</td>
+                            </tr>
+                        </table>
+                    </div>
+
+                    <hr style="margin: 15px 0; border: none; border-top: 1px solid #e5e7eb;">
+
+                    <div>
+                        <div style="font-size: 14px; font-weight: bold; margin-bottom: 5px; color: #10b981;">⚙️ Internal
+                            Limits</div>
+                        <table style="width: 100%; font-size: 12px; margin-top: 5px;">
+                            <tr>
+                                <td style="padding: 3px 0; color: #6b7280;">Max Position:</td>
+                                <td style="text-align: right; font-weight: bold;" id="constraintMaxPos">--</td>
+                            </tr>
+                            <tr>
+                                <td style="padding: 3px 0; color: #6b7280;">Current Leverage:</td>
+                                <td style="text-align: right; font-weight: bold;" id="constraintLeverage">--</td>
+                            </tr>
+                            <tr>
+                                <td style="padding: 3px 0; color: #6b7280;">Current Spread:</td>
+                                <td style="text-align: right; font-weight: bold;" id="constraintSpread">--</td>
+                            </tr>
+                            <tr>
+                                <td style="padding: 3px 0; color: #6b7280;">Order Quantity:</td>
+                                <td style="text-align: right; font-weight: bold;" id="constraintQty">--</td>
+                            </tr>
+                        </table>
+                    </div>
+                </div>
+                <div class="card" style="grid-column: span 2;">
+                    <h3>Active Orders</h3>
+                    <table id="ordersTable">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Side</th>
+                                <th>Price</th>
+                                <th>Qty</th>
                             </tr>
                         </thead>
-                        <tbody id="orderHistoryBody">
-                            <tr>
-                                <td colspan="6" style="text-align: center; padding: 20px; color: #9ca3af;">No orders yet
-                                </td>
-                            </tr>
+                        <tbody>
+                            <!-- Orders here -->
                         </tbody>
                     </table>
                 </div>
-            </div>
+                <!-- System Activity Log -->
+                <div class="card" style="grid-column: span 2;">
+                    <h3>System Activity</h3>
+                    <div id="systemLogs"
+                        style="height: 150px; overflow-y: auto; background: #f9fafb; border: 1px solid #e5e7eb; padding: 10px; font-family: monospace; font-size: 12px; color: #374151;">
+                        <div style="color: #9ca3af;">Waiting for activity...</div>
+                    </div>
+                </div>
 
-            <!-- Strategy Settings -->
-            <div class="card" style="grid-column: span 2;">
-                <h3>PnL Trend Chart</h3>
-                <canvas id="pnlChart" style="max-height: 300px;"></canvas>
+                <!-- Order History -->
+                <div class="card" style="grid-column: span 2;">
+                    <h3>Order History</h3>
+                    <div style="margin-bottom: 10px; display: flex; gap: 10px; flex-wrap: wrap;">
+                        <select id="historySymbolFilter" onchange="fetchOrderHistory()"
+                            style="padding: 5px; border-radius: 4px;">
+                            <option value="">All Symbols</option>
+                            <option value="ETH/USDT:USDT">ETH/USDT</option>
+                            <option value="BTC/USDT:USDT">BTC/USDT</option>
+                        </select>
+                        <select id="historyStatusFilter" onchange="fetchOrderHistory()"
+                            style="padding: 5px; border-radius: 4px;">
+                            <option value="">All Status</option>
+                            <option value="placed">Placed</option>
+                            <option value="cancelled">Cancelled</option>
+                            <option value="filled">Filled</option>
+                        </select>
+                        <select id="historyTimeFilter" onchange="fetchOrderHistory()"
+                            style="padding: 5px; border-radius: 4px;">
+                            <option value="">All Time</option>
+                            <option value="3600">Last 1h</option>
+                            <option value="21600">Last 6h</option>
+                            <option value="86400">Last 24h</option>
+                        </select>
+                    </div>
+                    <div id="orderHistoryContainer"
+                        style="height: 200px; overflow-y: auto; background: #f9fafb; border: 1px solid #e5e7eb;">
+                        <table style="width: 100%; font-size: 12px; border-collapse: collapse;">
+                            <thead
+                                style="position: sticky; top: 0; background: #fff; border-bottom: 2px solid #e5e7eb;">
+                                <tr>
+                                    <th style="padding: 8px; text-align: left;">Time</th>
+                                    <th style="padding: 8px; text-align: left;">Symbol</th>
+                                    <th style="padding: 8px; text-align: left;">Side</th>
+                                    <th style="padding: 8px; text-align: right;">Price</th>
+                                    <th style="padding: 8px; text-align: right;">Qty</th>
+                                    <th style="padding: 8px; text-align: center;">Status</th>
+                                </tr>
+                            </thead>
+                            <tbody id="orderHistoryBody">
+                                <tr>
+                                    <td colspan="6" style="text-align: center; padding: 20px; color: #9ca3af;">No orders
+                                        yet
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Strategy Settings -->
+                <div class="card" style="grid-column: span 2;">
+                    <h3>PnL Trend Chart</h3>
+                    <canvas id="pnlChart" style="max-height: 300px;"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="dashboardTab" style="display: none;">
+        <div class="header">
+            <h1>Performance Dashboard</h1>
+            <div style="text-align: right;">
+                <button class="btn btn-success" onclick="fetchPerformance()">Refresh Data</button>
+            </div>
+        </div>
+
+        <div class="card-grid">
+            <!-- Key Business Metrics -->
+            <div class="card">
+                <h3>Realized PnL</h3>
+                <div class="value" id="dashRealizedPnl" style="color: #10b981;">--</div>
+                <div class="sub-text">Total Profit/Loss</div>
+            </div>
+            <div class="card">
+                <h3>Win Rate</h3>
+                <div class="value" id="dashWinRate">--</div>
+                <div class="sub-text">Winning Trades / Total</div>
+            </div>
+            <div class="card">
+                <h3>Sharpe Ratio</h3>
+                <div class="value" id="dashSharpe">--</div>
+                <div class="sub-text">Risk-Adjusted Return</div>
+            </div>
+            <div class="card">
+                <h3>Max Drawdown</h3>
+                <div class="value" id="dashDrawdown" style="color: #ef4444;">--</div>
+                <div class="sub-text">Peak to Trough Decline</div>
+            </div>
+        </div>
+
+        <div class="card-grid" style="grid-template-columns: 2fr 1fr;">
+            <!-- PnL Chart -->
+            <div class="card">
+                <h3>PnL Growth</h3>
+                <canvas id="dashPnlChart" style="max-height: 300px;"></canvas>
+            </div>
+            <!-- Trade Distribution -->
+            <div class="card">
+                <h3>Trade Distribution</h3>
+                <canvas id="dashTradeDistChart" style="max-height: 300px;"></canvas>
+            </div>
+        </div>
+
+        <div class="card-grid">
+            <!-- Operational Metrics -->
+            <div class="card">
+                <h3>Tick-to-Trade Latency</h3>
+                <div class="value" id="dashLatency">--</div>
+                <div class="sub-text">Avg time to execute</div>
+            </div>
+            <div class="card">
+                <h3>Fill Rate</h3>
+                <div class="value" id="dashFillRate">--</div>
+                <div class="sub-text">Filled / Placed Orders</div>
+            </div>
+            <div class="card">
+                <h3>Slippage</h3>
+                <div class="value" id="dashSlippage">--</div>
+                <div class="sub-text">Avg execution slippage</div>
+            </div>
+            <div class="card">
+                <h3>Total Trades</h3>
+                <div class="value" id="dashTotalTrades">--</div>
+                <div class="sub-text">Count of all trades</div>
             </div>
         </div>
     </div>
@@ -435,6 +514,19 @@
     <div id="toast" class="toast">Notification</div>
 
     <script>
+        function showTab(tabName) {
+            document.getElementById('tradeTab').style.display = tabName === 'trade' ? 'block' : 'none';
+            document.getElementById('dashboardTab').style.display = tabName === 'dashboard' ? 'block' : 'none';
+
+            // Update buttons
+            document.getElementById('tradeTabBtn').className = tabName === 'trade' ? 'btn btn-primary' : 'btn';
+            document.getElementById('dashboardTabBtn').className = tabName === 'dashboard' ? 'btn btn-primary' : 'btn';
+
+            if (tabName === 'dashboard') {
+                fetchPerformance();
+            }
+        }
+
         function showToast(message, type = 'success') {
             const x = document.getElementById("toast");
             x.innerText = message;
@@ -720,6 +812,8 @@
         }
 
         let pnlChart = null;
+        let dashPnlChart = null;
+        let dashTradeDistChart = null;
 
         async function fetchPerformance() {
             try {
@@ -728,21 +822,41 @@
 
                 if (data.error) return;
 
-                // Update performance metrics
+                // Update Trade Tab Metrics (existing)
                 document.getElementById('realizedPnl').innerText = data.realized_pnl ? data.realized_pnl.toFixed(4) + ' USDT' : '0.0000 USDT';
                 document.getElementById('totalTrades').innerText = data.total_trades || 0;
                 document.getElementById('winRate').innerText = data.win_rate ? data.win_rate.toFixed(2) + '%' : '0.00%';
 
-                // Update PnL Chart
-                updatePnLChart(data.pnl_history || []);
+                // Update Dashboard Metrics
+                if (document.getElementById('dashRealizedPnl')) {
+                    document.getElementById('dashRealizedPnl').innerText = data.realized_pnl ? data.realized_pnl.toFixed(4) + ' USDT' : '0.0000 USDT';
+                    document.getElementById('dashWinRate').innerText = data.win_rate ? data.win_rate.toFixed(2) + '%' : '0.00%';
+                    document.getElementById('dashTotalTrades').innerText = data.total_trades || 0;
+
+                    // Metrics from DataAgent
+                    const metrics = data.metrics || {};
+                    document.getElementById('dashSharpe').innerText = metrics.sharpe_ratio ? metrics.sharpe_ratio.toFixed(2) : '0.00';
+                    document.getElementById('dashLatency').innerText = metrics.tick_to_trade_latency ? metrics.tick_to_trade_latency.toFixed(2) + 'ms' : 'N/A';
+                    document.getElementById('dashSlippage').innerText = metrics.slippage_bps ? metrics.slippage_bps.toFixed(2) + ' bps' : '0 bps';
+                    document.getElementById('dashFillRate').innerText = metrics.fill_rate ? (metrics.fill_rate * 100).toFixed(1) + '%' : 'N/A';
+
+                    // Mock Drawdown for now if not in metrics
+                    document.getElementById('dashDrawdown').innerText = '0.00%';
+                }
+
+                // Update Charts
+                updatePnLChart(data.pnl_history || [], 'pnlChart'); // Trade Tab Chart
+                updatePnLChart(data.pnl_history || [], 'dashPnlChart'); // Dashboard Chart
+                updateTradeDistChart(data.winning_trades, data.losing_trades);
 
             } catch (e) {
                 console.error(e);
             }
         }
 
-        function updatePnLChart(pnlHistory) {
-            const ctx = document.getElementById('pnlChart').getContext('2d');
+        function updatePnLChart(pnlHistory, canvasId) {
+            const ctx = document.getElementById(canvasId).getContext('2d');
+            let chartInstance = canvasId === 'pnlChart' ? pnlChart : dashPnlChart;
 
             // Extract labels (timestamps) and data (pnl values)
             const labels = pnlHistory.map(item => {
@@ -751,14 +865,14 @@
             });
             const data = pnlHistory.map(item => item[1]);
 
-            if (pnlChart) {
+            if (chartInstance) {
                 // Update existing chart
-                pnlChart.data.labels = labels;
-                pnlChart.data.datasets[0].data = data;
-                pnlChart.update('none'); // 'none' for no animation
+                chartInstance.data.labels = labels;
+                chartInstance.data.datasets[0].data = data;
+                chartInstance.update('none'); // 'none' for no animation
             } else {
                 // Create new chart
-                pnlChart = new Chart(ctx, {
+                const newChart = new Chart(ctx, {
                     type: 'line',
                     data: {
                         labels: labels,
@@ -792,6 +906,42 @@
                             },
                             x: {
                                 display: true
+                            }
+                        }
+                    }
+                });
+
+                if (canvasId === 'pnlChart') {
+                    pnlChart = newChart;
+                } else {
+                    dashPnlChart = newChart;
+                }
+            }
+        }
+
+        function updateTradeDistChart(winning, losing) {
+            const ctx = document.getElementById('dashTradeDistChart').getContext('2d');
+
+            if (dashTradeDistChart) {
+                dashTradeDistChart.data.datasets[0].data = [winning, losing];
+                dashTradeDistChart.update();
+            } else {
+                dashTradeDistChart = new Chart(ctx, {
+                    type: 'doughnut',
+                    data: {
+                        labels: ['Winning', 'Losing'],
+                        datasets: [{
+                            data: [winning, losing],
+                            backgroundColor: ['#10b981', '#ef4444'],
+                            hoverOffset: 4
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: {
+                                position: 'bottom'
                             }
                         }
                     }

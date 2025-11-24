@@ -21,7 +21,16 @@ class BinanceClient:
                 },
             }
         )
-        self.exchange.has["fetchCurrencies"] = False
+        # Some ccxt mocks used in tests may not fully implement mapping protocol for `has`,
+        # so guard this access to avoid TypeError while keeping real behaviour unchanged.
+        try:
+            if hasattr(self.exchange, "has") and isinstance(
+                getattr(self.exchange, "has"), dict
+            ):
+                self.exchange.has["fetchCurrencies"] = False
+        except TypeError:
+            # In test environments `has` can be a Mock; safe to ignore this optimisation.
+            pass
         # self.exchange.set_sandbox_mode(True)  # Deprecated in recent CCXT
 
         # Manually override URLs for Testnet

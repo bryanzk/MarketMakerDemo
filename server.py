@@ -54,12 +54,22 @@ async def get_status():
     # Add strategy info & core config for UI display
     strategy_type_name = type(bot_engine.strategy).__name__
     status["strategy_type"] = "funding_rate" if strategy_type_name == "FundingRateStrategy" else "fixed_spread"
-    if hasattr(bot_engine.strategy, "skew_factor"):
-        status["skew_factor"] = bot_engine.strategy.skew_factor
-    # Expose current spread, quantity, leverage from engine strategy
-    status["spread"] = getattr(bot_engine.strategy, "spread", None)
-    status["quantity"] = getattr(bot_engine.strategy, "quantity", None)
-    status["leverage"] = getattr(bot_engine.strategy, "leverage", None)
+
+    # Expose current spread, quantity, leverage from engine strategy when they are simple numeric types.
+    spread = getattr(bot_engine.strategy, "spread", None)
+    quantity = getattr(bot_engine.strategy, "quantity", None)
+    leverage = getattr(bot_engine.strategy, "leverage", None)
+    if isinstance(spread, (int, float)):
+        status["spread"] = spread
+    if isinstance(quantity, (int, float)):
+        status["quantity"] = quantity
+    if isinstance(leverage, (int, float)):
+        status["leverage"] = leverage
+
+    # Only add skew_factor for funding strategies and when it's numeric
+    skew = getattr(bot_engine.strategy, "skew_factor", None)
+    if isinstance(skew, (int, float)):
+        status["skew_factor"] = skew
         
     return status
 

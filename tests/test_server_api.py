@@ -5,6 +5,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 import server
+from alphaloop.strategies.funding import FundingRateStrategy
 
 
 class DummyStrategy:
@@ -79,8 +80,13 @@ def client_fixed_strategy(monkeypatch):
 
 @pytest.fixture
 def client_funding_strategy(monkeypatch):
-    """Test client with a dummy Funding Rate strategy bot engine."""
-    strategy = DummyStrategy(spread=0.003, quantity=0.2, leverage=5, skew_factor=150.0)
+    """Test client with a FundingRateStrategy bot engine to ensure strategy_type is correct."""
+    strategy = FundingRateStrategy()
+    strategy.spread = 0.003
+    strategy.quantity = 0.2
+    strategy.leverage = 5
+    strategy.skew_factor = 150.0
+
     dummy_bot = DummyBotEngine(strategy=strategy, orders=[])
 
     monkeypatch.setattr(server, "bot_engine", dummy_bot)

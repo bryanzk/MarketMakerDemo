@@ -1,8 +1,8 @@
-# 系统架构文档
+# System Architecture / 系统架构文档
 
-## 系统概览
-
-本项目实现了一个币安期货做市机器人，采用模块化设计，包含后端交易引擎和 Web UI 控制面板。
+## System Overview / 系统概览
+This project implements a Binance Futures market-making bot with a modular design that separates the backend trading engine from the Web UI control panel.
+本项目实现了一个币安期货做市机器人，采用模块化设计，将后端交易引擎与 Web UI 控制面板解耦。
 
 ```mermaid
 graph TB
@@ -39,9 +39,9 @@ graph TB
 
 ---
 
-## 核心模块架构
+## Core Module Architecture / 核心模块架构
 
-### 1. 配置层（Configuration）
+### 1. Configuration Layer / 配置层（Configuration）
 
 ```mermaid
 graph LR
@@ -50,14 +50,17 @@ graph LR
     Config --> Engine[main.py]
 ```
 
-**职责**：
-- 加载环境变量（API 密钥）
-- 定义交易参数（交易对、价差、仓位限制、杠杆）
-- 系统参数（刷新间隔、日志级别）
+**Responsibilities / 职责**：
+- Load environment variables (API keys) and expose them to all components.
+  加载环境变量（API 密钥）并对所有组件可用。
+- Define trading parameters such as symbol, spread, inventory caps, and leverage.
+  定义交易参数，例如交易对、价差、仓位上限和杠杆倍数。
+- Provide system-level settings including refresh intervals and logging detail.
+  提供刷新间隔、日志级别等系统配置。
 
 ---
 
-### 2. 交易引擎层（Trading Engine）
+### 2. Trading Engine Layer / 交易引擎层（Trading Engine）
 
 ```mermaid
 graph TD
@@ -86,39 +89,51 @@ graph TD
     Sleep --> Start
 ```
 
-**关键组件**：
+**Key Components / 关键组件**：
 
 #### BotEngine (main.py)
-- **职责**: 主循环编排，状态管理
-- **功能**:
-  - 启动/停止控制
-  - 数据聚合
-  - 异常处理和自动恢复
+- **Role**: Orchestrates the main loop and manages lifecycle state.
+  **职责**：编排主循环并管理生命周期状态。
+- **Functions**:
+  - Start/stop control hooks.
+    启动/停止控制。
+  - Data aggregation across market, account, and orders.
+    聚合市场、账户与订单数据。
+  - Exception handling and automatic recovery.
+    异常捕获与自动恢复。
 
 #### FixedSpreadStrategy (strategy.py)
-- **职责**: 计算目标订单价格
-- **算法**:
+- **Role**: Calculate target bid/ask prices.
+  **职责**：计算目标买卖价格。
+- **Algorithm**:
   ```
   mid_price = (best_bid + best_ask) / 2
   buy_price = mid_price × (1 - spread_pct)
   sell_price = mid_price × (1 + spread_pct)
   ```
+  **算法说明**：根据最新盘口中间价与设定价差推导买卖价位。
 
 #### RiskManager (risk.py)
-- **职责**: 仓位限制检查
-- **规则**:
-  - `position >= MAX_POSITION` → 禁止买入
-  - `position <= -MAX_POSITION` → 禁止卖出
+- **Role**: Enforce inventory limits before orders are placed.
+  **职责**：在下单前执行库存限制。
+- **Rules**:
+  - `position >= MAX_POSITION` → block additional buys.
+    `position >= MAX_POSITION` → 禁止继续买单。
+  - `position <= -MAX_POSITION` → block additional sells.
+    `position <= -MAX_POSITION` → 禁止继续卖单。
 
 #### OrderManager (order_manager.py)
-- **职责**: 订单同步逻辑
-- **算法**: Diff 当前订单 vs 目标订单
-  - 找出需要取消的订单（价格不匹配）
-  - 找出需要新增的订单
+- **Role**: Diff current orders against targets and synchronize with the exchange.
+  **职责**：比较当前订单与目标订单并与交易所同步。
+- **Logic**:
+  - Identify stale orders (price mismatch) to cancel.
+    找出需要取消的过期订单（价格不匹配）。
+  - Submit new orders for missing price levels.
+    提交缺失的目标价格新订单。
 
 ---
 
-### 3. 交易所接口层（Exchange Interface）
+### 3. Exchange Interface Layer / 交易所接口层（Exchange Interface）
 
 ```mermaid
 graph LR
@@ -140,16 +155,21 @@ graph LR
     PnL --> Income[fapiPrivateGetIncome]
 ```
 
-**核心功能**：
-- **市场数据**: 获取订单簿，计算中间价
-- **账户数据**: 查询仓位、余额、入场价
-- **订单管理**: 限价单下单、取消、批量取消
-- **杠杆管理**: 获取/设置交易对杠杆
-- **盈亏查询**: 获取已实现盈亏历史
+**Core Functions / 核心功能**：
+- **Market Data**: Fetch order books and derive mid prices.
+  **市场数据**：获取订单簿并计算中间价。
+- **Account Data**: Pull balances, positions, and entry prices.
+  **账户数据**：查询余额、仓位与入场价。
+- **Order Management**: Place, cancel, and bulk-cancel limit orders.
+  **订单管理**：执行限价单下单、撤单与批量撤单。
+- **Leverage Control**: Read or update symbol leverage.
+  **杠杆管理**：获取或调整交易对杠杆倍数。
+- **PnL Tracking**: Retrieve realized PnL history for monitoring.
+  **盈亏查询**：获取已实现盈亏记录用于监控。
 
 ---
 
-### 4. Web UI 层（Web Interface）
+### 4. Web Interface Layer / Web UI 层（Web Interface）
 
 ```mermaid
 graph TB
@@ -174,17 +194,19 @@ graph TB
     Status -->|返回状态| Display
 ```
 
-**API 端点**：
+**API Endpoints / API 端点**：
+- `/` (GET): Returns the Dashboard HTML page.
+  `/` (GET)：返回 Dashboard 主页面。
+- `/api/status` (GET): Provides real-time bot status for UI polling.
+  `/api/status` (GET)：向前端轮询提供实时状态。
+- `/api/control` (POST): Start or stop the bot loop.
+  `/api/control` (POST)：启动或停止 Bot 循环。
+- `/api/config` (POST): Update strategy parameters (spread, quantity, etc.).
+  `/api/config` (POST)：更新策略参数（价差、数量等）。
+- `/api/leverage` (POST): Adjust symbol leverage via the exchange API.
+  `/api/leverage` (POST)：通过交易所接口调整杠杆。
 
-| 端点 | 方法 | 功能 |
-|------|------|------|
-| `/` | GET | 返回 Dashboard HTML |
-| `/api/status` | GET | 获取 bot 实时状态 |
-| `/api/control` | POST | 启动/停止 bot |
-| `/api/config` | POST | 更新策略参数 |
-| `/api/leverage` | POST | 设置杠杆倍数 |
-
-**状态数据结构**：
+**Status Payload / 状态数据结构**：
 ```json
 {
   "mid_price": 2870.0,
@@ -201,7 +223,7 @@ graph TB
 
 ---
 
-## 数据流图
+## Data Flow Diagram / 数据流图
 
 ```mermaid
 sequenceDiagram
@@ -256,7 +278,7 @@ sequenceDiagram
 
 ---
 
-## 错误处理流程
+## Error Handling Flow / 错误处理流程
 
 ```mermaid
 graph TD
@@ -273,15 +295,19 @@ graph TD
     StatusInactive --> UIShow["UI 显示 ERROR 状态"]
 ```
 
-**安全机制**：
-1. **双层异常捕获**: 循环内 + 循环外
-2. **自动停止**: 严重错误时自动停止并撤单
-3. **状态同步**: 错误信息实时传递到 UI
-4. **Stop 时撤单**: 确保无残留订单
+**Safety Mechanisms / 安全机制**：
+1. **Dual exception guards**: Inner-loop try/except plus outer wrapper.
+   **双层异常捕获**：循环内与外层都设置 try/except。
+2. **Automatic stop**: Severe errors trigger an immediate stop and mass cancel.
+   **自动停止**：严重错误会立即停止循环并批量撤单。
+3. **State sync**: Errors propagate to the UI via `status.error`.
+   **状态同步**：错误通过 `status.error` 实时传递到前端。
+4. **Graceful shutdown**: `stop()` routine enforces order cancellation before exit.
+   **优雅停机**：`stop()` 会在退出前确保撤单完成。
 
 ---
 
-## 部署架构
+## Deployment Architecture / 部署架构
 
 ```mermaid
 graph TB
@@ -300,7 +326,7 @@ graph TB
     Browser -->|HTTP| Bot
 ```
 
-**运行方式**：
+**Run Modes / 运行方式**：
 ```bash
 # 启动服务器（包含 Web UI + Bot 引擎）
 python3.11 server.py
@@ -311,25 +337,19 @@ python3.11 main.py
 
 ---
 
-## 技术栈
+## Tech Stack / 技术栈
 
-| 层级 | 技术 | 用途 |
-|------|------|------|
-| **后端** | Python 3.11 | 主要编程语言 |
-| **交易所 API** | ccxt | 统一交易所接口 |
-| **Web 框架** | FastAPI | HTTP API 服务器 |
-| **模板引擎** | Jinja2 | HTML 模板渲染 |
-| **前端** | HTML/CSS/JS | 用户界面 |
-| **配置管理** | python-dotenv | 环境变量加载 |
+| Layer | Technology | Purpose |
+|-------|------------|---------|
+| Backend / 后端 | Python 3.11 | Primary implementation language / 主要编程语言 |
+| Exchange API / 交易所 API | ccxt | Unified Binance Futures client / 统一交易所接口 |
+| Web Framework / Web 框架 | FastAPI | HTTP API server / HTTP API 服务器 |
+| Templating / 模板引擎 | Jinja2 | Render HTML dashboard / 渲染 Dashboard HTML |
+| Frontend / 前端 | HTML·CSS·JS | Browser UI / 浏览器界面 |
+| Config / 配置管理 | python-dotenv | Load environment secrets / 加载环境变量与密钥 |
 
 ---
 
-## 总结
-
-该架构采用**分层解耦**设计：
-- **展示层** (Web UI) 负责用户交互
-- **应用层** (FastAPI) 负责 API 路由
-- **业务层** (BotEngine) 负责策略编排
-- **数据层** (BinanceClient) 负责外部交互
-
-通过模块化设计，各组件职责清晰，易于测试和扩展。
+## Summary / 总结
+The architecture follows a layered, decoupled design: presentation (Web UI), application (FastAPI), business logic (BotEngine), and data access (BinanceClient). Clear boundaries keep testing straightforward and make future extensions safe.
+该架构遵循分层解耦思路：展示层（Web UI）、应用层（FastAPI）、业务层（BotEngine）、数据层（BinanceClient）。明确的边界便于测试，也让后续扩展更加安全。

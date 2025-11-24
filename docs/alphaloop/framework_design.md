@@ -5,9 +5,9 @@ This document outlines the design of the **AlphaLoop** agentic framework, which 
 本文档概述了 **AlphaLoop** 智能体框架的设计，该框架驱动着 **MarketMakerDemo** 机器人。
 
 The core philosophy is to model the software development and operational lifecycle of a trading system using specialized AI agents.
-核心理念是使用专门的 AI 智能体对交易系统的软件开发和运营生命周期进行建模。This framework applies financial industry best practices (Segregation of Duties, Model Risk Management, CI/CD) to a multi-agent software development lifecycle. The goal is to create a self-optimizing system that converges on business objectives (e.g., Sharpe Ratio, PnL) while strictly adhering to risk and compliance constraints.
-
-本框架将金融行业的最佳实践（职责分离、模型风险管理、CI/CD）应用于多智能体软件开发生命周期。其目标是创建一个自我优化的系统，在严格遵守风险和合规约束的同时，收敛于业务目标（如夏普比率、PnL）。
+核心理念是使用专门的 AI 智能体对交易系统的软件开发和运营生命周期进行建模。
+This framework applies financial-industry best practices (Segregation of Duties, Model Risk Management, CI/CD) to a multi-agent SDLC so the system self-optimizes toward metrics like Sharpe Ratio and PnL under strict risk controls.
+本框架将金融行业的最佳实践（职责分离、模型风险管理、CI/CD）引入多智能体 SDLC，使系统在严格风险约束下朝夏普比率、PnL 等指标自我优化。
 
 ## 2. Core Philosophy / 核心理念
 *   **Compliance as Code**: Risk and Compliance rules are immutable constraints, not just guidelines.

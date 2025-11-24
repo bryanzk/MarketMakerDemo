@@ -169,7 +169,7 @@ class BinanceClient:
     def fetch_market_data(self):
         """
         Fetches top 5 order book and calculates mid price.
-        Returns: dict with 'bid', 'ask', 'mid'
+        Returns: dict with 'bid', 'ask', 'mid', 'timestamp'
         """
         try:
             orderbook = self.exchange.fetch_order_book(self.symbol, limit=5)
@@ -181,7 +181,12 @@ class BinanceClient:
             else:
                 mid_price = None
 
-            return {"best_bid": best_bid, "best_ask": best_ask, "mid_price": mid_price}
+            return {
+                "best_bid": best_bid,
+                "best_ask": best_ask,
+                "mid_price": mid_price,
+                "timestamp": orderbook.get("timestamp", time.time() * 1000),  # ms
+            }
         except Exception as e:
             logger.error(f"Error fetching market data: {e}")
             return None

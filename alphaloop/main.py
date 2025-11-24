@@ -8,6 +8,7 @@ from alphaloop.agents.risk import RiskAgent
 from alphaloop.core.config import STRATEGY_TYPE
 from alphaloop.core.logger import setup_logger
 from alphaloop.market.exchange import BinanceClient
+from alphaloop.market.order_manager import OrderManager
 from alphaloop.market.simulation import MarketSimulator
 from alphaloop.strategies.funding import FundingRateStrategy
 from alphaloop.strategies.strategy import FixedSpreadStrategy
@@ -26,6 +27,8 @@ class AlphaLoop:
         self.quant = QuantAgent()
         self.risk = RiskAgent()
         self.data = DataAgent()
+        self.om = OrderManager()  # Smart order syncing
+        self.strategy_switched = False  # Flag to track strategy changes
         self.alert = None
         self.current_stage = "Idle"
         self.active_orders = []
@@ -68,6 +71,8 @@ class AlphaLoop:
         # But FundingRateStrategy.__init__ already does that.
 
         self.strategy = new_strategy
+        # Flag that strategy was switched - next cycle should do a full order reset
+        self.strategy_switched = True
         return True
 
     def set_symbol(self, symbol):
@@ -140,6 +145,17 @@ class AlphaLoop:
                     logger.error("Failed to fetch market data")
                     return
 
+                # Validate data freshness (protect against stale data)
+                current_time_ms = time.time() * 1000
+                data_timestamp = market_data.get("timestamp", current_time_ms)
+                data_age_seconds = (current_time_ms - data_timestamp) / 1000
+
+                if data_age_seconds > 5.0:  # 5 second threshold
+                    logger.warning(
+                        f"Market data is stale ({data_age_seconds:.1f}s old). Skipping cycle."
+                    )
+                    return
+
                 # Fetch funding rate
                 funding_rate = self.exchange.fetch_funding_rate()
 
@@ -158,20 +174,32 @@ class AlphaLoop:
                 else:
                     target_orders = self.strategy.calculate_target_orders(market_data)
 
-                # Cancel existing orders
-                # First, update their status in history
-                for order in self.active_orders:
-                    # Find the order in history and update status
-                    # This is O(N) but N is small (200). For production, use a dict.
-                    for hist_order in self.order_history:
-                        if hist_order["id"] == order["id"]:
-                            hist_order["status"] = "cancelled"
+                # Use OrderManager to sync orders efficiently
+                # If strategy was just switched, force a full reset
+                if self.strategy_switched:
+                    logger.info("Strategy was switched - forcing full order reset")
+                    current_orders = []  # Treat as if no orders exist
+                    self.strategy_switched = False  # Clear flag
+                else:
+                    current_orders = self.exchange.fetch_open_orders()
 
-                self.exchange.cancel_all_orders()
+                to_cancel_ids, to_place = self.om.sync_orders(
+                    current_orders, target_orders
+                )
 
-                # Place new orders
-                if target_orders:
-                    placed_orders = self.exchange.place_orders(target_orders)
+                # Cancel orders that need updating
+                if to_cancel_ids:
+                    # Update status in history
+                    for order_id in to_cancel_ids:
+                        for hist_order in self.order_history:
+                            if hist_order["id"] == order_id:
+                                hist_order["status"] = "cancelled"
+                    # Batch cancel
+                    self.exchange.cancel_orders(to_cancel_ids)
+
+                # Place new/updated orders
+                if to_place:
+                    placed_orders = self.exchange.place_orders(to_place)
                     # Record placed orders in history
                     for order in placed_orders:
                         self.order_history.append(

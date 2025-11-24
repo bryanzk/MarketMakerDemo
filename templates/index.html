@@ -414,6 +414,13 @@
                     </div>
                 </div>
 
+                <!-- Error Display -->
+                <div id="errorDisplay" class="card"
+                    style="grid-column: span 2; display: none; background: #fef2f2; border-left: 4px solid #ef4444;">
+                    <h3 style="color: #dc2626;">⚠️ API Error</h3>
+                    <div id="errorContent" style="font-size: 13px; line-height: 1.6;"></div>
+                </div>
+
                 <!-- Order History -->
                 <div class="card" style="grid-column: span 2;">
                     <h3>Order History</h3>
@@ -1008,16 +1015,16 @@
 
                 const statusBadge = document.getElementById('botStatus');
                 const statusBadgeFunding = document.getElementById('botStatusFunding');
-                const errorDisplay = document.getElementById('errorDisplay');
                 const startBtn = document.getElementById('startBtn');
                 const stopBtn = document.getElementById('stopBtn');
                 const startFundingBtn = document.getElementById('startFundingBtn');
                 const stopFundingBtn = document.getElementById('stopFundingBtn');
 
-                // Update error display
-                if (data.error) {
-                    errorDisplay.innerText = `Error: ${data.error}`;
-                    errorDisplay.style.display = 'block';
+                // Update error display (if exists - declared later)
+                const mainErrorDisplay = document.getElementById('errorDisplay');
+                if (data.error && mainErrorDisplay) {
+                    mainErrorDisplay.textContent = data.error;
+                    mainErrorDisplay.style.display = 'block';
                     statusBadge.innerText = "ERROR";
                     statusBadge.className = "status-badge status-error";
                     if (statusBadgeFunding) {
@@ -1030,118 +1037,136 @@
                         startFundingBtn.disabled = false;
                         stopFundingBtn.disabled = true;
                     }
+                    return;
+                } else if (mainErrorDisplay) {
+                    mainErrorDisplay.style.display = 'none';
+                }
+
+                // Update status badges based on bot activity
+                if (data.active) {
+                    statusBadge.innerText = "RUNNING";
+                    statusBadge.className = "status-badge status-active";
+                    if (statusBadgeFunding) {
+                        statusBadgeFunding.innerText = "RUNNING";
+                        statusBadgeFunding.className = "status-badge status-active";
+                    }
+                    startBtn.disabled = true;
+                    stopBtn.disabled = false;
+                    if (startFundingBtn && stopFundingBtn) {
+                        startFundingBtn.disabled = true;
+                        stopFundingBtn.disabled = false;
+                    }
                 } else {
-                    errorDisplay.style.display = 'none';
-
-                    if (data.active) {
-                        statusBadge.innerText = "RUNNING";
-                        statusBadge.className = "status-badge status-active";
-                        if (statusBadgeFunding) {
-                            statusBadgeFunding.innerText = "RUNNING";
-                            statusBadgeFunding.className = "status-badge status-active";
-                        }
-                        startBtn.disabled = true;
-                        stopBtn.disabled = false;
-                        if (startFundingBtn && stopFundingBtn) {
-                            startFundingBtn.disabled = true;
-                            stopFundingBtn.disabled = false;
-                        }
-                    } else {
-                        statusBadge.innerText = "STOPPED";
-                        statusBadge.className = "status-badge status-inactive";
-                        if (statusBadgeFunding) {
-                            statusBadgeFunding.innerText = "STOPPED";
-                            statusBadgeFunding.className = "status-badge status-inactive";
-                        }
-                        startBtn.disabled = false;
-                        stopBtn.disabled = true;
-                        if (startFundingBtn && stopFundingBtn) {
-                            startFundingBtn.disabled = false;
-                            stopFundingBtn.disabled = true;
-                        }
+                    statusBadge.innerText = "STOPPED";
+                    statusBadge.className = "status-badge status-inactive";
+                    if (statusBadgeFunding) {
+                        statusBadgeFunding.innerText = "STOPPED";
+                        statusBadgeFunding.className = "status-badge status-inactive";
                     }
-
-                    // Update Stage Display
-                    const stageDisplay = document.getElementById('stageDisplay');
-                    const stageDisplayFunding = document.getElementById('stageDisplayFunding');
-                    if (data.stage) {
-                        stageDisplay.innerText = data.stage;
-                        if (stageDisplayFunding) {
-                            stageDisplayFunding.innerText = data.stage;
-                        }
-
-                        // Highlight Risk Check
-                        if (data.stage === 'Risk Check') {
-                            stageDisplay.style.color = '#d97706'; // Amber
-                            stageDisplay.innerText = '⚠️ Risk Checking...';
-                            if (stageDisplayFunding) {
-                                stageDisplayFunding.style.color = '#d97706';
-                                stageDisplayFunding.innerText = '⚠️ Risk Checking...';
-                            }
-                        } else if (data.stage === 'Execution') {
-                            stageDisplay.style.color = '#10b981'; // Green
-                            if (stageDisplayFunding) {
-                                stageDisplayFunding.style.color = '#10b981';
-                            }
-                        } else {
-                            stageDisplay.style.color = '#6b7280'; // Gray
-                            if (stageDisplayFunding) {
-                                stageDisplayFunding.style.color = '#6b7280';
-                            }
-                        }
-                    }
-
-                    // Update System Logs
-                    const logsContainer = document.getElementById('systemLogs');
-                    if (data.logs && data.logs.length > 0) {
-                        logsContainer.innerHTML = ''; // Clear current
-                        data.logs.forEach(log => {
-                            const line = document.createElement('div');
-                            line.innerHTML = `<span style="color: #6b7280;">[${log.timestamp}]</span> <b>${log.stage}</b>`;
-                            logsContainer.appendChild(line);
-                        });
-                        // Auto-scroll to bottom
-                        logsContainer.scrollTop = logsContainer.scrollHeight;
+                    startBtn.disabled = false;
+                    stopBtn.disabled = true;
+                    if (startFundingBtn && stopFundingBtn) {
+                        startFundingBtn.disabled = false;
+                        stopFundingBtn.disabled = true;
                     }
                 }
 
-                // Update Alert Display
-                const alertDisplay = document.getElementById('alertDisplay');
-                if (data.alert) {
-                    document.getElementById('alertMessage').innerText = data.alert.message;
+                // Update Stage Display
+                const stageDisplay = document.getElementById('stageDisplay');
+                const stageDisplayFunding = document.getElementById('stageDisplayFunding');
+                if (data.stage) {
+                    stageDisplay.innerText = data.stage;
+                    if (stageDisplayFunding) {
+                        stageDisplayFunding.innerText = data.stage;
+                    }
 
-                    let suggestionHtml = `<div style="margin-top: 5px;">${data.alert.suggestion || ''}</div>`;
+                    // Highlight Risk Check
+                    if (data.stage === 'Risk Check') {
+                        stageDisplay.style.color = '#d97706'; // Amber
+                        stageDisplay.innerText = '⚠️ Risk Checking...';
+                        if (stageDisplayFunding) {
+                            stageDisplayFunding.style.color = '#d97706';
+                            stageDisplayFunding.innerText = '⚠️ Risk Checking...';
+                        }
+                    } else if (data.stage === 'Execution') {
+                        stageDisplay.style.color = '#10b981'; // Green
+                        if (stageDisplayFunding) {
+                            stageDisplayFunding.style.color = '#10b981';
+                        }
+                    } else {
+                        stageDisplay.style.color = '#6b7280'; // Gray
+                        if (stageDisplayFunding) {
+                            stageDisplayFunding.style.color = '#6b7280';
+                        }
+                    }
+                }
 
-                    // Check for structured suggestions options
-                    if (data.alert.options) {
-                        suggestionHtml += `<div style="display: flex; gap: 5px; margin-top: 10px;">`;
-                        data.alert.options.forEach(opt => {
-                            suggestionHtml += `
+                // Update System Logs
+                const logsContainer = document.getElementById('systemLogs');
+                if (data.logs && data.logs.length > 0) {
+                    logsContainer.innerHTML = ''; // Clear current
+                    data.logs.forEach(log => {
+                        const line = document.createElement('div');
+                        line.innerHTML = `<span style="color: #6b7280;">[${log.timestamp}]</span> <b>${log.stage}</b>`;
+                        logsContainer.appendChild(line);
+                    });
+                    // Auto-scroll to bottom
+                    logsContainer.scrollTop = logsContainer.scrollHeight;
+                }
+            }
+
+        // Update Error Display
+        const errorDisplay = document.getElementById('errorDisplay');
+            const errorContent = document.getElementById('errorContent');
+            if (data.last_error && data.last_error.message) {
+                let errorHtml = `<div style="margin-bottom: 8px;"><strong>Type:</strong> ${data.last_error.type}</div>`;
+                errorHtml += `<div style="margin-bottom: 8px;"><strong>Message:</strong> ${data.last_error.message}</div>`;
+                if (data.last_error.details) {
+                    errorHtml += `<div style="font-size: 11px; color: #991b1b; margin-top: 5px;">${data.last_error.details}</div>`;
+                }
+                errorContent.innerHTML = errorHtml;
+                errorDisplay.style.display = 'block';
+            } else {
+                errorDisplay.style.display = 'none';
+            }
+
+            // Update Alert Display
+            const alertDisplay = document.getElementById('alertDisplay');
+            if (data.alert) {
+                document.getElementById('alertMessage').innerText = data.alert.message;
+
+                let suggestionHtml = `<div style="margin-top: 5px;">${data.alert.suggestion || ''}</div>`;
+
+                // Check for structured suggestions options
+                if (data.alert.options) {
+                    suggestionHtml += `<div style="display: flex; gap: 5px; margin-top: 10px;">`;
+                    data.alert.options.forEach(opt => {
+                        suggestionHtml += `
                                 <button class="btn" style="padding: 5px 10px; font-size: 11px; background: #fff; border: 1px solid #d1d5db;"
                                     onclick="applySuggestionOption(${opt.spread})">
                                     <strong>${opt.label}</strong><br>${(opt.spread * 100).toFixed(2)}%
                                 </button>
                             `;
-                        });
-                        suggestionHtml += `</div>`;
-                    }
-
-                    document.getElementById('alertSuggestion').innerHTML = suggestionHtml;
-                    alertDisplay.style.display = 'block';
-                } else {
-                    alertDisplay.style.display = 'none';
+                    });
+                    suggestionHtml += `</div>`;
                 }
 
-                const tbody = document.querySelector('#ordersTable tbody');
-                tbody.innerHTML = '';
-                data.orders.forEach(o => {
-                    const row = `<tr><td>${o.id}</td><td>${o.side}</td><td>${o.price}</td><td>${o.amount}</td></tr>`;
-                    tbody.innerHTML += row;
-                });
-
-            } catch (e) {
-                console.error(e);
+                document.getElementById('alertSuggestion').innerHTML = suggestionHtml;
+                alertDisplay.style.display = 'block';
+            } else {
+                alertDisplay.style.display = 'none';
             }
+
+            const tbody = document.querySelector('#ordersTable tbody');
+            tbody.innerHTML = '';
+            data.orders.forEach(o => {
+                const row = `<tr><td>${o.id}</td><td>${o.side}</td><td>${o.price}</td><td>${o.amount}</td></tr>`;
+                tbody.innerHTML += row;
+            });
+
+        } catch (e) {
+            console.error(e);
+        }
         }
 
         async function controlBot(action) {

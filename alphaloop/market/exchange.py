@@ -2,6 +2,15 @@ import logging
 import time
 
 import ccxt
+from ccxt import (
+    AuthenticationError,
+    ExchangeError,
+    InsufficientFunds,
+    InvalidOrder,
+    NetworkError,
+    OrderNotFound,
+    RateLimitExceeded,
+)
 
 from alphaloop.core.config import API_KEY, API_SECRET, LEVERAGE, SYMBOL
 
@@ -57,6 +66,10 @@ class BinanceClient:
 
         # Set initial leverage
         self.set_leverage(LEVERAGE)
+
+        # Track latest errors for UI display
+        self.last_order_error = None
+        self.last_api_error = None
 
     def set_symbol(self, symbol):
         """
@@ -432,8 +445,59 @@ class BinanceClient:
                 logger.info(
                     f"Placed {order['side']} order at {order['price']} qty {qty}"
                 )
+                # Clear error on success
+                self.last_order_error = None
+            except InsufficientFunds as e:
+                error_msg = (
+                    f"Insufficient balance to place {order['side']} order: {str(e)}"
+                )
+                logger.error(error_msg)
+                self.last_order_error = {
+                    "type": "insufficient_funds",
+                    "message": error_msg,
+                    "order": order,
+                }
+            except InvalidOrder as e:
+                error_msg = f"Invalid order rejected by Binance: {str(e)}"
+                logger.error(error_msg)
+                self.last_order_error = {
+                    "type": "invalid_order",
+                    "message": error_msg,
+                    "order": order,
+                    "details": str(e),
+                }
+            except RateLimitExceeded as e:
+                logger.warning(f"Rate limit hit, skipping order: {e}")
+                self.last_order_error = {
+                    "type": "rate_limit",
+                    "message": f"Rate limit exceeded: {str(e)}",
+                }
+                time.sleep(1)  # Brief pause before continuing
+            except NetworkError as e:
+                error_msg = f"Network error placing order: {str(e)}"
+                logger.error(error_msg)
+                self.last_order_error = {
+                    "type": "network_error",
+                    "message": error_msg,
+                }
+            except ExchangeError as e:
+                # Generic Binance API error - log with full details
+                error_msg = f"Binance API error placing order: {str(e)}"
+                logger.error(error_msg)
+                logger.debug(f"Full exception details: {e.__dict__}")
+                self.last_order_error = {
+                    "type": "exchange_error",
+                    "message": error_msg,
+                    "order": order,
+                }
             except Exception as e:
-                logger.error(f"Error placing order {order}: {e}")
+                # Unexpected error - log with traceback
+                logger.error(f"Unexpected error placing order {order}: {e}", exc_info=True)
+                self.last_order_error = {
+                    "type": "unknown_error",
+                    "message": str(e),
+                    "order": order,
+                }
         return created_orders
 
     def cancel_orders(self, order_ids):
@@ -444,8 +508,22 @@ class BinanceClient:
             try:
                 self.exchange.cancel_order(oid, self.symbol)
                 logger.info(f"Canceled order {oid}")
+            except OrderNotFound as e:
+                logger.warning(f"Order {oid} not found (may be already filled/canceled): {e}")
+            except NetworkError as e:
+                logger.error(f"Network error canceling order {oid}: {e}")
+                self.last_api_error = {
+                    "type": "network_error",
+                    "message": f"Failed to cancel order {oid}: {str(e)}",
+                }
+            except ExchangeError as e:
+                logger.error(f"Exchange error canceling order {oid}: {e}")
+                self.last_api_error = {
+                    "type": "exchange_error",
+                    "message": f"Failed to cancel order {oid}: {str(e)}",
+                }
             except Exception as e:
-                logger.error(f"Error canceling order {oid}: {e}")
+                logger.error(f"Error canceling order {oid}: {e}", exc_info=True)
 
     def cancel_all_orders(self):
         """

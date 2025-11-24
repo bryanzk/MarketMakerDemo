@@ -148,6 +148,11 @@ class AlphaLoop:
             "alert": self.alert,
             "orders": self.active_orders,
             "logs": list(self.system_logs),
+            "last_error": (
+                self.exchange.last_order_error
+                if self.exchange and hasattr(self.exchange, "last_order_error")
+                else None
+            ),
             "error": None,
         }
 

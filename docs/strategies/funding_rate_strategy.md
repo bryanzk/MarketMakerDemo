@@ -28,6 +28,8 @@ Ask = Mid × (1 + (spread/2))          # normal buy side
 
 Result: The bot offers a slightly better price for short positions, earning the funding payment when the position is held through the funding interval.
 
+结果：机器人在空头一侧提供略优报价，当仓位持有跨过资金结算时，可以额外获得资金费率收入。
+
 ## Parameters / 参数
 
 | Parameter   | Type   | Default | Range          | Description |
@@ -56,15 +58,27 @@ Result: The bot offers a slightly better price for short positions, earning the 
 
 ## Disadvantages / 劣势
 
-❌ **Complexity** – Requires reliable funding rate data and timely updates.
-❌ **Risk of Funding Rate Reversal** – If the rate flips, the bot may be on the paying side.
-❌ **Potential Increased Inventory** – Skewed orders can lead to larger net positions.
+❌ **Complexity** – Requires reliable funding rate data and timely updates.  
+❌ **Risk of Funding Rate Reversal** – If the rate flips, the bot may be on the paying side.  
+❌ **Potential Increased Inventory** – Skewed orders can lead to larger net positions.  
+
+❌ **复杂度较高** – 依赖可靠且及时更新的资金费率数据。  
+❌ **资金费率反转风险** – 当资金费率方向突然反转时，机器人可能落在需要支付资金费率的一侧。  
+❌ **可能增加库存风险** – 由于价格倾斜，可能形成更大的净多或净空仓位。  
 
 ## Best Use Cases / 最佳使用场景
 
-1. **Perpetual Futures Markets** – Where funding rates are regularly posted.
-2. **Stable Funding Direction** – Markets with consistent positive or negative rates.
-3. **High Liquidity** – To ensure orders are filled quickly despite skew.
+1. **Perpetual Futures Markets** / 永续合约市场  
+   - **Perpetual futures** where funding rates are regularly posted.  
+   - 资金费率按固定周期结算并持续公布的永续合约市场。  
+
+2. **Stable Funding Direction** / 资金费率方向相对稳定  
+   - Markets with a consistent positive or negative funding bias.  
+   - 资金费率长期维持正向或负向，有利于持续捕获资金收益的市场。  
+
+3. **High Liquidity** / 高流动性市场  
+   - Deep order books to ensure orders are filled quickly even with skewed pricing.  
+   - 订单簿深度充足，即使有价格倾斜也能快速成交的市场。  
 
 ## Configuration Example / 配置示例
 
@@ -84,12 +98,24 @@ The `RiskAgent` enforces:
 - **Max Position**: Configurable inventory cap
 - **Funding Rate Staleness**: If funding data is older than 1 hour, revert to normal spread.
 
+`RiskAgent` 会强制执行以下限制：
+- **最大 Skew**：0.5%（防止价格过度向一侧倾斜）  
+- **最大仓位**：可配置的库存上限，用于控制整体风险敞口  
+- **资金费率数据时效性**：如果资金费率数据超过 1 小时未更新，则回退到普通固定价差逻辑  
+
 ## Performance Metrics / 性能指标
 
+Monitor these KPIs to evaluate performance:
 - **Funding Capture Rate** – Percentage of funding intervals where the bot earned a payment.
 - **Net PnL** – Includes spread profit + funding income.
 - **Inventory Drift** – Net position change due to skew bias.
 - **Fill Rate** – Order execution success on both sides.
+
+监控这些 KPI 以评估资金费率策略表现：
+- **资金捕获率（Funding Capture Rate）**：获得资金费率收入的结算周期占比  
+- **净盈亏（Net PnL）**：同时包含价差收益与资金费率收益  
+- **库存漂移（Inventory Drift）**：由于倾斜报价导致的净仓位变化趋势  
+- **成交率（Fill Rate）**：双边挂单实际被成交的比例  
 
 ## Related Documentation / 相关文档
 

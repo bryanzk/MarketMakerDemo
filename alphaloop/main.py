@@ -398,7 +398,9 @@ class AlphaLoop:
                 f"Auto-fallback to safe defaults",
                 extra={"extra_data": {"safe_defaults": safe_defaults}},
             )
-            self.set_stage(f"Risk: Fallback to safe spread {safe_defaults['spread']*100:.2f}%")
+            self.set_stage(
+                f"Risk: Fallback to safe spread {safe_defaults['spread']*100:.2f}%"
+            )
 
             self.alert = {
                 "type": "warning",

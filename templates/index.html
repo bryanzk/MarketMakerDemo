@@ -195,14 +195,26 @@
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
                 <h2 style="margin: 0; font-size: 18px; color: #94a3b8;">🏦 Portfolio Overview</h2>
                 <div style="font-size: 13px; color: #94a3b8;">
-                    Capital: <span id="portfolioCapital" style="color: white; font-weight: bold;">$10,000</span>
+                    Wallet: <span id="portfolioCapital" style="color: white; font-weight: bold;">$10,000</span>
+                    <span style="margin: 0 8px;">|</span>
+                    Available: <span id="portfolioAvailable" style="color: #10b981; font-weight: bold;">$10,000</span>
                 </div>
             </div>
-            <div class="card-grid" style="grid-template-columns: repeat(4, 1fr); gap: 15px;">
+            <div class="card-grid" style="grid-template-columns: repeat(3, 1fr); gap: 15px;">
                 <div style="background: rgba(255,255,255,0.1); padding: 15px; border-radius: 8px;">
                     <div style="font-size: 12px; color: #94a3b8; margin-bottom: 5px;">Total PnL</div>
                     <div id="portfolioTotalPnl" style="font-size: 1.5rem; font-weight: bold; color: #10b981;">+$0.00</div>
                 </div>
+                <div style="background: rgba(255,255,255,0.1); padding: 15px; border-radius: 8px;">
+                    <div style="font-size: 12px; color: #94a3b8; margin-bottom: 5px;">Trading Fees</div>
+                    <div id="portfolioCommission" style="font-size: 1.5rem; font-weight: bold; color: #f59e0b;">$0.00</div>
+                </div>
+                <div style="background: rgba(255,255,255,0.1); padding: 15px; border-radius: 8px;">
+                    <div style="font-size: 12px; color: #94a3b8; margin-bottom: 5px;">Net PnL</div>
+                    <div id="portfolioNetPnl" style="font-size: 1.5rem; font-weight: bold; color: #10b981;">+$0.00</div>
+                </div>
+            </div>
+            <div class="card-grid" style="grid-template-columns: repeat(3, 1fr); gap: 15px; margin-top: 15px;">
                 <div style="background: rgba(255,255,255,0.1); padding: 15px; border-radius: 8px;">
                     <div style="font-size: 12px; color: #94a3b8; margin-bottom: 5px;">Portfolio Sharpe</div>
                     <div id="portfolioSharpe" style="font-size: 1.5rem; font-weight: bold;">--</div>
@@ -2125,6 +2137,21 @@
                 totalPnlEl.style.color = pnl >= 0 ? '#10b981' : '#ef4444';
             }
 
+            // Trading Fees (Commission)
+            const commissionEl = document.getElementById('portfolioCommission');
+            if (commissionEl) {
+                const commission = data.commission || 0;
+                commissionEl.innerText = '$' + commission.toFixed(2);
+            }
+
+            // Net PnL (after fees)
+            const netPnlEl = document.getElementById('portfolioNetPnl');
+            if (netPnlEl) {
+                const netPnl = data.net_pnl !== undefined ? data.net_pnl : (data.total_pnl || 0);
+                netPnlEl.innerText = (netPnl >= 0 ? '+' : '') + '$' + netPnl.toFixed(2);
+                netPnlEl.style.color = netPnl >= 0 ? '#10b981' : '#ef4444';
+            }
+
             // Portfolio Sharpe
             const sharpeEl = document.getElementById('portfolioSharpe');
             if (sharpeEl) {
@@ -2164,6 +2191,16 @@
             const capitalEl = document.getElementById('portfolioCapital');
             if (capitalEl && data.total_capital) {
                 capitalEl.innerText = '$' + data.total_capital.toLocaleString(undefined, {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2
+                });
+            }
+
+            // Available Balance
+            const availableEl = document.getElementById('portfolioAvailable');
+            if (availableEl) {
+                const available = data.available_balance || data.total_capital || 0;
+                availableEl.innerText = '$' + available.toLocaleString(undefined, {
                     minimumFractionDigits: 2,
                     maximumFractionDigits: 2
                 });

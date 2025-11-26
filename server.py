@@ -117,6 +117,26 @@ async def read_root(request: Request):
     return templates.TemplateResponse("index.html", {"request": request})
 
 
+@app.get("/api/debug/balance")
+async def debug_balance():
+    """Debug endpoint to check raw balance values from exchange"""
+    result = {
+        "exchange_connected": False,
+        "raw_account_data": None,
+        "error": None,
+    }
+
+    if hasattr(bot_engine, "exchange") and bot_engine.exchange is not None:
+        result["exchange_connected"] = True
+        try:
+            account_data = bot_engine.exchange.fetch_account_data()
+            result["raw_account_data"] = account_data
+        except Exception as e:
+            result["error"] = str(e)
+
+    return result
+
+
 @app.get("/api/status")
 async def get_status():
     status = bot_engine.get_status()
@@ -561,6 +581,8 @@ async def get_portfolio():
     Returns:
         {
             "total_pnl": float,           # 组合总盈亏
+            "commission": float,          # 已缴纳交易费
+            "net_pnl": float,             # 净盈亏 (扣除费用后)
             "portfolio_sharpe": float,    # 组合夏普比率
             "active_count": int,          # 活跃策略数
             "total_count": int,           # 总策略数
@@ -583,7 +605,40 @@ async def get_portfolio():
     # Sync strategy status with bot state
     _sync_portfolio_with_bot()
 
-    return portfolio_manager.get_portfolio_data()
+    # Get base portfolio data
+    data = portfolio_manager.get_portfolio_data()
+
+    # Fetch commission, wallet_balance and available_balance from exchange
+    commission = 0.0
+    wallet_balance = data.get("total_capital", 0.0)
+    available_balance = wallet_balance
+    if hasattr(bot_engine, "exchange") and bot_engine.exchange is not None:
+        try:
+            pnl_data = bot_engine.exchange.fetch_pnl_and_fees()
+            commission = pnl_data.get("commission", 0.0)
+        except Exception:
+            pass
+
+        try:
+            account_data = bot_engine.exchange.fetch_account_data()
+            if account_data:
+                # Get real-time balances from exchange
+                wallet_balance = account_data.get("balance", wallet_balance)
+                available_balance = account_data.get(
+                    "available_balance", available_balance
+                )
+        except Exception:
+            pass
+
+    # Add commission, net_pnl, wallet and available_balance to response
+    data["commission"] = round(commission, 4)
+    data["net_pnl"] = round(data["total_pnl"] - commission, 4)
+    data["total_capital"] = round(
+        wallet_balance, 2
+    )  # Override with real-time wallet balance
+    data["available_balance"] = round(available_balance, 2)
+
+    return data
 
 
 @app.post("/api/strategy/{strategy_id}/pause")

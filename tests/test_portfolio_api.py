@@ -37,11 +37,52 @@ class TestPortfolioOverview:
 
         # 验证必需字段存在
         assert "total_pnl" in data
+        assert "commission" in data
+        assert "net_pnl" in data
+        assert "available_balance" in data
         assert "portfolio_sharpe" in data
         assert "active_count" in data
         assert "total_count" in data
         assert "risk_level" in data
         assert "strategies" in data
+
+    def test_portfolio_commission_included(self, client, mock_bot_with_commission):
+        """
+        US-1.1: Portfolio 应包含交易费用
+        Given: 交易所返回 commission = 5.0
+        When: 调用 GET /api/portfolio
+        Then: commission = 5.0, net_pnl = total_pnl - commission
+        """
+        response = client.get("/api/portfolio")
+        data = response.json()
+
+        assert data["commission"] == pytest.approx(5.0, rel=0.01)
+        assert data["net_pnl"] == pytest.approx(data["total_pnl"] - 5.0, rel=0.01)
+
+    def test_portfolio_commission_fallback(self, client, mock_bot_commission_error):
+        """
+        US-1.1: 当获取交易费用失败时应回退为0
+        Given: 交易所获取 commission 抛出异常
+        When: 调用 GET /api/portfolio
+        Then: commission = 0, net_pnl = total_pnl
+        """
+        response = client.get("/api/portfolio")
+        data = response.json()
+
+        assert data["commission"] == 0.0
+        assert data["net_pnl"] == pytest.approx(data["total_pnl"], rel=0.01)
+
+    def test_portfolio_available_balance(self, client, mock_bot_with_available_balance):
+        """
+        US-1.1: Portfolio 应包含可用余额
+        Given: 交易所返回 wallet_balance = 5000, available_balance = 4500
+        When: 调用 GET /api/portfolio
+        Then: available_balance = 4500
+        """
+        response = client.get("/api/portfolio")
+        data = response.json()
+
+        assert data["available_balance"] == pytest.approx(4500.0, rel=0.01)
 
     def test_portfolio_total_pnl_calculation(self, client, mock_bot_with_strategies):
         """
@@ -786,3 +827,129 @@ def mock_bot_paused_strategy(monkeypatch):
     mock_pm.get_portfolio_data.side_effect = get_portfolio_data
     mock_pm.resume_strategy.side_effect = resume_strategy
     monkeypatch.setattr(server, "portfolio_manager", mock_pm)
+
+
+@pytest.fixture
+def mock_bot_with_commission(monkeypatch):
+    """Mock 有交易费用的 bot"""
+    import server
+
+    mock_pm = MagicMock()
+    mock_pm.get_portfolio_data.return_value = {
+        "total_pnl": 100.0,
+        "portfolio_sharpe": 2.0,
+        "active_count": 1,
+        "total_count": 1,
+        "risk_level": "low",
+        "strategies": [
+            {
+                "id": "fixed_spread",
+                "name": "Fixed Spread",
+                "status": "live",
+                "pnl": 100.0,
+                "sharpe": 2.0,
+                "health": 80,
+                "allocation": 1.0,
+                "roi": 0.02,
+            },
+        ],
+    }
+
+    # Mock exchange to return commission
+    mock_exchange = MagicMock()
+    mock_exchange.fetch_pnl_and_fees.return_value = {
+        "realized_pnl": 100.0,
+        "commission": 5.0,
+        "net_pnl": 95.0,
+    }
+
+    mock_bot = MagicMock()
+    mock_bot.exchange = mock_exchange
+
+    monkeypatch.setattr(server, "portfolio_manager", mock_pm)
+    monkeypatch.setattr(server, "bot_engine", mock_bot)
+
+
+@pytest.fixture
+def mock_bot_commission_error(monkeypatch):
+    """Mock 获取交易费用时抛出异常的 bot"""
+    import server
+
+    mock_pm = MagicMock()
+    mock_pm.get_portfolio_data.return_value = {
+        "total_pnl": 100.0,
+        "portfolio_sharpe": 2.0,
+        "active_count": 1,
+        "total_count": 1,
+        "risk_level": "low",
+        "strategies": [
+            {
+                "id": "fixed_spread",
+                "name": "Fixed Spread",
+                "status": "live",
+                "pnl": 100.0,
+                "sharpe": 2.0,
+                "health": 80,
+                "allocation": 1.0,
+                "roi": 0.02,
+            },
+        ],
+    }
+
+    # Mock exchange to raise exception
+    mock_exchange = MagicMock()
+    mock_exchange.fetch_pnl_and_fees.side_effect = Exception("API Error")
+
+    mock_bot = MagicMock()
+    mock_bot.exchange = mock_exchange
+
+    monkeypatch.setattr(server, "portfolio_manager", mock_pm)
+    monkeypatch.setattr(server, "bot_engine", mock_bot)
+
+
+@pytest.fixture
+def mock_bot_with_available_balance(monkeypatch):
+    """Mock 有可用余额数据的 bot"""
+    import server
+
+    mock_pm = MagicMock()
+    mock_pm.get_portfolio_data.return_value = {
+        "total_pnl": 100.0,
+        "total_capital": 5000.0,
+        "portfolio_sharpe": 2.0,
+        "active_count": 1,
+        "total_count": 1,
+        "risk_level": "low",
+        "strategies": [
+            {
+                "id": "fixed_spread",
+                "name": "Fixed Spread",
+                "status": "live",
+                "pnl": 100.0,
+                "sharpe": 2.0,
+                "health": 80,
+                "allocation": 1.0,
+                "roi": 0.02,
+            },
+        ],
+    }
+
+    # Mock exchange to return account data with available_balance
+    mock_exchange = MagicMock()
+    mock_exchange.fetch_pnl_and_fees.return_value = {
+        "realized_pnl": 100.0,
+        "commission": 5.0,
+        "net_pnl": 95.0,
+    }
+    mock_exchange.fetch_account_data.return_value = {
+        "balance": 5000.0,
+        "available_balance": 4500.0,
+        "position_amt": 0.5,
+        "entry_price": 2000.0,
+    }
+
+    mock_bot = MagicMock()
+    mock_bot.exchange = mock_exchange
+
+    monkeypatch.setattr(server, "portfolio_manager", mock_pm)
+    monkeypatch.setattr(server, "bot_engine", mock_bot)

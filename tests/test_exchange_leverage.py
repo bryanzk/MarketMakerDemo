@@ -249,8 +249,12 @@ class TestTickerAndAccount:
         """Test successful account data retrieval"""
         mock_client.exchange.fapiPrivateV2GetAccount.return_value = {
             "assets": [
-                {"asset": "USDT", "availableBalance": "1000.50"},
-                {"asset": "BTC", "availableBalance": "0.5"},
+                {
+                    "asset": "USDT",
+                    "walletBalance": "1050.00",
+                    "availableBalance": "1000.50",
+                },
+                {"asset": "BTC", "walletBalance": "0.5", "availableBalance": "0.5"},
             ],
             "positions": [
                 {
@@ -264,20 +268,28 @@ class TestTickerAndAccount:
 
         data = mock_client.fetch_account_data()
 
-        assert data["balance"] == 1000.50
+        assert data["balance"] == 1050.0  # walletBalance
+        assert data["available_balance"] == 1000.50
         assert data["position_amt"] == 2.5
         assert data["entry_price"] == 2000.0
 
     def test_fetch_account_data_no_position(self, mock_client):
         """Test account data with no position"""
         mock_client.exchange.fapiPrivateV2GetAccount.return_value = {
-            "assets": [{"asset": "USDT", "availableBalance": "1000.0"}],
+            "assets": [
+                {
+                    "asset": "USDT",
+                    "walletBalance": "1000.0",
+                    "availableBalance": "1000.0",
+                }
+            ],
             "positions": [{"symbol": "BTCUSDT", "positionAmt": "0", "entryPrice": "0"}],
         }
 
         data = mock_client.fetch_account_data()
 
-        assert data["balance"] == 1000.0
+        assert data["balance"] == 1000.0  # walletBalance
+        assert data["available_balance"] == 1000.0
         assert data["position_amt"] == 0.0
         assert data["entry_price"] == 0.0
 

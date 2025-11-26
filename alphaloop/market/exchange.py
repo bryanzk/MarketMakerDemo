@@ -381,7 +381,7 @@ class BinanceClient:
     def fetch_account_data(self):
         """
         Fetches position and balance using V2 Account endpoint.
-        Returns: dict with 'position_amt', 'entry_price', 'balance'
+        Returns: dict with 'position_amt', 'entry_price', 'balance', 'available_balance'
         """
         try:
             # Use V2 Account endpoint which returns both balance and positions
@@ -389,10 +389,14 @@ class BinanceClient:
             account_info = self.exchange.fapiPrivateV2GetAccount()
 
             # Parse Balance
-            usdt_balance = 0.0
+            # walletBalance = Total wallet balance (matches Binance UI)
+            # availableBalance = Available for new trades (excludes margin)
+            wallet_balance = 0.0
+            available_balance = 0.0
             for asset in account_info["assets"]:
                 if asset["asset"] == "USDT":
-                    usdt_balance = float(asset["availableBalance"])
+                    wallet_balance = float(asset["walletBalance"])
+                    available_balance = float(asset["availableBalance"])
                     break
 
             # Parse Position
@@ -414,7 +418,8 @@ class BinanceClient:
             return {
                 "position_amt": position_amt,
                 "entry_price": entry_price,
-                "balance": usdt_balance,
+                "balance": wallet_balance,  # Total wallet balance (matches Binance UI)
+                "available_balance": available_balance,  # Available for trading
             }
         except Exception as e:
             logger.error(f"Error fetching account data: {e}")

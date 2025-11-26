@@ -638,3 +638,69 @@ class BinanceClient:
         except Exception as e:
             logger.error(f"Error fetching realized PnL: {e}")
             return 0.0
+
+    def fetch_commission(self, start_time=None):
+        """
+        Fetches total trading commission/fees from transaction history.
+        :param start_time: Timestamp in ms to start calculating from.
+        :return: Total commission paid (positive number, as fees are deducted)
+        """
+        try:
+            params = {
+                "symbol": self.symbol.replace("/", "").split(":")[
+                    0
+                ],  # Convert ETH/USDT:USDT -> ETHUSDT
+                "incomeType": "COMMISSION",
+                "limit": 1000,
+            }
+            if start_time:
+                params["startTime"] = start_time
+
+            income_history = self.exchange.fapiPrivateGetIncome(params)
+
+            # Commission is returned as negative values, so we sum and negate
+            # to get the total fees paid as a positive number
+            total_commission = sum(float(item["income"]) for item in income_history)
+            return abs(total_commission)
+        except Exception as e:
+            logger.error(f"Error fetching commission: {e}")
+            return 0.0
+
+    def fetch_pnl_and_fees(self, start_time=None):
+        """
+        Fetches both realized PnL and commission fees in a single call.
+        More efficient than calling fetch_realized_pnl and fetch_commission separately.
+
+        :param start_time: Timestamp in ms to start calculating from.
+        :return: dict with 'realized_pnl', 'commission', 'net_pnl'
+        """
+        try:
+            base_params = {
+                "symbol": self.symbol.replace("/", "").split(":")[0],
+                "limit": 1000,
+            }
+            if start_time:
+                base_params["startTime"] = start_time
+
+            # Fetch REALIZED_PNL
+            pnl_params = {**base_params, "incomeType": "REALIZED_PNL"}
+            pnl_history = self.exchange.fapiPrivateGetIncome(pnl_params)
+            total_pnl = sum(float(item["income"]) for item in pnl_history)
+
+            # Fetch COMMISSION
+            comm_params = {**base_params, "incomeType": "COMMISSION"}
+            comm_history = self.exchange.fapiPrivateGetIncome(comm_params)
+            total_commission = abs(sum(float(item["income"]) for item in comm_history))
+
+            return {
+                "realized_pnl": total_pnl,
+                "commission": total_commission,
+                "net_pnl": total_pnl - total_commission,
+            }
+        except Exception as e:
+            logger.error(f"Error fetching PnL and fees: {e}")
+            return {
+                "realized_pnl": 0.0,
+                "commission": 0.0,
+                "net_pnl": 0.0,
+            }

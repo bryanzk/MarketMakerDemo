@@ -12,8 +12,16 @@ import time
 from alphaloop.main import AlphaLoop
 from alphaloop.strategies.funding import FundingRateStrategy
 from alphaloop.strategies.strategy import FixedSpreadStrategy
+from alphaloop.portfolio.manager import PortfolioManager, StrategyStatus
 
 app = FastAPI()
+
+
+@app.on_event("startup")
+async def startup_event():
+    """Initialize portfolio capital from Binance on server startup."""
+    init_portfolio_capital()
+
 
 # Setup Templates
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -23,6 +31,59 @@ templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "templates"))
 bot_engine = AlphaLoop()
 bot_thread = None
 is_running = False
+
+# Portfolio Manager for multi-strategy management
+# Initial capital will be fetched from Binance on startup
+portfolio_manager = PortfolioManager(total_capital=10000.0)  # Default fallback
+
+# Store initial capital for reference
+initial_capital = 10000.0
+
+
+def init_portfolio_capital():
+    """
+    Initialize portfolio capital from Binance Demo Trading account.
+    Fetches actual USDT balance and stores it as the initial capital.
+    """
+    global initial_capital
+
+    try:
+        # Fetch actual balance from Binance
+        if hasattr(bot_engine, "exchange") and bot_engine.exchange is not None:
+            account_data = bot_engine.exchange.fetch_account_data()
+            if account_data and "balance" in account_data:
+                actual_balance = account_data["balance"]
+                if actual_balance > 0:
+                    initial_capital = actual_balance
+                    portfolio_manager.total_capital = actual_balance
+                    print(
+                        f"✅ Portfolio capital initialized from Binance: ${actual_balance:.2f} USDT"
+                    )
+                    return actual_balance
+    except Exception as e:
+        print(f"⚠️ Failed to fetch balance from Binance: {e}")
+        print(f"   Using default capital: ${initial_capital:.2f} USDT")
+
+    return initial_capital
+
+
+# Register available strategies
+portfolio_manager.register_strategy(
+    strategy_id="fixed_spread",
+    name="Fixed Spread",
+    allocation=0.6,
+    status=StrategyStatus.STOPPED,
+)
+portfolio_manager.register_strategy(
+    strategy_id="funding_rate",
+    name="Funding Rate",
+    allocation=0.4,
+    status=StrategyStatus.STOPPED,
+)
+
+# Initialize capital on module load (will be called when server starts)
+# Note: This runs synchronously during import, so exchange might not be ready yet.
+# We'll also refresh it in the first API call.
 
 
 class ConfigUpdate(BaseModel):
@@ -382,6 +443,23 @@ async def get_performance():
 
     realized_pnl = sum(t["pnl"] for t in trades)
 
+    # Fetch commission/fees from exchange if available
+    commission = 0.0
+    net_pnl = realized_pnl
+    if hasattr(bot_engine, "exchange") and bot_engine.exchange is not None:
+        try:
+            pnl_data = bot_engine.exchange.fetch_pnl_and_fees()
+            commission = pnl_data.get("commission", 0.0)
+            # Use exchange's realized PnL if available, otherwise use local calculation
+            if pnl_data.get("realized_pnl", 0) != 0:
+                realized_pnl = pnl_data["realized_pnl"]
+                net_pnl = pnl_data["net_pnl"]
+            else:
+                net_pnl = realized_pnl - commission
+        except Exception:
+            # Fallback to local calculation if exchange call fails
+            pass
+
     # Construct PnL history for chart
     pnl_history = []
     cumulative_pnl = 0
@@ -395,6 +473,8 @@ async def get_performance():
 
     return {
         "realized_pnl": realized_pnl,
+        "commission": commission,
+        "net_pnl": net_pnl,
         "total_trades": total_trades,
         "winning_trades": winning_trades,
         "losing_trades": losing_trades,
@@ -462,6 +542,162 @@ async def get_funding_rates():
 
     except Exception as e:
         return {"error": str(e)}
+
+
+# ============================================================================
+# Portfolio Management APIs (US-1.x, US-2.x)
+# ============================================================================
+
+
+@app.get("/api/portfolio")
+async def get_portfolio():
+    """
+    获取组合概览和策略对比数据
+
+    对应用户故事: US-1.1 ~ US-1.4, US-2.1 ~ US-2.5
+    参考文档: docs/user_guide/portfolio_management.md
+
+    Returns:
+        {
+            "total_pnl": float,           # 组合总盈亏
+            "portfolio_sharpe": float,    # 组合夏普比率
+            "active_count": int,          # 活跃策略数
+            "total_count": int,           # 总策略数
+            "risk_level": str,            # 风险等级 (low/medium/high/critical)
+            "total_capital": float,       # 总资金
+            "strategies": [               # 策略列表 (按 PnL 降序)
+                {
+                    "id": str,
+                    "name": str,
+                    "status": str,        # live/paper/paused/stopped
+                    "pnl": float,
+                    "sharpe": float,
+                    "health": int,        # 0-100
+                    "allocation": float,  # 0-1
+                    "roi": float,
+                }
+            ]
+        }
+    """
+    # Sync strategy status with bot state
+    _sync_portfolio_with_bot()
+
+    return portfolio_manager.get_portfolio_data()
+
+
+@app.post("/api/strategy/{strategy_id}/pause")
+async def pause_strategy(strategy_id: str):
+    """
+    暂停指定策略
+
+    对应用户故事: US-2.6
+    """
+    success = portfolio_manager.pause_strategy(strategy_id)
+    if not success:
+        return {"error": f"Strategy '{strategy_id}' not found"}
+
+    # If this is the active strategy, stop the bot
+    if is_running:
+        current_strategy = type(bot_engine.strategy).__name__
+        if (
+            strategy_id == "fixed_spread" and current_strategy == "FixedSpreadStrategy"
+        ) or (
+            strategy_id == "funding_rate" and current_strategy == "FundingRateStrategy"
+        ):
+            # Optionally stop the bot when its strategy is paused
+            pass  # For now, just update status without stopping
+
+    return {"status": "paused", "strategy_id": strategy_id}
+
+
+@app.post("/api/strategy/{strategy_id}/resume")
+async def resume_strategy(strategy_id: str):
+    """
+    恢复暂停的策略
+
+    对应用户故事: US-2.6
+    """
+    success = portfolio_manager.resume_strategy(strategy_id)
+    if not success:
+        return {"error": f"Strategy '{strategy_id}' not found"}
+
+    return {"status": "live", "strategy_id": strategy_id}
+
+
+def _sync_portfolio_with_bot():
+    """
+    同步 PortfolioManager 与当前 bot 状态
+
+    将 bot_engine 的实时数据同步到 portfolio_manager
+    """
+    global is_running, initial_capital
+
+    # Update capital from current balance if available
+    try:
+        if hasattr(bot_engine, "exchange") and bot_engine.exchange is not None:
+            account_data = bot_engine.exchange.fetch_account_data()
+            if account_data and "balance" in account_data:
+                current_balance = account_data["balance"]
+                if current_balance > 0:
+                    # Update total capital to reflect current account value
+                    # (initial capital + realized PnL)
+                    portfolio_manager.total_capital = current_balance
+    except Exception:
+        pass  # Keep existing capital if fetch fails
+
+    # Determine current active strategy
+    current_strategy_type = type(bot_engine.strategy).__name__
+    current_strategy_id = (
+        "funding_rate"
+        if current_strategy_type == "FundingRateStrategy"
+        else "fixed_spread"
+    )
+
+    # Update strategy statuses based on bot running state
+    for strategy_id, strategy in portfolio_manager.strategies.items():
+        if is_running and strategy_id == current_strategy_id:
+            if strategy.status != StrategyStatus.PAUSED:
+                strategy.status = StrategyStatus.LIVE
+        elif strategy.status == StrategyStatus.LIVE:
+            strategy.status = StrategyStatus.STOPPED
+
+    # Get performance data
+    trades = bot_engine.data.trade_history
+    realized_pnl = sum(t["pnl"] for t in trades)
+
+    # Get metrics
+    metrics = bot_engine.data.calculate_metrics()
+    sharpe = metrics.get("sharpe_ratio", 0)
+    fill_rate = metrics.get("fill_rate", 0.85)
+    slippage = metrics.get("slippage_bps", 0)
+
+    # Calculate max drawdown from PnL history
+    max_drawdown = 0.0
+    if trades:
+        cumulative = 0
+        peak = 0
+        for t in trades:
+            cumulative += t["pnl"]
+            if cumulative > peak:
+                peak = cumulative
+            if peak > 0:
+                dd = (peak - cumulative) / peak
+                if dd > max_drawdown:
+                    max_drawdown = dd
+
+    # Update the currently active strategy's metrics
+    portfolio_manager.update_strategy_metrics(
+        strategy_id=current_strategy_id,
+        pnl=realized_pnl,
+        sharpe=sharpe if sharpe else None,
+        fill_rate=fill_rate if fill_rate else 0.85,
+        slippage=slippage if slippage else 0,
+        max_drawdown=max_drawdown,
+        total_trades=len(trades),
+    )
+
+    # Record PnL snapshot for portfolio Sharpe calculation
+    portfolio_manager.record_pnl_snapshot()
 
 
 if __name__ == "__main__":

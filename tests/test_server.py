@@ -29,6 +29,10 @@ def mock_bot():
     type(mock.strategy).__name__ = "FixedSpreadStrategy"
     mock.exchange = Mock()  # Changed from client to exchange
     mock.exchange.set_leverage = Mock(return_value=True)
+    # Default fetch_pnl_and_fees to return zeros (prevents recursion in JSON serialization)
+    mock.exchange.fetch_pnl_and_fees = Mock(
+        return_value={"realized_pnl": 0.0, "commission": 0.0, "net_pnl": 0.0}
+    )
     mock.set_symbol = Mock(return_value=True)
     # AlphaLoop doesn't expose performance directly like this, but for server tests we mock what server calls
     # Server calls: bot_engine.performance.get_stats() -> likely needs update in server.py too if that changed
@@ -315,3 +319,60 @@ class TestServer:
             assert data["pnl_history"][0][1] == 0
             # Last point
             assert data["pnl_history"][-1][1] == 25.0
+
+    def test_get_performance_with_commission(self, mock_bot):
+        """Test GET /api/performance endpoint includes commission data"""
+        mock_bot.data.trade_history = [
+            {"pnl": 10.0, "timestamp": 1600000000},
+        ]
+        mock_bot.data.calculate_metrics.return_value = {}
+
+        # Mock exchange with commission data
+        mock_bot.exchange.fetch_pnl_and_fees.return_value = {
+            "realized_pnl": 100.0,
+            "commission": 2.5,
+            "net_pnl": 97.5,
+        }
+
+        with patch("server.bot_engine", mock_bot):
+            from server import app
+
+            client = TestClient(app)
+
+            response = client.get("/api/performance")
+
+            assert response.status_code == 200
+            data = response.json()
+
+            # Check commission fields are present
+            assert "commission" in data
+            assert "net_pnl" in data
+            assert data["commission"] == 2.5
+            assert data["net_pnl"] == 97.5
+            # realized_pnl should use exchange value
+            assert data["realized_pnl"] == 100.0
+
+    def test_get_performance_commission_fallback(self, mock_bot):
+        """Test GET /api/performance falls back gracefully when exchange fails"""
+        mock_bot.data.trade_history = [
+            {"pnl": 15.0, "timestamp": 1600000000},
+        ]
+        mock_bot.data.calculate_metrics.return_value = {}
+
+        # Mock exchange that raises exception
+        mock_bot.exchange.fetch_pnl_and_fees.side_effect = Exception("API Error")
+
+        with patch("server.bot_engine", mock_bot):
+            from server import app
+
+            client = TestClient(app)
+
+            response = client.get("/api/performance")
+
+            assert response.status_code == 200
+            data = response.json()
+
+            # Should still return data with local calculation
+            assert data["realized_pnl"] == 15.0
+            assert data["commission"] == 0.0
+            assert data["net_pnl"] == 15.0

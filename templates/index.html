@@ -182,6 +182,90 @@
 
 <body>
     <div class="container">
+        <!-- ================================================================== -->
+        <!-- Portfolio Overview (US-1.x) -->
+        <!-- ================================================================== -->
+        <div id="portfolioOverview" class="portfolio-overview" style="
+            background: linear-gradient(135deg, #1e3a5f 0%, #2d5a87 100%);
+            padding: 20px;
+            border-radius: 12px;
+            margin-bottom: 20px;
+            color: white;
+        ">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                <h2 style="margin: 0; font-size: 18px; color: #94a3b8;">🏦 Portfolio Overview</h2>
+                <div style="font-size: 13px; color: #94a3b8;">
+                    Capital: <span id="portfolioCapital" style="color: white; font-weight: bold;">$10,000</span>
+                </div>
+            </div>
+            <div class="card-grid" style="grid-template-columns: repeat(4, 1fr); gap: 15px;">
+                <div style="background: rgba(255,255,255,0.1); padding: 15px; border-radius: 8px;">
+                    <div style="font-size: 12px; color: #94a3b8; margin-bottom: 5px;">Total PnL</div>
+                    <div id="portfolioTotalPnl" style="font-size: 1.5rem; font-weight: bold; color: #10b981;">+$0.00</div>
+                </div>
+                <div style="background: rgba(255,255,255,0.1); padding: 15px; border-radius: 8px;">
+                    <div style="font-size: 12px; color: #94a3b8; margin-bottom: 5px;">Portfolio Sharpe</div>
+                    <div id="portfolioSharpe" style="font-size: 1.5rem; font-weight: bold;">--</div>
+                </div>
+                <div style="background: rgba(255,255,255,0.1); padding: 15px; border-radius: 8px;">
+                    <div style="font-size: 12px; color: #94a3b8; margin-bottom: 5px;">Active Strategies</div>
+                    <div id="portfolioActiveCount" style="font-size: 1.5rem; font-weight: bold;">0 / 2</div>
+                </div>
+                <div style="background: rgba(255,255,255,0.1); padding: 15px; border-radius: 8px;">
+                    <div style="font-size: 12px; color: #94a3b8; margin-bottom: 5px;">Portfolio Risk</div>
+                    <div id="portfolioRisk" style="font-size: 1.5rem; font-weight: bold; color: #10b981;">Low ✓</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ================================================================== -->
+        <!-- Strategy Comparison Table (US-2.x) -->
+        <!-- ================================================================== -->
+        <div id="strategyComparison" class="card" style="margin-bottom: 20px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                <h3 style="margin: 0;">📊 Strategy Comparison</h3>
+                <button class="btn" style="padding: 5px 10px; font-size: 12px;" onclick="fetchPortfolio()">
+                    🔄 Refresh
+                </button>
+            </div>
+            <div style="overflow-x: auto;">
+                <table id="strategyTable" style="width: 100%; border-collapse: collapse; font-size: 13px;">
+                    <thead style="background: #f3f4f6;">
+                        <tr>
+                            <th style="padding: 12px 8px; text-align: left; cursor: pointer;" onclick="sortStrategies('name')">
+                                Strategy <span class="sort-icon"></span>
+                            </th>
+                            <th style="padding: 12px 8px; text-align: center;">Status</th>
+                            <th style="padding: 12px 8px; text-align: right; cursor: pointer;" onclick="sortStrategies('pnl')">
+                                PnL <span class="sort-icon">▼</span>
+                            </th>
+                            <th style="padding: 12px 8px; text-align: right; cursor: pointer;" onclick="sortStrategies('sharpe')">
+                                Sharpe <span class="sort-icon"></span>
+                            </th>
+                            <th style="padding: 12px 8px; text-align: center; cursor: pointer;" onclick="sortStrategies('health')">
+                                Health <span class="sort-icon"></span>
+                            </th>
+                            <th style="padding: 12px 8px; text-align: right;">Allocation</th>
+                            <th style="padding: 12px 8px; text-align: right; cursor: pointer;" onclick="sortStrategies('roi')">
+                                ROI <span class="sort-icon"></span>
+                            </th>
+                            <th style="padding: 12px 8px; text-align: center;">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="strategyTableBody">
+                        <tr>
+                            <td colspan="8" style="text-align: center; padding: 20px; color: #9ca3af;">
+                                Loading strategies...
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- ================================================================== -->
+        <!-- Tab Navigation -->
+        <!-- ================================================================== -->
         <div class="tab-nav" style="margin-bottom:20px;">
             <button class="btn btn-primary" id="tradeTabBtn" onclick="showTab('trade')">
                 Fixed Spread Strategy
@@ -766,7 +850,17 @@
             <div class="card">
                 <h3>Realized PnL</h3>
                 <div class="value" id="dashRealizedPnl" style="color: #10b981;">--</div>
-                <div class="sub-text">Total Profit/Loss</div>
+                <div class="sub-text">Gross Profit/Loss</div>
+            </div>
+            <div class="card">
+                <h3>Trading Fees</h3>
+                <div class="value" id="dashCommission" style="color: #f59e0b;">--</div>
+                <div class="sub-text">Total Commission Paid</div>
+            </div>
+            <div class="card">
+                <h3>Net PnL</h3>
+                <div class="value" id="dashNetPnl" style="color: #10b981;">--</div>
+                <div class="sub-text">After Fees</div>
             </div>
             <div class="card">
                 <h3>Win Rate</h3>
@@ -1632,6 +1726,22 @@
                 // Update Dashboard Metrics
                 if (document.getElementById('dashRealizedPnl')) {
                     document.getElementById('dashRealizedPnl').innerText = data.realized_pnl ? data.realized_pnl.toFixed(4) + ' USDT' : '0.0000 USDT';
+                    
+                    // Update commission (trading fees)
+                    const commissionEl = document.getElementById('dashCommission');
+                    if (commissionEl) {
+                        commissionEl.innerText = data.commission ? data.commission.toFixed(4) + ' USDT' : '0.0000 USDT';
+                    }
+                    
+                    // Update net PnL (after fees)
+                    const netPnlEl = document.getElementById('dashNetPnl');
+                    if (netPnlEl) {
+                        const netPnl = data.net_pnl !== undefined ? data.net_pnl : (data.realized_pnl || 0);
+                        netPnlEl.innerText = netPnl.toFixed(4) + ' USDT';
+                        // Color based on positive/negative
+                        netPnlEl.style.color = netPnl >= 0 ? '#10b981' : '#ef4444';
+                    }
+                    
                     document.getElementById('dashWinRate').innerText = data.win_rate ? data.win_rate.toFixed(2) + '%' : '0.00%';
                     document.getElementById('dashTotalTrades').innerText = data.total_trades || 0;
 
@@ -1979,8 +2089,235 @@
             }
         }
 
+        // ================================================================
+        // Portfolio Management Functions (US-1.x, US-2.x)
+        // ================================================================
+
+        let portfolioData = null;
+        let sortColumn = 'pnl';
+        let sortDirection = 'desc';
+
+        async function fetchPortfolio() {
+            try {
+                const res = await fetch('/api/portfolio');
+                const data = await res.json();
+
+                if (data.error) {
+                    console.error('Portfolio error:', data.error);
+                    return;
+                }
+
+                portfolioData = data;
+                updatePortfolioOverview(data);
+                updateStrategyTable(data.strategies);
+
+            } catch (e) {
+                console.error('Error fetching portfolio:', e);
+            }
+        }
+
+        function updatePortfolioOverview(data) {
+            // Total PnL
+            const totalPnlEl = document.getElementById('portfolioTotalPnl');
+            if (totalPnlEl) {
+                const pnl = data.total_pnl || 0;
+                totalPnlEl.innerText = (pnl >= 0 ? '+' : '') + '$' + pnl.toFixed(2);
+                totalPnlEl.style.color = pnl >= 0 ? '#10b981' : '#ef4444';
+            }
+
+            // Portfolio Sharpe
+            const sharpeEl = document.getElementById('portfolioSharpe');
+            if (sharpeEl) {
+                const sharpe = data.portfolio_sharpe;
+                if (sharpe !== null && sharpe !== undefined) {
+                    sharpeEl.innerText = sharpe.toFixed(2);
+                    if (sharpe >= 2.0) sharpeEl.style.color = '#10b981';
+                    else if (sharpe >= 1.0) sharpeEl.style.color = '#f59e0b';
+                    else sharpeEl.style.color = '#ef4444';
+                } else {
+                    sharpeEl.innerText = 'N/A';
+                    sharpeEl.style.color = '#94a3b8';
+                }
+            }
+
+            // Active Strategies Count
+            const activeCountEl = document.getElementById('portfolioActiveCount');
+            if (activeCountEl) {
+                activeCountEl.innerText = `${data.active_count} / ${data.total_count}`;
+            }
+
+            // Portfolio Risk
+            const riskEl = document.getElementById('portfolioRisk');
+            if (riskEl) {
+                const riskConfig = {
+                    'low': { text: 'Low ✓', color: '#10b981' },
+                    'medium': { text: 'Medium ⚠', color: '#f59e0b' },
+                    'high': { text: 'High ⚠', color: '#ef4444' },
+                    'critical': { text: 'Critical ⛔', color: '#dc2626' },
+                };
+                const config = riskConfig[data.risk_level] || riskConfig['low'];
+                riskEl.innerText = config.text;
+                riskEl.style.color = config.color;
+            }
+
+            // Capital (from Binance account)
+            const capitalEl = document.getElementById('portfolioCapital');
+            if (capitalEl && data.total_capital) {
+                capitalEl.innerText = '$' + data.total_capital.toLocaleString(undefined, {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2
+                });
+            }
+        }
+
+        function updateStrategyTable(strategies) {
+            const tbody = document.getElementById('strategyTableBody');
+            if (!tbody) return;
+
+            if (!strategies || strategies.length === 0) {
+                tbody.innerHTML = `
+                    <tr>
+                        <td colspan="8" style="text-align: center; padding: 20px; color: #9ca3af;">
+                            No strategies configured
+                        </td>
+                    </tr>
+                `;
+                return;
+            }
+
+            // Sort strategies
+            const sorted = [...strategies].sort((a, b) => {
+                let valA = a[sortColumn];
+                let valB = b[sortColumn];
+                if (valA === null || valA === undefined) valA = -Infinity;
+                if (valB === null || valB === undefined) valB = -Infinity;
+                if (sortDirection === 'asc') return valA - valB;
+                return valB - valA;
+            });
+
+            tbody.innerHTML = sorted.map(strategy => {
+                // Status badge
+                const statusConfig = {
+                    'live': { icon: '🟢', bg: '#d1fae5', color: '#065f46' },
+                    'paper': { icon: '🟡', bg: '#fef3c7', color: '#92400e' },
+                    'paused': { icon: '🔴', bg: '#fee2e2', color: '#991b1b' },
+                    'stopped': { icon: '⚫', bg: '#e5e7eb', color: '#374151' },
+                };
+                const statusCfg = statusConfig[strategy.status] || statusConfig['stopped'];
+
+                // Health color
+                let healthColor = '#10b981';
+                if (strategy.health < 60) healthColor = '#f59e0b';
+                if (strategy.health < 40) healthColor = '#ef4444';
+
+                // PnL color
+                const pnlColor = strategy.pnl >= 0 ? '#10b981' : '#ef4444';
+
+                // ROI format
+                const roiPercent = (strategy.roi * 100).toFixed(2);
+                const roiColor = strategy.roi >= 0 ? '#10b981' : '#ef4444';
+
+                // Action buttons
+                const isPaused = strategy.status === 'paused';
+                const actionBtn = isPaused
+                    ? `<button onclick="resumeStrategy('${strategy.id}')" class="btn" style="padding: 4px 8px; font-size: 11px; background: #10b981; color: white;">Resume</button>`
+                    : `<button onclick="pauseStrategy('${strategy.id}')" class="btn" style="padding: 4px 8px; font-size: 11px; background: #f59e0b; color: white;">Pause</button>`;
+
+                return `
+                    <tr style="border-bottom: 1px solid #e5e7eb;">
+                        <td style="padding: 12px 8px; font-weight: 500;">${strategy.name}</td>
+                        <td style="padding: 12px 8px; text-align: center;">
+                            <span style="background: ${statusCfg.bg}; color: ${statusCfg.color}; padding: 4px 10px; border-radius: 12px; font-size: 11px; font-weight: 600;">
+                                ${statusCfg.icon} ${strategy.status.toUpperCase()}
+                            </span>
+                        </td>
+                        <td style="padding: 12px 8px; text-align: right; font-weight: 600; color: ${pnlColor};">
+                            ${strategy.pnl >= 0 ? '+' : ''}$${strategy.pnl.toFixed(2)}
+                        </td>
+                        <td style="padding: 12px 8px; text-align: right;">
+                            ${strategy.sharpe !== null ? strategy.sharpe.toFixed(2) : 'N/A'}
+                        </td>
+                        <td style="padding: 12px 8px; text-align: center;">
+                            <div style="display: inline-flex; align-items: center; gap: 8px;">
+                                <div style="width: 60px; height: 8px; background: #e5e7eb; border-radius: 4px; overflow: hidden;">
+                                    <div style="width: ${strategy.health}%; height: 100%; background: ${healthColor};"></div>
+                                </div>
+                                <span style="font-size: 12px; color: ${healthColor}; font-weight: 600;">${strategy.health}</span>
+                            </div>
+                        </td>
+                        <td style="padding: 12px 8px; text-align: right;">
+                            ${(strategy.allocation * 100).toFixed(0)}%
+                        </td>
+                        <td style="padding: 12px 8px; text-align: right; color: ${roiColor};">
+                            ${strategy.roi >= 0 ? '+' : ''}${roiPercent}%
+                        </td>
+                        <td style="padding: 12px 8px; text-align: center;">
+                            ${actionBtn}
+                            <button onclick="viewStrategyDetails('${strategy.id}')" class="btn" style="padding: 4px 8px; font-size: 11px; margin-left: 4px;">
+                                Details
+                            </button>
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        function sortStrategies(column) {
+            if (sortColumn === column) {
+                sortDirection = sortDirection === 'desc' ? 'asc' : 'desc';
+            } else {
+                sortColumn = column;
+                sortDirection = 'desc';
+            }
+            if (portfolioData && portfolioData.strategies) {
+                updateStrategyTable(portfolioData.strategies);
+            }
+        }
+
+        async function pauseStrategy(strategyId) {
+            if (!confirm(`确定要暂停策略 "${strategyId}" 吗？`)) return;
+
+            try {
+                const res = await fetch(`/api/strategy/${strategyId}/pause`, { method: 'POST' });
+                const data = await res.json();
+                if (data.error) {
+                    showToast('Error: ' + data.error, 'error');
+                } else {
+                    showToast(`策略 ${strategyId} 已暂停`, 'success');
+                    fetchPortfolio();
+                }
+            } catch (e) {
+                showToast('暂停策略失败', 'error');
+            }
+        }
+
+        async function resumeStrategy(strategyId) {
+            try {
+                const res = await fetch(`/api/strategy/${strategyId}/resume`, { method: 'POST' });
+                const data = await res.json();
+                if (data.error) {
+                    showToast('Error: ' + data.error, 'error');
+                } else {
+                    showToast(`策略 ${strategyId} 已恢复`, 'success');
+                    fetchPortfolio();
+                }
+            } catch (e) {
+                showToast('恢复策略失败', 'error');
+            }
+        }
+
+        function viewStrategyDetails(strategyId) {
+            // Switch to the appropriate tab
+            if (strategyId === 'fixed_spread') {
+                showTab('trade');
+            } else if (strategyId === 'funding_rate') {
+                showTab('funding');
+            }
+        }
+
         // Poll every 1 second
         setInterval(fetchStatus, 1000);
+        setInterval(fetchPortfolio, 2000); // Fetch portfolio every 2s
         setInterval(fetchSuggestions, 5000); // Fetch suggestions every 5s
         setInterval(fetchPerformance, 2000); // Fetch performance every 2s
         setInterval(fetchOrderHistory, 3000); // Fetch order history every 3s
@@ -1996,6 +2333,7 @@
         fetchFundingOrderHistory();
         fetchFundingErrorHistory();
         loadFundingPairs(); // Initial load of funding pairs
+        fetchPortfolio(); // Initial load of portfolio data
     </script>
 </body>
 

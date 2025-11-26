@@ -322,3 +322,143 @@ class TestBinanceClient:
         pnl = client.fetch_realized_pnl()
 
         assert pnl == 0.0
+
+
+class TestCommission:
+    """Test cases for commission/trading fees methods"""
+
+    @patch("alphaloop.market.exchange.ccxt.binanceusdm")
+    def test_fetch_commission_success(self, mock_binance):
+        """Test successful commission fetch"""
+        mock_exchange = MagicMock()
+        mock_exchange.load_markets.return_value = {
+            "ETH/USDT:USDT": {"id": "ETHUSDT", "symbol": "ETH/USDT:USDT"}
+        }
+        # Commission is returned as negative values by Binance
+        mock_exchange.fapiPrivateGetIncome.return_value = [
+            {"incomeType": "COMMISSION", "income": "-0.5"},
+            {"incomeType": "COMMISSION", "income": "-0.3"},
+        ]
+        mock_binance.return_value = mock_exchange
+
+        with patch("alphaloop.market.exchange.LEVERAGE", 5):
+            client = BinanceClient()
+
+        commission = client.fetch_commission()
+
+        # Should return positive value (absolute)
+        assert commission == 0.8
+
+    @patch("alphaloop.market.exchange.ccxt.binanceusdm")
+    def test_fetch_commission_with_start_time(self, mock_binance):
+        """Test commission fetch with start time filter"""
+        mock_exchange = MagicMock()
+        mock_exchange.load_markets.return_value = {
+            "ETH/USDT:USDT": {"id": "ETHUSDT", "symbol": "ETH/USDT:USDT"}
+        }
+        mock_exchange.fapiPrivateGetIncome.return_value = [
+            {"incomeType": "COMMISSION", "income": "-1.0"}
+        ]
+        mock_binance.return_value = mock_exchange
+
+        with patch("alphaloop.market.exchange.LEVERAGE", 5):
+            client = BinanceClient()
+
+        start_time = 1700000000000
+        commission = client.fetch_commission(start_time=start_time)
+
+        mock_exchange.fapiPrivateGetIncome.assert_called_with(
+            {
+                "symbol": "ETHUSDT",
+                "incomeType": "COMMISSION",
+                "startTime": start_time,
+                "limit": 1000,
+            }
+        )
+        assert commission == 1.0
+
+    @patch("alphaloop.market.exchange.ccxt.binanceusdm")
+    def test_fetch_commission_no_records(self, mock_binance):
+        """Test commission fetch with no records"""
+        mock_exchange = MagicMock()
+        mock_exchange.load_markets.return_value = {
+            "ETH/USDT:USDT": {"id": "ETHUSDT", "symbol": "ETH/USDT:USDT"}
+        }
+        mock_exchange.fapiPrivateGetIncome.return_value = []
+        mock_binance.return_value = mock_exchange
+
+        with patch("alphaloop.market.exchange.LEVERAGE", 5):
+            client = BinanceClient()
+
+        commission = client.fetch_commission()
+
+        assert commission == 0.0
+
+    @patch("alphaloop.market.exchange.ccxt.binanceusdm")
+    def test_fetch_commission_error(self, mock_binance):
+        """Test commission fetch error handling"""
+        mock_exchange = MagicMock()
+        mock_exchange.load_markets.return_value = {
+            "ETH/USDT:USDT": {"id": "ETHUSDT", "symbol": "ETH/USDT:USDT"}
+        }
+        mock_exchange.fapiPrivateGetIncome.side_effect = Exception("API Error")
+        mock_binance.return_value = mock_exchange
+
+        with patch("alphaloop.market.exchange.LEVERAGE", 5):
+            client = BinanceClient()
+
+        commission = client.fetch_commission()
+
+        assert commission == 0.0
+
+    @patch("alphaloop.market.exchange.ccxt.binanceusdm")
+    def test_fetch_pnl_and_fees_success(self, mock_binance):
+        """Test fetching both PnL and fees together"""
+        mock_exchange = MagicMock()
+        mock_exchange.load_markets.return_value = {
+            "ETH/USDT:USDT": {"id": "ETHUSDT", "symbol": "ETH/USDT:USDT"}
+        }
+
+        def mock_income(params):
+            if params.get("incomeType") == "REALIZED_PNL":
+                return [
+                    {"incomeType": "REALIZED_PNL", "income": "10.0"},
+                    {"incomeType": "REALIZED_PNL", "income": "5.0"},
+                ]
+            elif params.get("incomeType") == "COMMISSION":
+                return [
+                    {"incomeType": "COMMISSION", "income": "-1.0"},
+                    {"incomeType": "COMMISSION", "income": "-0.5"},
+                ]
+            return []
+
+        mock_exchange.fapiPrivateGetIncome.side_effect = mock_income
+        mock_binance.return_value = mock_exchange
+
+        with patch("alphaloop.market.exchange.LEVERAGE", 5):
+            client = BinanceClient()
+
+        result = client.fetch_pnl_and_fees()
+
+        assert result["realized_pnl"] == 15.0
+        assert result["commission"] == 1.5
+        assert result["net_pnl"] == 13.5  # 15.0 - 1.5
+
+    @patch("alphaloop.market.exchange.ccxt.binanceusdm")
+    def test_fetch_pnl_and_fees_error(self, mock_binance):
+        """Test fetch_pnl_and_fees error handling returns zeros"""
+        mock_exchange = MagicMock()
+        mock_exchange.load_markets.return_value = {
+            "ETH/USDT:USDT": {"id": "ETHUSDT", "symbol": "ETH/USDT:USDT"}
+        }
+        mock_exchange.fapiPrivateGetIncome.side_effect = Exception("API Error")
+        mock_binance.return_value = mock_exchange
+
+        with patch("alphaloop.market.exchange.LEVERAGE", 5):
+            client = BinanceClient()
+
+        result = client.fetch_pnl_and_fees()
+
+        assert result["realized_pnl"] == 0.0
+        assert result["commission"] == 0.0
+        assert result["net_pnl"] == 0.0

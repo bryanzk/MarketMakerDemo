@@ -207,3 +207,15 @@ class TestBusinessLogicIntegration:
             assert len(bot.order_history) > 0
             last_order = bot.order_history[-1]
             assert last_order.get("strategy_type") == "funding_rate"
+
+    def test_run_cycle_sets_idle_on_refresh_failure(self, mock_exchange):
+        """If refresh_data fails, stage should return to Idle with an alert."""
+        with patch("alphaloop.main.BinanceClient", return_value=mock_exchange):
+            bot = AlphaLoop()
+
+        with patch.object(AlphaLoop, "refresh_data", return_value=False):
+            bot.run_cycle()
+
+        assert bot.current_stage.startswith("Idle")
+        assert bot.alert is not None
+        assert bot.alert["type"] == "error"

@@ -138,3 +138,296 @@ class TestAlphaLoop:
         
         assert result is True
         mock_client.set_symbol.assert_called_with("BTC/USDT:USDT")
+
+
+class TestErrorHistory:
+    """Test cases for error_history tracking in AlphaLoop"""
+
+    @patch('alphaloop.main.BinanceClient')
+    @patch('alphaloop.main.DataAgent')
+    @patch('alphaloop.main.QuantAgent')
+    @patch('alphaloop.main.RiskAgent')
+    @patch('alphaloop.main.FixedSpreadStrategy')
+    def test_error_history_initialized_empty(
+        self, mock_strategy_cls, mock_risk_cls, mock_quant_cls, mock_data_cls, mock_client_cls
+    ):
+        """Test that error_history is initialized as empty deque"""
+        mock_client_cls.return_value = Mock()
+        mock_data_cls.return_value = Mock()
+        mock_quant_cls.return_value = Mock()
+        mock_risk_cls.return_value = Mock()
+        mock_strategy_cls.return_value = Mock()
+
+        engine = AlphaLoop()
+
+        assert hasattr(engine, "error_history")
+        assert len(engine.error_history) == 0
+        assert engine.error_history.maxlen == 200
+
+    @patch('alphaloop.main.BinanceClient')
+    @patch('alphaloop.main.DataAgent')
+    @patch('alphaloop.main.QuantAgent')
+    @patch('alphaloop.main.RiskAgent')
+    @patch('alphaloop.main.FixedSpreadStrategy')
+    def test_error_history_captures_order_error(
+        self, mock_strategy_cls, mock_risk_cls, mock_quant_cls, mock_data_cls, mock_client_cls
+    ):
+        """Test that order errors are captured in error_history during run_cycle"""
+        # Setup mocks
+        mock_client = Mock()
+        mock_client.symbol = "ETH/USDT:USDT"
+        mock_client.fetch_market_data.return_value = {
+            "mid_price": 2000.0,
+            "best_bid": 1999.0,
+            "best_ask": 2001.0,
+            "timestamp": time.time() * 1000,
+        }
+        mock_client.fetch_funding_rate.return_value = 0.0001
+        mock_client.fetch_account_data.return_value = {
+            "position_amt": 0.0,
+            "entry_price": 0.0,
+            "balance": 1000.0,
+        }
+        mock_client.fetch_open_orders.return_value = []
+        mock_client.place_orders.return_value = [
+            {"id": "ord1", "side": "buy", "price": 1999.0, "amount": 0.01}
+        ]
+        # Simulate an order error
+        mock_client.last_order_error = {
+            "type": "invalid_price",
+            "message": "Invalid price: None",
+            "symbol": "ETH/USDT:USDT",
+        }
+        mock_client_cls.return_value = mock_client
+
+        mock_data = Mock()
+        mock_data.calculate_metrics.return_value = {"volatility": 0.01, "sharpe_ratio": 1.5}
+        mock_data_cls.return_value = mock_data
+
+        mock_quant = Mock()
+        mock_quant.analyze_and_propose.return_value = None  # No proposal
+        mock_quant_cls.return_value = mock_quant
+
+        mock_risk = Mock()
+        mock_risk_cls.return_value = mock_risk
+
+        mock_strategy = Mock()
+        mock_strategy.spread = 0.002
+        mock_strategy.calculate_target_orders.return_value = [
+            {"side": "buy", "price": 1999.0, "quantity": 0.01}
+        ]
+        mock_strategy_cls.return_value = mock_strategy
+
+        engine = AlphaLoop()
+        engine.run_cycle()
+
+        # Verify error was captured
+        assert len(engine.error_history) == 1
+        error = engine.error_history[0]
+        assert error["type"] == "invalid_price"
+        assert error["symbol"] == "ETH/USDT:USDT"
+        assert "timestamp" in error
+        assert "message" in error
+
+    @patch('alphaloop.main.BinanceClient')
+    @patch('alphaloop.main.DataAgent')
+    @patch('alphaloop.main.QuantAgent')
+    @patch('alphaloop.main.RiskAgent')
+    @patch('alphaloop.main.FixedSpreadStrategy')
+    def test_error_history_includes_strategy_type(
+        self, mock_strategy_cls, mock_risk_cls, mock_quant_cls, mock_data_cls, mock_client_cls
+    ):
+        """Test that error_history entries include strategy_type"""
+        # Setup mocks
+        mock_client = Mock()
+        mock_client.symbol = "ETH/USDT:USDT"
+        mock_client.fetch_market_data.return_value = {
+            "mid_price": 2000.0,
+            "best_bid": 1999.0,
+            "best_ask": 2001.0,
+            "timestamp": time.time() * 1000,
+        }
+        mock_client.fetch_funding_rate.return_value = 0.0001
+        mock_client.fetch_account_data.return_value = {
+            "position_amt": 0.0,
+            "entry_price": 0.0,
+            "balance": 1000.0,
+        }
+        mock_client.fetch_open_orders.return_value = []
+        mock_client.place_orders.return_value = [{"id": "ord1", "side": "buy"}]
+        mock_client.last_order_error = {
+            "type": "insufficient_funds",
+            "message": "No balance",
+            "symbol": "ETH/USDT:USDT",
+        }
+        mock_client_cls.return_value = mock_client
+
+        mock_data = Mock()
+        mock_data.calculate_metrics.return_value = {}
+        mock_data_cls.return_value = mock_data
+
+        mock_quant = Mock()
+        mock_quant.analyze_and_propose.return_value = None
+        mock_quant_cls.return_value = mock_quant
+
+        mock_risk = Mock()
+        mock_risk_cls.return_value = mock_risk
+
+        mock_strategy = Mock()
+        mock_strategy.spread = 0.002
+        mock_strategy.calculate_target_orders.return_value = [
+            {"side": "buy", "price": 1999.0, "quantity": 0.01}
+        ]
+        mock_strategy_cls.return_value = mock_strategy
+
+        engine = AlphaLoop()
+        engine.run_cycle()
+
+        # Verify strategy_type is in error
+        assert len(engine.error_history) == 1
+        error = engine.error_history[0]
+        assert "strategy_type" in error
+        assert error["strategy_type"] == "fixed_spread"
+
+    @patch('alphaloop.main.BinanceClient')
+    @patch('alphaloop.main.DataAgent')
+    @patch('alphaloop.main.QuantAgent')
+    @patch('alphaloop.main.RiskAgent')
+    @patch('alphaloop.main.FixedSpreadStrategy')
+    def test_error_history_no_error_when_order_succeeds(
+        self, mock_strategy_cls, mock_risk_cls, mock_quant_cls, mock_data_cls, mock_client_cls
+    ):
+        """Test that error_history is not updated when orders succeed"""
+        # Setup mocks
+        mock_client = Mock()
+        mock_client.symbol = "ETH/USDT:USDT"
+        mock_client.fetch_market_data.return_value = {
+            "mid_price": 2000.0,
+            "best_bid": 1999.0,
+            "best_ask": 2001.0,
+            "timestamp": time.time() * 1000,
+        }
+        mock_client.fetch_funding_rate.return_value = 0.0001
+        mock_client.fetch_account_data.return_value = {
+            "position_amt": 0.0,
+            "entry_price": 0.0,
+            "balance": 1000.0,
+        }
+        mock_client.fetch_open_orders.return_value = []
+        mock_client.place_orders.return_value = [{"id": "ord1", "side": "buy"}]
+        mock_client.last_order_error = None  # No error
+        mock_client_cls.return_value = mock_client
+
+        mock_data = Mock()
+        mock_data.calculate_metrics.return_value = {}
+        mock_data_cls.return_value = mock_data
+
+        mock_quant = Mock()
+        mock_quant.analyze_and_propose.return_value = None
+        mock_quant_cls.return_value = mock_quant
+
+        mock_risk = Mock()
+        mock_risk_cls.return_value = mock_risk
+
+        mock_strategy = Mock()
+        mock_strategy.spread = 0.002
+        mock_strategy.calculate_target_orders.return_value = [
+            {"side": "buy", "price": 1999.0, "quantity": 0.01}
+        ]
+        mock_strategy_cls.return_value = mock_strategy
+
+        engine = AlphaLoop()
+        engine.run_cycle()
+
+        # Verify no error was captured
+        assert len(engine.error_history) == 0
+
+    @patch('alphaloop.main.BinanceClient')
+    @patch('alphaloop.main.DataAgent')
+    @patch('alphaloop.main.QuantAgent')
+    @patch('alphaloop.main.RiskAgent')
+    @patch('alphaloop.main.FixedSpreadStrategy')
+    def test_refresh_data_failure_sets_alert(
+        self, mock_strategy_cls, mock_risk_cls, mock_quant_cls, mock_data_cls, mock_client_cls
+    ):
+        """Test that refresh_data failure sets an error alert and updates stage"""
+        # Setup mocks
+        mock_client = Mock()
+        mock_client.symbol = "ETH/USDT:USDT"
+        # Return None to simulate refresh failure
+        mock_client.fetch_market_data.return_value = None
+        mock_client_cls.return_value = mock_client
+
+        mock_data_cls.return_value = Mock()
+        mock_quant_cls.return_value = Mock()
+        mock_risk_cls.return_value = Mock()
+        mock_strategy_cls.return_value = Mock()
+
+        engine = AlphaLoop()
+        engine.run_cycle()
+
+        # Verify alert was set
+        assert engine.alert is not None
+        assert engine.alert["type"] == "error"
+        assert "refresh" in engine.alert["message"].lower() or "data" in engine.alert["message"].lower()
+        # Verify stage indicates failure
+        assert "refresh failed" in engine.current_stage.lower() or "idle" in engine.current_stage.lower()
+
+    @patch('alphaloop.main.BinanceClient')
+    @patch('alphaloop.main.DataAgent')
+    @patch('alphaloop.main.QuantAgent')
+    @patch('alphaloop.main.RiskAgent')
+    @patch('alphaloop.main.FixedSpreadStrategy')
+    def test_cycle_exception_records_error_and_sets_alert(
+        self, mock_strategy_cls, mock_risk_cls, mock_quant_cls, mock_data_cls, mock_client_cls
+    ):
+        """Test that exceptions in run_cycle are recorded in error_history and alert is set"""
+        # Setup mocks
+        mock_client = Mock()
+        mock_client.symbol = "ETH/USDT:USDT"
+        mock_client.fetch_market_data.return_value = {
+            "mid_price": 2000.0,
+            "best_bid": 1999.0,
+            "best_ask": 2001.0,
+            "timestamp": time.time() * 1000,
+        }
+        mock_client.fetch_funding_rate.return_value = 0.0001
+        mock_client.fetch_account_data.return_value = {
+            "position_amt": 0.0,
+            "entry_price": 0.0,
+            "balance": 1000.0,
+        }
+        mock_client.fetch_open_orders.return_value = []
+        # Simulate exception during place_orders
+        mock_client.place_orders.side_effect = Exception("Network timeout")
+        mock_client_cls.return_value = mock_client
+
+        mock_data = Mock()
+        mock_data.calculate_metrics.return_value = {}
+        mock_data_cls.return_value = mock_data
+
+        mock_quant_cls.return_value = Mock()
+        mock_risk_cls.return_value = Mock()
+
+        mock_strategy = Mock()
+        mock_strategy.spread = 0.002
+        mock_strategy.calculate_target_orders.return_value = [
+            {"side": "buy", "price": 1999.0, "quantity": 0.01}
+        ]
+        mock_strategy_cls.return_value = mock_strategy
+
+        engine = AlphaLoop()
+        engine.run_cycle()
+
+        # Verify cycle_error was recorded
+        assert len(engine.error_history) == 1
+        error = engine.error_history[0]
+        assert error["type"] == "cycle_error"
+        assert "Network timeout" in error["message"]
+        assert error["symbol"] == "ETH/USDT:USDT"
+        assert "strategy_type" in error
+
+        # Verify alert was set
+        assert engine.alert is not None
+        assert engine.alert["type"] == "error"
+        assert "cycle error" in engine.alert["message"].lower() or "network timeout" in engine.alert["message"].lower()

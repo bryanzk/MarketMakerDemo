@@ -1,4 +1,5 @@
 ccxt
+certifi
 pandas
 numpy
 fastapi

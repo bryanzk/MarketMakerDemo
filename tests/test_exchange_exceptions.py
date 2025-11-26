@@ -199,3 +199,115 @@ class TestExceptionHandling:
         assert hasattr(mock_client, "last_api_error")
         assert mock_client.last_order_error is None
         assert mock_client.last_api_error is None
+
+
+class TestPlaceOrdersValidation:
+    """Test input validation in place_orders"""
+
+    @pytest.fixture
+    def mock_client(self):
+        """Create a properly mocked BinanceClient for testing"""
+        with patch("alphaloop.market.exchange.ccxt.binanceusdm") as mock_binance:
+            mock_exchange = MagicMock()
+            mock_exchange.load_markets.return_value = {
+                "ETH/USDT:USDT": {"id": "ETHUSDT", "symbol": "ETH/USDT:USDT"}
+            }
+            mock_binance.return_value = mock_exchange
+
+            with patch("alphaloop.market.exchange.LEVERAGE", 5):
+                client = BinanceClient()
+
+            client.last_order_error = None
+            client.last_api_error = None
+            yield client
+
+    def test_place_orders_invalid_price_zero(self, mock_client):
+        """Test that orders with price=0 are skipped and error recorded"""
+        orders = [{"side": "buy", "price": 0, "quantity": 0.01}]
+        result = mock_client.place_orders(orders)
+
+        assert result == []
+        assert mock_client.last_order_error is not None
+        assert mock_client.last_order_error["type"] == "invalid_price"
+        assert "Invalid price: 0" in mock_client.last_order_error["message"]
+        assert mock_client.last_order_error["symbol"] == "ETH/USDT:USDT"
+
+    def test_place_orders_invalid_price_negative(self, mock_client):
+        """Test that orders with negative price are skipped"""
+        orders = [{"side": "buy", "price": -100.0, "quantity": 0.01}]
+        result = mock_client.place_orders(orders)
+
+        assert result == []
+        assert mock_client.last_order_error is not None
+        assert mock_client.last_order_error["type"] == "invalid_price"
+        assert "-100" in mock_client.last_order_error["message"]
+
+    def test_place_orders_invalid_price_none(self, mock_client):
+        """Test that orders with price=None are skipped"""
+        orders = [{"side": "sell", "price": None, "quantity": 0.01}]
+        result = mock_client.place_orders(orders)
+
+        assert result == []
+        assert mock_client.last_order_error is not None
+        assert mock_client.last_order_error["type"] == "invalid_price"
+        assert "None" in mock_client.last_order_error["message"]
+
+    def test_place_orders_invalid_quantity_zero(self, mock_client):
+        """Test that orders with quantity=0 are skipped"""
+        orders = [{"side": "buy", "price": 1000.0, "quantity": 0}]
+        result = mock_client.place_orders(orders)
+
+        assert result == []
+        assert mock_client.last_order_error is not None
+        assert mock_client.last_order_error["type"] == "invalid_quantity"
+        assert "Invalid quantity: 0" in mock_client.last_order_error["message"]
+
+    def test_place_orders_invalid_quantity_negative(self, mock_client):
+        """Test that orders with negative quantity are skipped"""
+        orders = [{"side": "sell", "price": 1000.0, "quantity": -0.5}]
+        result = mock_client.place_orders(orders)
+
+        assert result == []
+        assert mock_client.last_order_error is not None
+        assert mock_client.last_order_error["type"] == "invalid_quantity"
+        assert "-0.5" in mock_client.last_order_error["message"]
+
+    def test_place_orders_invalid_quantity_none(self, mock_client):
+        """Test that orders with quantity=None are skipped"""
+        orders = [{"side": "buy", "price": 1000.0, "quantity": None}]
+        result = mock_client.place_orders(orders)
+
+        assert result == []
+        assert mock_client.last_order_error is not None
+        assert mock_client.last_order_error["type"] == "invalid_quantity"
+        assert "None" in mock_client.last_order_error["message"]
+
+    def test_place_orders_error_contains_symbol(self, mock_client):
+        """Test that all error types include the symbol field"""
+        mock_client.exchange.create_order.side_effect = InsufficientFunds("No balance")
+
+        orders = [{"side": "buy", "price": 1000.0, "quantity": 0.01}]
+        mock_client.place_orders(orders)
+
+        assert mock_client.last_order_error is not None
+        assert "symbol" in mock_client.last_order_error
+        assert mock_client.last_order_error["symbol"] == "ETH/USDT:USDT"
+
+    def test_place_orders_mixed_valid_invalid(self, mock_client):
+        """Test that valid orders proceed even when invalid ones are skipped"""
+        mock_client.exchange.create_order.return_value = {
+            "id": "12345",
+            "side": "sell",
+            "price": 2000.0,
+            "amount": 0.01,
+        }
+
+        orders = [
+            {"side": "buy", "price": 0, "quantity": 0.01},  # Invalid - skipped
+            {"side": "sell", "price": 2000.0, "quantity": 0.01},  # Valid
+        ]
+        result = mock_client.place_orders(orders)
+
+        # Only valid order should succeed
+        assert len(result) == 1
+        assert result[0]["id"] == "12345"

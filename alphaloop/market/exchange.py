@@ -1,7 +1,9 @@
 import logging
+import os
 import time
 
 import ccxt
+import certifi
 from ccxt import (
     AuthenticationError,
     ExchangeError,
@@ -30,6 +32,12 @@ class BinanceClient:
                 },
             }
         )
+        # Ensure TLS verification uses an accessible CA bundle (e.g., when system certs are restricted)
+        ca_bundle = certifi.where()
+        os.environ.setdefault("SSL_CERT_FILE", ca_bundle)
+        os.environ.setdefault("REQUESTS_CA_BUNDLE", ca_bundle)
+        if hasattr(self.exchange, "session"):
+            self.exchange.session.verify = ca_bundle
         # Some ccxt mocks used in tests may not fully implement mapping protocol for `has`,
         # so guard this access to avoid TypeError while keeping real behaviour unchanged.
         try:
@@ -85,6 +93,9 @@ class BinanceClient:
 
             self.symbol = symbol
             self.market = self.exchange.markets[self.symbol]
+            # Clear old errors when switching symbol
+            self.last_order_error = None
+            self.last_api_error = None
             logger.info(f"Switched exchange client to symbol: {self.symbol}")
             return True
         except Exception as e:
@@ -191,7 +202,7 @@ class BinanceClient:
     def fetch_market_data(self):
         """
         Fetches top 5 order book and calculates mid price.
-        Returns: dict with 'bid', 'ask', 'mid', 'timestamp'
+        Returns: dict with 'bid', 'ask', 'mid', 'timestamp', 'tick_size', 'step_size'
         """
         try:
             orderbook = self.exchange.fetch_order_book(self.symbol, limit=5)
@@ -203,11 +214,34 @@ class BinanceClient:
             else:
                 mid_price = None
 
+            # Get precision info from market
+            tick_size = None
+            step_size = None
+            if self.market:
+                # Try to get tick_size from market precision
+                if "precision" in self.market:
+                    precision = self.market["precision"]
+                    if "price" in precision:
+                        # Some exchanges return number of decimals, others return the actual tick size
+                        price_precision = precision["price"]
+                        if isinstance(price_precision, int) and price_precision > 0:
+                            tick_size = 10 ** (-price_precision)
+                        elif isinstance(price_precision, float) and price_precision < 1:
+                            tick_size = price_precision
+                    if "amount" in precision:
+                        amount_precision = precision["amount"]
+                        if isinstance(amount_precision, int) and amount_precision > 0:
+                            step_size = 10 ** (-amount_precision)
+                        elif isinstance(amount_precision, float) and amount_precision < 1:
+                            step_size = amount_precision
+
             return {
                 "best_bid": best_bid,
                 "best_ask": best_ask,
                 "mid_price": mid_price,
                 "timestamp": orderbook.get("timestamp", time.time() * 1000),  # ms
+                "tick_size": tick_size,
+                "step_size": step_size,
             }
         except Exception as e:
             logger.error(f"Error fetching market data: {e}")
@@ -411,6 +445,28 @@ class BinanceClient:
                 qty = order["quantity"]
                 price = order["price"]
 
+                # Validate price is positive to avoid division by zero
+                if price is None or price <= 0:
+                    logger.error(f"Invalid price {price} for order, skipping...")
+                    self.last_order_error = {
+                        "type": "invalid_price",
+                        "message": f"Invalid price: {price}. Cannot place order.",
+                        "symbol": self.symbol,
+                        "order": order,
+                    }
+                    continue
+
+                # Validate quantity is positive
+                if qty is None or qty <= 0:
+                    logger.error(f"Invalid quantity {qty} for order, skipping...")
+                    self.last_order_error = {
+                        "type": "invalid_quantity",
+                        "message": f"Invalid quantity: {qty}. Cannot place order.",
+                        "symbol": self.symbol,
+                        "order": order,
+                    }
+                    continue
+
                 # Check minimum quantity
                 if qty < min_qty:
                     logger.warning(f"Quantity {qty} below min {min_qty}, adjusting...")
@@ -455,6 +511,7 @@ class BinanceClient:
                 self.last_order_error = {
                     "type": "insufficient_funds",
                     "message": error_msg,
+                    "symbol": self.symbol,
                     "order": order,
                 }
             except InvalidOrder as e:
@@ -463,6 +520,7 @@ class BinanceClient:
                 self.last_order_error = {
                     "type": "invalid_order",
                     "message": error_msg,
+                    "symbol": self.symbol,
                     "order": order,
                     "details": str(e),
                 }
@@ -471,6 +529,7 @@ class BinanceClient:
                 self.last_order_error = {
                     "type": "rate_limit",
                     "message": f"Rate limit exceeded: {str(e)}",
+                    "symbol": self.symbol,
                 }
                 time.sleep(1)  # Brief pause before continuing
             except NetworkError as e:
@@ -479,6 +538,7 @@ class BinanceClient:
                 self.last_order_error = {
                     "type": "network_error",
                     "message": error_msg,
+                    "symbol": self.symbol,
                 }
             except ExchangeError as e:
                 # Generic Binance API error - log with full details
@@ -488,6 +548,7 @@ class BinanceClient:
                 self.last_order_error = {
                     "type": "exchange_error",
                     "message": error_msg,
+                    "symbol": self.symbol,
                     "order": order,
                 }
             except Exception as e:
@@ -498,6 +559,7 @@ class BinanceClient:
                 self.last_order_error = {
                     "type": "unknown_error",
                     "message": str(e),
+                    "symbol": self.symbol,
                     "order": order,
                 }
         return created_orders

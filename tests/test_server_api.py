@@ -19,7 +19,7 @@ class DummyStrategy:
 
 
 class DummyBotEngine:
-    def __init__(self, strategy: Any, orders: List[Dict[str, Any]]):
+    def __init__(self, strategy: Any, orders: List[Dict[str, Any]], errors: List[Dict[str, Any]] = None):
         self.strategy = strategy
         self.current_stage = "Idle"
         self.alert = None
@@ -36,6 +36,7 @@ class DummyBotEngine:
             "error": None,
         }
         self.order_history = orders
+        self.error_history = errors or []
 
     def get_status(self) -> Dict[str, Any]:
         # Return shallow copy so handlers can mutate
@@ -67,6 +68,22 @@ def client_fixed_strategy(monkeypatch):
                 "quantity": 0.1,
                 "status": "placed",
                 "timestamp": time.time(),
+                "strategy_type": "funding_rate",
+            },
+        ],
+        errors=[
+            {
+                "timestamp": time.time(),
+                "symbol": "ETH/USDT:USDT",
+                "type": "invalid_price",
+                "message": "Invalid price: None. Cannot place order.",
+                "strategy_type": "fixed_spread",
+            },
+            {
+                "timestamp": time.time(),
+                "symbol": "ETH/USDT:USDT",
+                "type": "invalid_quantity",
+                "message": "Invalid quantity: 0. Cannot place order.",
                 "strategy_type": "funding_rate",
             },
         ],
@@ -139,4 +156,191 @@ def test_order_history_filters_by_symbol_and_strategy_type(client_fixed_strategy
     ord0 = orders[0]
     assert ord0["symbol"] == "ETH/USDT:USDT"
     assert ord0["strategy_type"] == "funding_rate"
+
+
+def test_error_history_filters_by_type(client_fixed_strategy):
+    """GET /api/error-history should filter by error_type."""
+    resp = client_fixed_strategy.get(
+        "/api/error-history",
+        params={"error_type": "invalid_quantity"},
+    )
+    assert resp.status_code == 200
+    errors = resp.json()
+
+    assert len(errors) == 1
+    err0 = errors[0]
+    assert err0["type"] == "invalid_quantity"
+    assert err0["symbol"] == "ETH/USDT:USDT"
+
+
+class TestErrorHistoryAPI:
+    """Comprehensive tests for /api/error-history endpoint."""
+
+    @pytest.fixture
+    def client_with_errors(self, monkeypatch):
+        """Test client with multiple error entries for filtering tests."""
+        now = time.time()
+        strategy = DummyStrategy(spread=0.002, quantity=0.1, leverage=3)
+        dummy_bot = DummyBotEngine(
+            strategy=strategy,
+            orders=[],
+            errors=[
+                {
+                    "timestamp": now - 100,
+                    "symbol": "ETH/USDT:USDT",
+                    "type": "invalid_price",
+                    "message": "Invalid price: None",
+                    "strategy_type": "fixed_spread",
+                },
+                {
+                    "timestamp": now - 50,
+                    "symbol": "BTC/USDT:USDT",
+                    "type": "invalid_quantity",
+                    "message": "Invalid quantity: 0",
+                    "strategy_type": "funding_rate",
+                },
+                {
+                    "timestamp": now - 10,
+                    "symbol": "ETH/USDT:USDT",
+                    "type": "insufficient_funds",
+                    "message": "Not enough balance",
+                    "strategy_type": "funding_rate",
+                },
+                {
+                    "timestamp": now,
+                    "symbol": "SOL/USDT:USDT",
+                    "type": "invalid_price",
+                    "message": "Invalid price: -100",
+                    "strategy_type": "fixed_spread",
+                },
+            ],
+        )
+
+        monkeypatch.setattr(server, "bot_engine", dummy_bot)
+        monkeypatch.setattr(server, "is_running", False)
+
+        return TestClient(server.app), now
+
+    def test_error_history_returns_all(self, client_with_errors):
+        """GET /api/error-history without filters returns all errors."""
+        client, _ = client_with_errors
+        resp = client.get("/api/error-history")
+        assert resp.status_code == 200
+        errors = resp.json()
+        assert len(errors) == 4
+
+    def test_error_history_sorted_by_timestamp_descending(self, client_with_errors):
+        """GET /api/error-history returns errors sorted newest first."""
+        client, now = client_with_errors
+        resp = client.get("/api/error-history")
+        errors = resp.json()
+
+        # First error should have the highest timestamp
+        assert errors[0]["symbol"] == "SOL/USDT:USDT"
+        assert errors[-1]["symbol"] == "ETH/USDT:USDT"
+        assert errors[-1]["type"] == "invalid_price"
+
+        # Verify descending order
+        timestamps = [e["timestamp"] for e in errors]
+        assert timestamps == sorted(timestamps, reverse=True)
+
+    def test_error_history_filter_by_symbol(self, client_with_errors):
+        """GET /api/error-history filters by symbol."""
+        client, _ = client_with_errors
+        resp = client.get("/api/error-history", params={"symbol": "ETH/USDT:USDT"})
+        assert resp.status_code == 200
+        errors = resp.json()
+
+        assert len(errors) == 2
+        for err in errors:
+            assert err["symbol"] == "ETH/USDT:USDT"
+
+    def test_error_history_filter_by_strategy_type(self, client_with_errors):
+        """GET /api/error-history filters by strategy_type."""
+        client, _ = client_with_errors
+        resp = client.get("/api/error-history", params={"strategy_type": "funding_rate"})
+        assert resp.status_code == 200
+        errors = resp.json()
+
+        assert len(errors) == 2
+        for err in errors:
+            assert err["strategy_type"] == "funding_rate"
+
+    def test_error_history_filter_by_from_time(self, client_with_errors):
+        """GET /api/error-history filters by from_time."""
+        client, now = client_with_errors
+        # Only errors from last 60 seconds
+        resp = client.get("/api/error-history", params={"from_time": now - 60})
+        assert resp.status_code == 200
+        errors = resp.json()
+
+        assert len(errors) == 3  # Excludes the one at now - 100
+        for err in errors:
+            assert err["timestamp"] >= now - 60
+
+    def test_error_history_filter_by_to_time(self, client_with_errors):
+        """GET /api/error-history filters by to_time."""
+        client, now = client_with_errors
+        # Only errors older than 30 seconds
+        resp = client.get("/api/error-history", params={"to_time": now - 30})
+        assert resp.status_code == 200
+        errors = resp.json()
+
+        assert len(errors) == 2  # now - 100 and now - 50
+        for err in errors:
+            assert err["timestamp"] <= now - 30
+
+    def test_error_history_filter_by_time_range(self, client_with_errors):
+        """GET /api/error-history filters by from_time and to_time together."""
+        client, now = client_with_errors
+        # Errors between 60 and 20 seconds ago
+        resp = client.get(
+            "/api/error-history",
+            params={"from_time": now - 60, "to_time": now - 20},
+        )
+        assert resp.status_code == 200
+        errors = resp.json()
+
+        assert len(errors) == 1  # Only now - 50
+        assert errors[0]["symbol"] == "BTC/USDT:USDT"
+
+    def test_error_history_combined_filters(self, client_with_errors):
+        """GET /api/error-history combines multiple filters."""
+        client, _ = client_with_errors
+        # invalid_price errors in fixed_spread strategy
+        resp = client.get(
+            "/api/error-history",
+            params={"error_type": "invalid_price", "strategy_type": "fixed_spread"},
+        )
+        assert resp.status_code == 200
+        errors = resp.json()
+
+        assert len(errors) == 2
+        for err in errors:
+            assert err["type"] == "invalid_price"
+            assert err["strategy_type"] == "fixed_spread"
+
+    def test_error_history_no_match(self, client_with_errors):
+        """GET /api/error-history returns empty list when no matches."""
+        client, _ = client_with_errors
+        resp = client.get(
+            "/api/error-history",
+            params={"symbol": "DOGE/USDT:USDT"},
+        )
+        assert resp.status_code == 200
+        errors = resp.json()
+        assert errors == []
+
+    def test_error_history_empty_when_no_errors(self, monkeypatch):
+        """GET /api/error-history returns empty list when error_history is empty."""
+        strategy = DummyStrategy(spread=0.002, quantity=0.1, leverage=3)
+        dummy_bot = DummyBotEngine(strategy=strategy, orders=[], errors=[])
+
+        monkeypatch.setattr(server, "bot_engine", dummy_bot)
+        monkeypatch.setattr(server, "is_running", False)
+
+        client = TestClient(server.app)
+        resp = client.get("/api/error-history")
+        assert resp.status_code == 200
+        assert resp.json() == []
 

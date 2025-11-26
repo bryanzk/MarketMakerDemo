@@ -34,6 +34,7 @@ class AlphaLoop:
         self.active_orders = []
         self.system_logs = deque(maxlen=50)
         self.order_history = deque(maxlen=200)  # Store last 200 orders
+        self.error_history = deque(maxlen=200)  # Store last 200 errors (order/exchange)
         # Initialize exchange
         try:
             self.exchange = BinanceClient()
@@ -208,6 +209,13 @@ class AlphaLoop:
             try:
                 # Refresh Data
                 if not self.refresh_data():
+                    self.set_stage("Idle (refresh failed)")
+                    if not self.alert or self.alert.get("type") != "error":
+                        self.alert = {
+                            "type": "error",
+                            "message": "Failed to refresh exchange data.",
+                            "suggestion": "Check Binance connectivity / API credentials.",
+                        }
                     return
 
                 market_data = self.latest_market_data
@@ -273,6 +281,22 @@ class AlphaLoop:
                                 "strategy_type": strategy_type,
                             }
                         )
+                    # If the exchange recorded a last_order_error for any failed order,
+                    # capture it into a rolling error history for UI inspection.
+                    if hasattr(self.exchange, "last_order_error") and getattr(
+                        self.exchange, "last_order_error"
+                    ):
+                        err = self.exchange.last_order_error
+                        self.error_history.append(
+                            {
+                                "timestamp": time.time(),
+                                "symbol": err.get("symbol", self.exchange.symbol),
+                                "type": err.get("type", "unknown"),
+                                "message": err.get("message", ""),
+                                "details": err.get("details"),
+                                "strategy_type": strategy_type,
+                            }
+                        )
                     # Fetch updated open orders
                     self.active_orders = self.exchange.fetch_open_orders()
                     # Format for frontend
@@ -289,6 +313,29 @@ class AlphaLoop:
                 }
             except Exception as e:
                 logger.error(f"Error in real exchange cycle: {e}")
+                # Record the cycle error in error_history for UI display
+                strategy_type = (
+                    "funding_rate"
+                    if isinstance(self.strategy, FundingRateStrategy)
+                    else "fixed_spread"
+                )
+                self.error_history.append(
+                    {
+                        "timestamp": time.time(),
+                        "symbol": self.exchange.symbol if self.exchange else "unknown",
+                        "type": "cycle_error",
+                        "message": str(e),
+                        "details": None,
+                        "strategy_type": strategy_type,
+                    }
+                )
+                # Also set alert for immediate UI feedback
+                self.alert = {
+                    "type": "error",
+                    "message": f"Exchange cycle error: {e}",
+                    "suggestion": "Check logs or retry. This may be a temporary issue.",
+                }
+                self.set_stage("Idle (cycle error)")
                 return
         else:
             self.set_stage("Market Simulation")

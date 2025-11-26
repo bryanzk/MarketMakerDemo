@@ -1,9 +1,13 @@
+import logging
 import os
 
 from dotenv import load_dotenv
 
-# Load environment variables
-load_dotenv()
+# Load environment variables, but ignore permission issues (e.g., read-only .env in CI)
+try:
+    load_dotenv()
+except PermissionError as e:
+    logging.warning("Could not load .env file due to permission error: %s", e)
 
 # API Credentials
 API_KEY = os.getenv("BINANCE_API_KEY")
@@ -12,7 +16,7 @@ API_SECRET = os.getenv("BINANCE_API_SECRET")
 # Trading Parameters
 SYMBOL = "ETH/USDT:USDT"  # Trading pair (CCXT Unified format for linear swap)
 QUANTITY = 0.02  # Order quantity in base asset (e.g., ETH)
-SPREAD_PCT = 0.2 / 100  # 0.2% spread (converted to decimal: 0.002)
+SPREAD_PCT = 1.5 / 100  # 1.5% spread (converted to decimal: 0.015)
 MAX_POSITION = 0.5  # Max absolute position size (ETH)
 LEVERAGE = 5  # Leverage multiplier
 SKEW_FACTOR = 100  # Factor to skew quotes based on funding rate (skew = rate * factor)

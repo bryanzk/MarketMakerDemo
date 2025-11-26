@@ -12,12 +12,13 @@ class FundingRateStrategy:
     def calculate_target_orders(self, market_data, funding_rate=0.0):
         """
         Calculates target orders based on fixed spread and funding rate skew.
-        market_data: {'mid_price': float, 'best_bid': float, 'best_ask': float}
+        market_data: {'mid_price': float, 'best_bid': float, 'best_ask': float,
+                      'tick_size': float (optional), 'step_size': float (optional)}
         funding_rate: float (e.g., 0.0001 for 0.01%)
         Returns: list of dicts
         """
         mid_price = market_data.get("mid_price")
-        if not mid_price:
+        if not mid_price or mid_price <= 0:
             return []
 
         # Calculate skew based on funding rate
@@ -43,13 +44,29 @@ class FundingRateStrategy:
         if best_bid and ask_price <= best_bid:
             ask_price = best_bid * 1.0005  # Back off
 
-        # Rounding (Assuming ETHUSDT for defaults)
-        tick_size = 0.01
-        step_size = 0.001
+        # Use dynamic tick_size and step_size from market data, with smart defaults
+        # For small-price tokens (< $1), use smaller tick sizes
+        if mid_price < 0.0001:
+            default_tick = 0.00000001  # 8 decimals for very small prices
+        elif mid_price < 0.01:
+            default_tick = 0.0000001  # 7 decimals
+        elif mid_price < 1:
+            default_tick = 0.000001  # 6 decimals
+        elif mid_price < 100:
+            default_tick = 0.0001  # 4 decimals
+        else:
+            default_tick = 0.01  # 2 decimals for larger prices
+
+        tick_size = market_data.get("tick_size", default_tick)
+        step_size = market_data.get("step_size", 0.001)
 
         final_bid = round_tick_size(bid_price, tick_size)
         final_ask = round_tick_size(ask_price, tick_size)
         qty = round_step_size(self.quantity, step_size)
+
+        # Final validation: ensure prices are positive after rounding
+        if final_bid <= 0 or final_ask <= 0:
+            return []
 
         return [
             {"side": "buy", "price": final_bid, "quantity": qty},

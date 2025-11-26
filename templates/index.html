@@ -414,11 +414,11 @@
                     </div>
                 </div>
 
-                <!-- Error Display -->
-                <div id="errorDisplay" class="card"
+                <!-- Order Error Display -->
+                <div id="orderErrorDisplay" class="card"
                     style="grid-column: span 2; display: none; background: #fef2f2; border-left: 4px solid #ef4444;">
                     <h3 style="color: #dc2626;">⚠️ API Error</h3>
-                    <div id="errorContent" style="font-size: 13px; line-height: 1.6;"></div>
+                    <div id="orderErrorContent" style="font-size: 13px; line-height: 1.6;"></div>
                 </div>
 
                 <!-- Order History -->
@@ -464,6 +464,49 @@
                                 <tr>
                                     <td colspan="6" style="text-align: center; padding: 20px; color: #9ca3af;">No orders
                                         yet
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Error History -->
+                <div class="card" style="grid-column: span 2;">
+                    <h3>Error History</h3>
+                    <div style="margin-bottom: 10px; display: flex; gap: 10px; flex-wrap: wrap;">
+                        <select id="errorTypeFilter" onchange="fetchErrorHistory()"
+                            style="padding: 5px; border-radius: 4px;">
+                            <option value="">All Types</option>
+                            <option value="invalid_price">Invalid Price</option>
+                            <option value="invalid_quantity">Invalid Quantity</option>
+                            <option value="notional_below_min">Notional Too Small</option>
+                            <option value="exchange_error">Exchange Error</option>
+                        </select>
+                        <select id="errorTimeFilter" onchange="fetchErrorHistory()"
+                            style="padding: 5px; border-radius: 4px;">
+                            <option value="">All Time</option>
+                            <option value="3600">Last 1h</option>
+                            <option value="21600">Last 6h</option>
+                            <option value="86400">Last 24h</option>
+                        </select>
+                    </div>
+                    <div id="errorHistoryContainer"
+                        style="height: 200px; overflow-y: auto; background: #f9fafb; border: 1px solid #e5e7eb;">
+                        <table style="width: 100%; font-size: 12px; border-collapse: collapse;">
+                            <thead
+                                style="position: sticky; top: 0; background: #fff; border-bottom: 2px solid #e5e7eb;">
+                                <tr>
+                                    <th style="padding: 8px; text-align: left;">Time</th>
+                                    <th style="padding: 8px; text-align: left;">Symbol</th>
+                                    <th style="padding: 8px; text-align: left;">Type</th>
+                                    <th style="padding: 8px; text-align: left;">Message</th>
+                                </tr>
+                            </thead>
+                            <tbody id="errorHistoryBody">
+                                <tr>
+                                    <td colspan="4" style="text-align: center; padding: 20px; color: #9ca3af;">
+                                        No errors recorded
                                     </td>
                                 </tr>
                             </tbody>
@@ -612,6 +655,7 @@
                         提示：Funding Tab 的参数更新会同步到底层策略，你也可以在 Trade 页看到效果。
                     </div>
                 </div>
+
                 <div class="card" style="grid-column: span 2;">
                     <h3>Funding Strategy Order History</h3>
                     <div style="margin-bottom: 10px; display: flex; gap: 10px; flex-wrap: wrap;">
@@ -653,6 +697,57 @@
                             </tbody>
                         </table>
                     </div>
+                </div>
+
+                <!-- Funding Error History -->
+                <div class="card" style="grid-column: span 2;">
+                    <h3>Funding Error History</h3>
+                    <div style="margin-bottom: 10px; display: flex; gap: 10px; flex-wrap: wrap;">
+                        <select id="fundingErrorTypeFilter" onchange="fetchFundingErrorHistory()"
+                            style="padding: 5px; border-radius: 4px;">
+                            <option value="">All Types</option>
+                            <option value="invalid_price">Invalid Price</option>
+                            <option value="invalid_quantity">Invalid Quantity</option>
+                            <option value="notional_below_min">Notional Too Small</option>
+                            <option value="exchange_error">Exchange Error</option>
+                        </select>
+                        <select id="fundingErrorTimeFilter" onchange="fetchFundingErrorHistory()"
+                            style="padding: 5px; border-radius: 4px;">
+                            <option value="">All Time</option>
+                            <option value="3600">Last 1h</option>
+                            <option value="21600">Last 6h</option>
+                            <option value="86400">Last 24h</option>
+                        </select>
+                    </div>
+                    <div id="fundingErrorHistoryContainer"
+                        style="height: 200px; overflow-y: auto; background: #f9fafb; border: 1px solid #e5e7eb;">
+                        <table style="width: 100%; font-size: 12px; border-collapse: collapse;">
+                            <thead
+                                style="position: sticky; top: 0; background: #fff; border-bottom: 2px solid #e5e7eb;">
+                                <tr>
+                                    <th style="padding: 8px; text-align: left;">Time</th>
+                                    <th style="padding: 8px; text-align: left;">Symbol</th>
+                                    <th style="padding: 8px; text-align: left;">Type</th>
+                                    <th style="padding: 8px; text-align: left;">Message</th>
+                                </tr>
+                            </thead>
+                            <tbody id="fundingErrorHistoryBody">
+                                <tr>
+                                    <td colspan="4" style="text-align: center; padding: 20px; color: #9ca3af;">
+                                        No funding errors recorded
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Order Error Display for Funding Tab
+                     放在 Funding Strategy Control + Order History 下面，避免挤占右侧布局 -->
+                <div id="orderErrorDisplayFunding" class="card"
+                    style="grid-column: span 2; display: none; background: #fef2f2; border-left: 4px solid #ef4444;">
+                    <h3 style="color: #dc2626;">⚠️ API Error</h3>
+                    <div id="orderErrorContentFunding" style="font-size: 13px; line-height: 1.6;"></div>
                 </div>
             </div>
         </div>
@@ -735,7 +830,9 @@
             const el = document.getElementById(tabId);
             if (!el) return false;
             // 默认没有显式 display 的视为可见
-            return el.style.display === '' || el.style.display === 'block';
+            // 使用 getComputedStyle 获取实际的 display 值
+            const computedStyle = window.getComputedStyle(el);
+            return computedStyle.display !== 'none';
         }
 
         function showTab(tabName) {
@@ -1113,22 +1210,32 @@
                     // Auto-scroll to bottom
                     logsContainer.scrollTop = logsContainer.scrollHeight;
                 }
-            }
 
-        // Update Error Display
-        const errorDisplay = document.getElementById('errorDisplay');
-            const errorContent = document.getElementById('errorContent');
-            if (data.last_error && data.last_error.message) {
-                let errorHtml = `<div style="margin-bottom: 8px;"><strong>Type:</strong> ${data.last_error.type}</div>`;
-                errorHtml += `<div style="margin-bottom: 8px;"><strong>Message:</strong> ${data.last_error.message}</div>`;
-                if (data.last_error.details) {
-                    errorHtml += `<div style="font-size: 11px; color: #991b1b; margin-top: 5px;">${data.last_error.details}</div>`;
+                // Update Order Error Display (both Trade and Funding tabs)
+                const orderErrorDisplay = document.getElementById('orderErrorDisplay');
+                const orderErrorContent = document.getElementById('orderErrorContent');
+                const orderErrorDisplayFunding = document.getElementById('orderErrorDisplayFunding');
+                const orderErrorContentFunding = document.getElementById('orderErrorContentFunding');
+                
+                if (data.last_error && data.last_error.message) {
+                    // 显示错误对应的交易对
+                    const errorSymbol = data.last_error.symbol || 'Unknown';
+                    let errorHtml = `<div style="margin-bottom: 8px;"><strong>Symbol:</strong> ${errorSymbol}</div>`;
+                    errorHtml += `<div style="margin-bottom: 8px;"><strong>Type:</strong> ${data.last_error.type}</div>`;
+                    errorHtml += `<div style="margin-bottom: 8px;"><strong>Message:</strong> ${data.last_error.message}</div>`;
+                    if (data.last_error.details) {
+                        errorHtml += `<div style="font-size: 11px; color: #991b1b; margin-top: 5px;">${data.last_error.details}</div>`;
+                    }
+                    // Update Trade tab error display
+                    if (orderErrorContent) orderErrorContent.innerHTML = errorHtml;
+                    if (orderErrorDisplay) orderErrorDisplay.style.display = 'block';
+                    // Update Funding tab error display
+                    if (orderErrorContentFunding) orderErrorContentFunding.innerHTML = errorHtml;
+                    if (orderErrorDisplayFunding) orderErrorDisplayFunding.style.display = 'block';
+                } else {
+                    if (orderErrorDisplay) orderErrorDisplay.style.display = 'none';
+                    if (orderErrorDisplayFunding) orderErrorDisplayFunding.style.display = 'none';
                 }
-                errorContent.innerHTML = errorHtml;
-                errorDisplay.style.display = 'block';
-            } else {
-                errorDisplay.style.display = 'none';
-            }
 
             // Update Alert Display
             const alertDisplay = document.getElementById('alertDisplay');
@@ -1381,11 +1488,13 @@
         }
 
         let currentSuggestion = null;
+        let suggestionsLoaded = false;
 
         async function fetchSuggestions() {
             try {
-                // 建议区域只在 Trade Tab 中展示；如果当前不在该 Tab，可以保持上次结果，不必强制刷新
-                if (!isTabVisible('tradeTab')) {
+                // 初次加载时跳过可见性检查，确保数据能被获取
+                // 之后的轮询只在 Trade Tab 可见时才刷新
+                if (suggestionsLoaded && !isTabVisible('tradeTab')) {
                     return;
                 }
 
@@ -1407,6 +1516,7 @@
                 }
 
                 currentSuggestion = data;
+                suggestionsLoaded = true;
 
                 if (marketCondEl) marketCondEl.innerText = data.condition || 'N/A';
                 if (recSpreadEl) recSpreadEl.innerText = (data.spread !== undefined && data.spread !== null ? data.spread + '%' : '--');
@@ -1700,6 +1810,58 @@
             }
         }
 
+        async function fetchErrorHistory() {
+            try {
+                // Error History 只在 Trade Tab 中展示
+                if (!isTabVisible('tradeTab')) {
+                    return;
+                }
+
+                const typeFilter = document.getElementById('errorTypeFilter').value;
+                const timeFilter = document.getElementById('errorTimeFilter').value;
+
+                let url = '/api/error-history?';
+                if (typeFilter) url += `error_type=${encodeURIComponent(typeFilter)}&`;
+                if (timeFilter) {
+                    const fromTime = Date.now() / 1000 - parseInt(timeFilter);
+                    url += `from_time=${fromTime}&`;
+                }
+
+                const res = await fetch(url);
+                const errors = await res.json();
+
+                if (!Array.isArray(errors)) {
+                    console.error('Error history API returned non-array payload:', errors);
+                    const tbody = document.getElementById('errorHistoryBody');
+                    tbody.innerHTML = '<tr><td colspan="4" style="text-align: center; padding: 20px; color: #ef4444;">Failed to load errors</td></tr>';
+                    return;
+                }
+
+                const tbody = document.getElementById('errorHistoryBody');
+                if (!errors || errors.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="4" style="text-align: center; padding: 20px; color: #9ca3af;">No errors recorded</td></tr>';
+                    return;
+                }
+
+                tbody.innerHTML = errors.map(err => {
+                    const timeStr = new Date(err.timestamp * 1000).toLocaleTimeString();
+                    const type = err.type || 'unknown';
+                    const msg = err.message || '';
+                    return `
+                        <tr style="border-bottom: 1px solid #e5e7eb;">
+                            <td style="padding: 8px;">${timeStr}</td>
+                            <td style="padding: 8px;">${err.symbol || ''}</td>
+                            <td style="padding: 8px;">${type}</td>
+                            <td style="padding: 8px;">${msg}</td>
+                        </tr>
+                    `;
+                }).join('');
+
+            } catch (e) {
+                console.error('Error fetching error history:', e);
+            }
+        }
+
         async function fetchFundingOrderHistory() {
             try {
                 // Funding 策略订单历史只在 Funding Tab 可见时请求
@@ -1761,18 +1923,78 @@
             }
         }
 
+        async function fetchFundingErrorHistory() {
+            try {
+                // Funding 错误历史只在 Funding Tab 可见时请求
+                if (!isTabVisible('fundingTab')) {
+                    return;
+                }
+
+                const typeFilter = document.getElementById('fundingErrorTypeFilter').value;
+                const timeFilter = document.getElementById('fundingErrorTimeFilter').value;
+
+                // 使用当前 Funding Tab 的 symbol，如果没有则退回 ETH/USDT:USDT
+                const currentSymbolFunding = document.getElementById('currentSymbolFunding').innerText || '';
+                const symbolParam = currentSymbolFunding || 'ETH/USDT:USDT';
+
+                let url = `/api/error-history?symbol=${encodeURIComponent(symbolParam)}&strategy_type=funding_rate&`;
+                if (typeFilter) url += `error_type=${encodeURIComponent(typeFilter)}&`;
+                if (timeFilter) {
+                    const fromTime = Date.now() / 1000 - parseInt(timeFilter);
+                    url += `from_time=${fromTime}&`;
+                }
+
+                const res = await fetch(url);
+                const errors = await res.json();
+
+                if (!Array.isArray(errors)) {
+                    console.error('Funding error history API returned non-array payload:', errors);
+                    const tbody = document.getElementById('fundingErrorHistoryBody');
+                    tbody.innerHTML = '<tr><td colspan="4" style="text-align: center; padding: 20px; color: #ef4444;">Failed to load funding errors</td></tr>';
+                    return;
+                }
+
+                const tbody = document.getElementById('fundingErrorHistoryBody');
+                if (!errors || errors.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="4" style="text-align: center; padding: 20px; color: #9ca3af;">No funding errors recorded</td></tr>';
+                    return;
+                }
+
+                tbody.innerHTML = errors.map(err => {
+                    const timeStr = new Date(err.timestamp * 1000).toLocaleTimeString();
+                    const type = err.type || 'unknown';
+                    const msg = err.message || '';
+                    return `
+                        <tr style="border-bottom: 1px solid #e5e7eb;">
+                            <td style="padding: 8px;">${timeStr}</td>
+                            <td style="padding: 8px;">${err.symbol || ''}</td>
+                            <td style="padding: 8px;">${type}</td>
+                            <td style="padding: 8px;">${msg}</td>
+                        </tr>
+                    `;
+                }).join('');
+
+            } catch (e) {
+                console.error('Error fetching funding error history:', e);
+            }
+        }
+
         // Poll every 1 second
         setInterval(fetchStatus, 1000);
         setInterval(fetchSuggestions, 5000); // Fetch suggestions every 5s
         setInterval(fetchPerformance, 2000); // Fetch performance every 2s
         setInterval(fetchOrderHistory, 3000); // Fetch order history every 3s
+        setInterval(fetchErrorHistory, 5000); // Fetch error history every 5s
         setInterval(fetchFundingOrderHistory, 3000); // Fetch funding strategy order history every 3s
+        setInterval(fetchFundingErrorHistory, 5000); // Fetch funding error history every 5s
         setInterval(loadFundingPairs, 60000); // Reload funding pairs every 60s
         fetchStatus();
         fetchSuggestions();
         fetchPerformance();
         fetchOrderHistory();
+        fetchErrorHistory();
         fetchFundingOrderHistory();
+        fetchFundingErrorHistory();
         loadFundingPairs(); // Initial load of funding pairs
     </script>
 </body>

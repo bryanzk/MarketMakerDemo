@@ -43,6 +43,9 @@ def run_bot_loop():
 async def read_root(request: Request):
     # Clear any stale alerts on page load
     bot_engine.alert = None
+    # 页面刷新时也重置即时错误提示，避免过期错误面板一直显示
+    if hasattr(bot_engine, "exchange") and hasattr(bot_engine.exchange, "last_order_error"):
+        bot_engine.exchange.last_order_error = None
     return templates.TemplateResponse("index.html", {"request": request})
 
 @app.get("/api/status")
@@ -122,8 +125,13 @@ async def control_bot(action: str):
                     "suggestions": suggestions
                 }
             
-            # Risk check passed - clear any previous alerts and start bot
+            # Risk check passed - clear any previous alerts / order errors and start bot
             bot_engine.alert = None
+            # 清理最近一次下单错误，让前端错误提示在重新启动后立即消失
+            if hasattr(bot_engine, "exchange") and hasattr(
+                bot_engine.exchange, "last_order_error"
+            ):
+                bot_engine.exchange.last_order_error = None
             is_running = True
             bot_thread = threading.Thread(target=run_bot_loop)
             bot_thread.daemon = True
@@ -169,8 +177,12 @@ async def update_config(config: ConfigUpdate):
     if hasattr(bot_engine.strategy, "skew_factor"):
         bot_engine.strategy.skew_factor = config.skew_factor
     
-    # Clear any existing alerts since we fixed it
+    # Clear any existing alerts / order errors since we fixed the config
     bot_engine.alert = None
+    if hasattr(bot_engine, "exchange") and hasattr(
+        bot_engine.exchange, "last_order_error"
+    ):
+        bot_engine.exchange.last_order_error = None
     
     return {"status": "updated", "config": config}
 
@@ -275,6 +287,42 @@ async def get_order_history(
     # Sort by timestamp descending (newest first)
     history.sort(key=lambda x: x['timestamp'], reverse=True)
     
+    return history
+
+
+@app.get("/api/error-history")
+async def get_error_history(
+    symbol: str = None,
+    error_type: str = None,
+    strategy_type: str = None,
+    from_time: float = None,
+    to_time: float = None,
+):
+    """
+    Get error history with optional filters.
+    :param symbol: Filter by symbol (e.g., 'ETH/USDT:USDT')
+    :param error_type: Filter by error type (e.g., 'invalid_price', 'invalid_quantity')
+    :param strategy_type: Filter by strategy type ('fixed_spread', 'funding_rate')
+    :param from_time: Filter by start timestamp (seconds since epoch)
+    :param to_time: Filter by end timestamp (seconds since epoch)
+    """
+    # AlphaLoop maintains a deque error_history; fall back to empty list if not present.
+    history = list(getattr(bot_engine, "error_history", []))
+
+    if symbol:
+        history = [e for e in history if e.get("symbol") == symbol]
+    if error_type:
+        history = [e for e in history if e.get("type") == error_type]
+    if strategy_type:
+        history = [e for e in history if e.get("strategy_type") == strategy_type]
+    if from_time:
+        history = [e for e in history if e.get("timestamp", 0) >= from_time]
+    if to_time:
+        history = [e for e in history if e.get("timestamp", 0) <= to_time]
+
+    # Sort newest first
+    history.sort(key=lambda x: x.get("timestamp", 0), reverse=True)
+
     return history
 
 @app.get("/api/performance")

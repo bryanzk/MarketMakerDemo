@@ -5,7 +5,7 @@
 This document tracks test coverage for all modules and identifies missing tests.
 本文档跟踪所有模块的测试覆盖率并识别缺失的测试。
 
-**Last Updated / 最后更新**: 2025-11-26
+**Last Updated / 最后更新**: 2025-11-26 (Updated with portfolio health tests)
 
 ---
 
@@ -46,14 +46,22 @@ This document tracks test coverage for all modules and identifies missing tests.
 | Overall Risk Level | `test_risk_indicators.py` | ✅ Complete / 完整 |
 | API Endpoint | `test_risk_indicators.py` | ✅ Complete / 完整 |
 
+### 4. Portfolio Health / 组合健康度
+
+| Module / 模块 | Test File / 测试文件 | Coverage / 覆盖率 |
+|--------------|-------------------|------------------|
+| `calculate_strategy_health()` | `test_portfolio_api.py`, `test_portfolio_health.py` | ✅ Complete / 完整 |
+| `get_health_status()` | `test_portfolio_health.py` | ✅ Complete / 完整 |
+| `get_health_color()` | `test_portfolio_health.py` | ✅ Complete / 完整 |
+
 ---
 
 ## 📊 Test Statistics / 测试统计
 
 ### Total Test Files / 测试文件总数
 - **Existing / 现有**: 25 files
-- **Newly Added / 新增**: 2 files (`test_llm_providers.py`, `test_evaluation_prompts.py`)
-- **Total / 总计**: 27 files
+- **Newly Added / 新增**: 3 files (`test_llm_providers.py`, `test_evaluation_prompts.py`, `test_portfolio_health.py`)
+- **Total / 总计**: 28 files
 
 ### Test Count by Category / 按类别统计
 
@@ -62,7 +70,8 @@ This document tracks test coverage for all modules and identifies missing tests.
 | LLM Providers | ~30 tests | ✅ Complete |
 | Multi-LLM Evaluation | 44 tests | ✅ Complete |
 | Risk Indicators | 39 tests | ✅ Complete |
-| **Total New Features** | **~113 tests** | ✅ **Complete** |
+| Portfolio Health | ~20 tests | ✅ Complete |
+| **Total New Features** | **~133 tests** | ✅ **Complete** |
 
 ---
 

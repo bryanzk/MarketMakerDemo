@@ -53,6 +53,127 @@ GitHub Actions 会在每次推送到 `main` 时重新生成并发布 API 文档�
 
 ## 🔧 REST API Endpoints / REST API 端点
 
+### Portfolio Management / 组合管理
+
+#### `GET /api/portfolio`
+
+Get portfolio overview and strategy comparison data.
+获取组合概览和策略对比数据。
+
+**Response Example / 响应示例:**
+```json
+{
+  "total_pnl": 150.5,
+  "commission": 5.0,
+  "net_pnl": 145.5,
+  "portfolio_sharpe": 1.8,
+  "active_count": 2,
+  "total_count": 3,
+  "risk_level": "low",
+  "total_capital": 10000.0,
+  "available_balance": 9500.0,
+  "session_start_time": 1701234000000,
+  "strategies": [
+    {
+      "id": "fixed_spread",
+      "name": "Fixed Spread",
+      "status": "live",
+      "pnl": 100.0,
+      "sharpe": 2.0,
+      "health": 85,
+      "allocation": 0.6,
+      "roi": 0.0167
+    }
+  ]
+}
+```
+
+**Fields / 字段说明:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `total_pnl` | float | Total PnL from session start / 会话开始后的总盈亏 |
+| `commission` | float | Total trading fees paid / 已缴纳交易费 |
+| `net_pnl` | float | Net PnL (total_pnl - commission) / 净盈亏 |
+| `portfolio_sharpe` | float | Portfolio Sharpe ratio / 组合夏普比率 |
+| `active_count` | int | Number of active strategies / 活跃策略数 |
+| `total_count` | int | Total number of strategies / 总策略数 |
+| `risk_level` | string | `low` / `medium` / `high` / `critical` |
+| `total_capital` | float | Total wallet balance / 总资金 |
+| `available_balance` | float | Available balance for trading / 可用余额 |
+| `session_start_time` | int | Session start timestamp (ms) / 会话起始时间（毫秒） |
+| `strategies` | array | List of strategy data / 策略列表 |
+
+**Related Documentation / 相关文档:**
+- [Portfolio Management Guide](user_guide/portfolio_management.md)
+- [Portfolio User Stories](user_guide/user_stories_portfolio.md)
+
+---
+
+#### `GET /api/funding-rates`
+
+Get funding rates for all supported trading pairs, sorted by absolute value.
+获取所有支持交易对的资金费率，按绝对值排序。
+
+**Response Example / 响应示例:**
+```json
+[
+  {
+    "symbol": "ETH/USDT:USDT",
+    "funding_rate": 0.0001,
+    "daily_yield": 0.0003,
+    "direction": "short_favored"
+  }
+]
+```
+
+**Fields / 字段说明:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `symbol` | string | Trading pair symbol / 交易对符号 |
+| `funding_rate` | float | Current funding rate / 当前资金费率 |
+| `daily_yield` | float | Estimated daily yield (rate × 3) / 预估日收益率 |
+| `direction` | string | `short_favored` / `long_favored` / `neutral` |
+
+---
+
+#### `POST /api/strategy/{strategy_id}/pause`
+
+Pause a specific strategy.
+暂停指定策略。
+
+**Parameters / 参数:**
+- `strategy_id` (path): Strategy identifier / 策略标识符
+
+**Response / 响应:**
+```json
+{
+  "status": "paused",
+  "strategy_id": "fixed_spread"
+}
+```
+
+---
+
+#### `POST /api/strategy/{strategy_id}/resume`
+
+Resume a paused strategy.
+恢复已暂停的策略。
+
+**Parameters / 参数:**
+- `strategy_id` (path): Strategy identifier / 策略标识符
+
+**Response / 响应:**
+```json
+{
+  "status": "live",
+  "strategy_id": "fixed_spread"
+}
+```
+
+---
+
 ### Risk Indicators / 风险指标
 
 #### `GET /api/risk-indicators`
@@ -86,6 +207,10 @@ Returns real-time risk monitoring indicators.
 | `max_drawdown` | float | Maximum drawdown from peak (negative %) / 最大回撤百分比 |
 | `max_drawdown_status` | string | `excellent` / `normal` / `warning` / `danger` |
 | `overall_risk_level` | string | `low` / `medium` / `high` / `critical` |
+
+**Related Documentation / 相关文档:**
+- [Risk Indicators Guide](user_guide/risk_indicators.md)
+- [Risk User Stories](user_guide/user_stories_risk.md)
 
 ---
 

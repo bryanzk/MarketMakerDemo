@@ -55,8 +55,26 @@ class TestCalculateStrategyHealth:
             "max_drawdown": 0,
         }
         health = calculate_strategy_health(metrics)
-        # Sharpe = 2.5 → risk_adjusted = min(100, 2.5 * 40) = 100
+        # Sharpe = 2.5 → risk_adjusted = min(100, max(0, 2.5 * 40)) = 100
         assert health >= 30  # At least risk_adjusted weight (30%)
+
+    def test_health_score_risk_adjusted_negative_sharpe(self):
+        """Test risk-adjusted return scoring with negative Sharpe ratio"""
+        metrics = {
+            "pnl": 0,
+            "sharpe": -5.0,  # Negative Sharpe
+            "fill_rate": 0.8,
+            "slippage": 0,
+            "max_drawdown": 0,
+        }
+        health = calculate_strategy_health(metrics)
+        # Sharpe = -5.0 → risk_adjusted = min(100, max(0, -5.0 * 40)) = 0
+        # Should still be in valid range due to final clamp
+        assert 0 <= health <= 100
+        # Risk adjusted component should be 0
+        # Other components: profitability=50*0.4=20, execution=80*0.2=16, stability=100*0.1=10
+        # Total = 20 + 0 + 16 + 10 = 46
+        assert health == pytest.approx(46.0, rel=0.1)
 
     def test_health_score_execution_quality(self):
         """Test execution quality scoring"""

@@ -111,8 +111,10 @@ All newly added features have comprehensive test coverage.
 1. ✅ **Completed**: Add tests for OpenAIProvider and ClaudeProvider
 2. ✅ **Completed**: Add tests for create_all_providers() and create_provider()
 3. ✅ **Completed**: Add tests for evaluation prompt templates
-4. ⏳ **Pending**: Run full test suite to verify all tests pass
-5. ⏳ **Pending**: Generate coverage report with pytest-cov
+4. ✅ **Completed**: Add tests for portfolio health functions (calculate_strategy_health, get_health_status, get_health_color)
+5. ✅ **Completed**: Fix health score calculation to ensure 0-100 range (negative Sharpe handling)
+6. ⏳ **Pending**: Run full test suite to verify all tests pass
+7. ⏳ **Pending**: Generate coverage report with pytest-cov
 
 ---
 

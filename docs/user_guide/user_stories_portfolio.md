@@ -15,10 +15,10 @@
 **So that** 我可以快速了解整体交易表现
 
 **Acceptance Criteria:**
-- [ ] Total PnL 显示在 Portfolio Overview 区域
-- [ ] Total PnL = Σ(各策略 Realized PnL)
-- [ ] 正数显示绿色，负数显示红色
-- [ ] 数据每秒自动刷新
+- [x] Total PnL 显示在 Portfolio Overview 区域
+- [x] Total PnL = Σ(各策略 Realized PnL)，从会话起始时间计算
+- [x] 正数显示绿色，负数显示红色
+- [x] 数据每 5 秒自动刷新
 
 **Test Cases:**
 ```python
@@ -38,9 +38,9 @@ def test_total_pnl_display_color():
 **So that** 我可以评估整体的风险调整后收益
 
 **Acceptance Criteria:**
-- [ ] Portfolio Sharpe 显示在 Portfolio Overview 区域
-- [ ] 值 > 2.0 显示绿色，1.0-2.0 显示黄色，< 1.0 显示红色
-- [ ] 当没有足够交易数据时显示 "N/A"
+- [x] Portfolio Sharpe 显示在 Portfolio Overview 区域
+- [x] 值 > 2.0 显示绿色，1.0-2.0 显示黄色，< 1.0 显示红色
+- [x] 当没有足够交易数据时显示 "N/A"
 
 **Test Cases:**
 ```python
@@ -60,9 +60,9 @@ def test_portfolio_sharpe_insufficient_data():
 **So that** 我知道系统的运行状态
 
 **Acceptance Criteria:**
-- [ ] 显示格式为 "X / Y"（活跃数 / 总数）
-- [ ] 只有 status = "live" 的策略计入活跃数
-- [ ] 总数包含所有已配置的策略
+- [x] 显示格式为 "X / Y"（活跃数 / 总数）
+- [x] 只有 status = "live" 的策略计入活跃数
+- [x] 总数包含所有已配置的策略
 
 **Test Cases:**
 ```python
@@ -82,12 +82,12 @@ def test_active_strategies_format():
 **So that** 我可以在风险过高时及时采取行动
 
 **Acceptance Criteria:**
-- [ ] 风险等级分为：Low, Medium, High, Critical
-- [ ] 基于以下因素计算：
+- [x] 风险等级分为：Low, Medium, High, Critical
+- [x] 基于以下因素计算：
   - Max Drawdown > 10% → High
   - 任一策略健康度 < 40 → Medium
   - 所有策略正常 → Low
-- [ ] 不同等级使用不同颜色和图标
+- [x] 不同等级使用不同颜色和图标（Low=绿色✓, Medium=黄色⚠, High=红色⚠, Critical=红色⛔）
 
 **Test Cases:**
 ```python
@@ -112,9 +112,9 @@ def test_risk_level_medium_health():
 **So that** 我可以快速对比各策略表现
 
 **Acceptance Criteria:**
-- [ ] 表格包含列：Strategy, Status, PnL, Sharpe, Health, Allocation, ROI, Actions
-- [ ] 每行代表一个策略
-- [ ] 默认按 PnL 降序排列
+- [x] 表格包含列：Strategy, Status, PnL, Sharpe, Health, Allocation, ROI, Actions
+- [x] 每行代表一个策略
+- [x] 默认按 PnL 降序排列
 
 **Test Cases:**
 ```python
@@ -134,9 +134,9 @@ def test_strategy_list_sorted_by_pnl():
 **So that** 我知道哪些策略正在实盘运行
 
 **Acceptance Criteria:**
-- [ ] 状态包括：live, paper, paused, stopped
-- [ ] 每种状态有对应的颜色和图标
-- [ ] live = 🟢, paper = 🟡, paused = 🔴, stopped = ⚫
+- [x] 状态包括：live, paper, paused, stopped
+- [x] 每种状态有对应的颜色和图标
+- [x] live = 🟢 (绿色背景), paper = 🟡 (黄色背景), paused = 🔴 (红色背景), stopped = ⚫ (灰色背景)
 
 **Test Cases:**
 ```python
@@ -156,13 +156,15 @@ def test_strategy_status_display():
 **So that** 我可以识别表现不佳的策略
 
 **Acceptance Criteria:**
-- [ ] 健康度为 0-100 的整数
-- [ ] 计算公式：
-  - 盈利能力 (40%): min(100, max(0, 50 + pnl / 100))
-  - 风险调整收益 (30%): min(100, sharpe * 40)
-  - 执行质量 (20%): fill_rate * 100 - slippage * 10
-  - 稳定性 (10%): max(0, 100 - max_drawdown * 1000)
-- [ ] 80-100 显示绿色，60-79 显示黄色，< 60 显示红色
+- [x] 健康度为 0-100 的浮点数（保留1位小数）
+- [x] 计算公式：
+  - 盈利能力 (40%): `min(100, max(0, 50 + pnl / 100))`
+  - 风险调整收益 (30%): `min(100, max(0, sharpe * 40))` (负 Sharpe 时返回 0)
+  - 执行质量 (20%): `max(0, min(100, fill_rate * 100 - slippage * 10))`
+  - 稳定性 (10%): `max(0, min(100, 100 - max_drawdown * 1000))`
+  - 最终评分: `max(0, min(100, weighted_sum))` (确保在 0-100 范围内)
+- [x] 80-100 显示绿色，60-79 显示黄色，40-59 显示橙色，< 40 显示红色
+- [x] 健康度以进度条和数字形式显示
 
 **Test Cases:**
 ```python
@@ -185,9 +187,9 @@ def test_health_score_weights():
 **So that** 我了解资金分布情况
 
 **Acceptance Criteria:**
-- [ ] 显示为百分比格式（如 60%）
-- [ ] 所有策略的分配比例之和 = 100%
-- [ ] 分配比例来自策略配置
+- [x] 显示为百分比格式（如 60%）
+- [x] 所有策略的分配比例之和 = 100%
+- [x] 分配比例来自策略配置
 
 **Test Cases:**
 ```python
@@ -207,9 +209,9 @@ def test_allocation_format():
 **So that** 我可以评估资金使用效率
 
 **Acceptance Criteria:**
-- [ ] ROI = PnL / Allocated Capital
-- [ ] 显示为百分比格式
-- [ ] 正数绿色，负数红色
+- [x] ROI = PnL / Allocated Capital
+- [x] 显示为百分比格式（如 +2.60%）
+- [x] 正数绿色，负数红色
 
 **Test Cases:**
 ```python
@@ -229,10 +231,11 @@ def test_roi_format():
 **So that** 我可以在风险较高时停止该策略下单
 
 **Acceptance Criteria:**
-- [ ] 每行有 [暂停] 按钮
-- [ ] 点击后弹出确认对话框
-- [ ] 确认后策略状态变为 "paused"
-- [ ] 暂停后按钮变为 [恢复]
+- [x] 每行有 [Pause] 按钮（非暂停状态）或 [Resume] 按钮（暂停状态）
+- [x] 点击 [Pause] 后弹出确认对话框："确定要暂停策略 'xxx' 吗？"
+- [x] 确认后策略状态变为 "paused"
+- [x] 暂停后按钮变为 [Resume]
+- [x] 点击 [Resume] 后策略状态恢复为 "live"
 
 **Test Cases:**
 ```python
@@ -252,9 +255,10 @@ def test_pause_strategy_confirmation():
 **So that** 我可以快速找到表现最好/最差的策略
 
 **Acceptance Criteria:**
-- [ ] 点击表头触发排序
-- [ ] 第一次点击降序，再次点击升序
-- [ ] 当前排序列显示排序图标
+- [x] 点击表头触发排序（Strategy, PnL, Sharpe, Health, ROI 列可排序）
+- [x] 第一次点击降序，再次点击升序
+- [x] 当前排序列显示排序图标（▼ 降序，▲ 升序）
+- [x] 其他列不显示排序图标
 
 **Test Cases:**
 ```python
@@ -276,9 +280,9 @@ def test_sort_toggle():
 **So that** 我不需要手动刷新就能看到最新数据
 
 **Acceptance Criteria:**
-- [ ] Portfolio Overview 每秒刷新
-- [ ] Strategy Table 每 2 秒刷新
-- [ ] 健康度每 5 秒重新计算
+- [x] Portfolio Overview 每 5 秒刷新
+- [x] Strategy Table 每 5 秒刷新（与 Portfolio Overview 同步）
+- [x] 健康度每 5 秒重新计算
 
 **Test Cases:**
 ```python
@@ -295,14 +299,106 @@ def test_auto_refresh_interval():
 **So that** 我可以在需要时立即看到最新状态
 
 **Acceptance Criteria:**
-- [ ] 有刷新按钮
-- [ ] 点击后立即请求最新数据
-- [ ] 刷新期间显示加载状态
+- [x] 有刷新按钮（位于 Strategy Comparison 表右上角）
+- [x] 点击后立即请求最新数据
+- [x] 使用请求去重机制，避免并发重复请求
 
 **Test Cases:**
 ```python
 def test_manual_refresh():
     """点击刷新按钮触发数据请求"""
+```
+
+---
+
+## Epic 4: Trading Fees and Net PnL / 交易手续费和净盈亏
+
+### US-4.1: 查看交易手续费
+
+**As a** 交易员  
+**I want to** 看到已缴纳的交易手续费总额  
+**So that** 我可以了解真实的交易成本
+
+**Acceptance Criteria:**
+- [x] Trading Fees 显示在 Portfolio Overview 区域
+- [x] 从 Binance 获取，从会话起始时间累计
+- [x] 显示为美元格式（如 $5.00）
+- [x] 每 5 秒自动更新
+
+**Test Cases:**
+```python
+def test_trading_fees_display():
+    """Trading Fees 正确显示在 Portfolio Overview"""
+    
+def test_trading_fees_from_binance():
+    """Trading Fees 从 Binance API 获取"""
+```
+
+---
+
+### US-4.2: 查看净盈亏
+
+**As a** 交易员  
+**I want to** 看到扣除手续费后的净盈亏  
+**So that** 我可以了解真实的交易收益
+
+**Acceptance Criteria:**
+- [x] Net PnL 显示在 Portfolio Overview 区域
+- [x] Net PnL = Total PnL - Trading Fees
+- [x] 正数显示绿色，负数显示红色
+- [x] 每 5 秒自动更新
+
+**Test Cases:**
+```python
+def test_net_pnl_calculation():
+    """Net PnL = Total PnL - Trading Fees"""
+    
+def test_net_pnl_display_color():
+    """正 Net PnL 绿色，负 Net PnL 红色"""
+```
+
+---
+
+## Epic 5: Multi-Strategy Instance Isolation / 多策略实例隔离
+
+### US-5.1: 策略实例隔离运行
+
+**As a** 交易员  
+**I want to** 多个策略实例同时运行且互不干扰  
+**So that** 我可以对比不同策略或参数组合的表现
+
+**Acceptance Criteria:**
+- [x] 每个策略实例有独立的状态管理
+- [x] 每个策略实例有独立的订单历史
+- [x] 每个策略实例有独立的参数配置
+- [x] 策略实例之间互不干扰
+
+**Test Cases:**
+```python
+def test_strategy_instance_isolation():
+    """策略实例状态隔离"""
+    
+def test_strategy_instance_independent_orders():
+    """策略实例订单独立管理"""
+```
+
+---
+
+### US-5.2: 查看所有策略实例
+
+**As a** 交易员  
+**I want to** 在策略对比表中看到所有策略实例  
+**So that** 我可以统一管理和监控
+
+**Acceptance Criteria:**
+- [x] 策略对比表显示所有策略实例
+- [x] 每个实例显示独立的指标（PnL, Sharpe, Health 等）
+- [x] 可以独立暂停/恢复每个实例
+
+**Test Cases:**
+```python
+def test_display_all_strategy_instances():
+    """策略对比表显示所有实例"""
 ```
 
 ---
@@ -324,6 +420,10 @@ def test_manual_refresh():
 | `test_strategy_allocation_sum` | 分配之和为 100% | US-2.4 |
 | `test_strategy_roi` | ROI 计算正确 | US-2.5 |
 | `test_pause_strategy` | 暂停策略功能 | US-2.6 |
+| `test_resume_strategy` | 恢复策略功能 | US-2.6 |
+| `test_trading_fees_display` | 交易手续费显示 | US-4.1 |
+| `test_net_pnl_calculation` | 净盈亏计算 | US-4.2 |
+| `test_strategy_instance_isolation` | 策略实例隔离 | US-5.1 |
 
 ### 前端测试（手动/E2E）
 
@@ -333,8 +433,12 @@ def test_manual_refresh():
 | Strategy Table 显示 | 表格正确显示所有策略 | US-2.x |
 | 颜色编码 | PnL/Sharpe/Health 颜色正确 | US-1.1, US-2.3 |
 | 排序功能 | 点击表头排序 | US-2.7 |
-| 暂停按钮 | 点击暂停策略 | US-2.6 |
-| 自动刷新 | 数据定时更新 | US-3.1 |
+| 暂停/恢复按钮 | 点击暂停/恢复策略 | US-2.6 |
+| 自动刷新 | 数据定时更新（5秒） | US-3.1 |
+| 排序图标 | 显示当前排序列和方向 | US-2.7 |
+| Trading Fees 显示 | Portfolio Overview 显示手续费 | US-4.1 |
+| Net PnL 显示 | Portfolio Overview 显示净盈亏 | US-4.2 |
+| 多策略实例显示 | 策略对比表显示所有实例 | US-5.2 |
 
 ---
 
@@ -354,5 +458,9 @@ def test_manual_refresh():
 | P2 | US-2.6 | 增强：暂停功能 |
 | P3 | US-2.7 | 优化：排序功能 |
 | P3 | US-3.x | 优化：刷新机制 |
+| P1 | US-4.1 | 重要：交易手续费显示 |
+| P1 | US-4.2 | 重要：净盈亏显示 |
+| P0 | US-5.1 | 核心：策略实例隔离 |
+| P0 | US-5.2 | 核心：多策略实例显示 |
 
 

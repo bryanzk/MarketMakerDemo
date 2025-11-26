@@ -179,7 +179,9 @@ class MultiLLMEvaluator:
 
         return result
 
-    def _parse_response(self, raw_response: str, provider_name: str) -> StrategyProposal:
+    def _parse_response(
+        self, raw_response: str, provider_name: str
+    ) -> StrategyProposal:
         """
         解析 LLM 响应为 StrategyProposal
 
@@ -193,7 +195,7 @@ class MultiLLMEvaluator:
         try:
             # 清理响应（移除 markdown 代码块）
             clean_response = raw_response.strip()
-            
+
             # 检查是否包含 markdown 代码块
             if "```" in clean_response:
                 # 移除 markdown 代码块
@@ -286,7 +288,9 @@ class MultiLLMEvaluator:
             pnl_history=stats.get("pnl_history", []),
         )
 
-    def _calculate_sharpe(self, pnl_history: list, risk_free_rate: float = 0.0) -> float:
+    def _calculate_sharpe(
+        self, pnl_history: list, risk_free_rate: float = 0.0
+    ) -> float:
         """计算夏普比率"""
         if len(pnl_history) < 2:
             return 0.0
@@ -298,7 +302,11 @@ class MultiLLMEvaluator:
         returns = []
         for i in range(1, len(pnls)):
             if pnls[i - 1] != 0:
-                ret = (pnls[i] - pnls[i - 1]) / abs(pnls[i - 1]) if pnls[i - 1] != 0 else 0
+                ret = (
+                    (pnls[i] - pnls[i - 1]) / abs(pnls[i - 1])
+                    if pnls[i - 1] != 0
+                    else 0
+                )
                 returns.append(ret)
 
         if not returns:
@@ -313,7 +321,9 @@ class MultiLLMEvaluator:
         sharpe = (mean_return - risk_free_rate) / std_return
         return round(float(sharpe), 2)
 
-    def _score_and_rank(self, results: List[EvaluationResult]) -> List[EvaluationResult]:
+    def _score_and_rank(
+        self, results: List[EvaluationResult]
+    ) -> List[EvaluationResult]:
         """
         计算得分并排名
 
@@ -329,8 +339,12 @@ class MultiLLMEvaluator:
                 continue
 
             # 归一化各指标
-            pnl_score = min(max(result.simulation.realized_pnl / 100.0, -1), 1) * 50 + 50
-            sharpe_score = min(max(result.simulation.sharpe_ratio / 3.0, -1), 1) * 50 + 50
+            pnl_score = (
+                min(max(result.simulation.realized_pnl / 100.0, -1), 1) * 50 + 50
+            )
+            sharpe_score = (
+                min(max(result.simulation.sharpe_ratio / 3.0, -1), 1) * 50 + 50
+            )
             win_rate_score = result.simulation.win_rate * 100
             confidence_score = result.proposal.confidence * 100
 
@@ -468,6 +482,7 @@ class StrategySimulator:
             if hasattr(self.strategy, "calculate_target_orders"):
                 # 检查是否需要 funding_rate 参数
                 import inspect
+
                 sig = inspect.signature(self.strategy.calculate_target_orders)
                 if "funding_rate" in sig.parameters:
                     orders = self.strategy.calculate_target_orders(

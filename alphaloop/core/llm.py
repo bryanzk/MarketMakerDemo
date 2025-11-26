@@ -200,4 +200,6 @@ def create_provider(provider_name: str) -> LLMProvider:
     elif provider_name == "claude":
         return ClaudeProvider()
     else:
-        raise ValueError(f"Unknown provider: {provider_name}. Use 'gemini', 'openai', or 'claude'")
+        raise ValueError(
+            f"Unknown provider: {provider_name}. Use 'gemini', 'openai', or 'claude'"
+        )

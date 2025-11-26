@@ -307,4 +307,3 @@ class PortfolioManager:
         # 只保留最近 1000 个数据点
         if len(self.pnl_history) > 1000:
             self.pnl_history = self.pnl_history[-1000:]
-

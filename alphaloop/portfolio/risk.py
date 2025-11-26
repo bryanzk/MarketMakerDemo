@@ -25,9 +25,7 @@ class RiskIndicators:
 
     @staticmethod
     def calculate_liquidation_buffer(
-        current_price: float,
-        liquidation_price: float,
-        position_side: Optional[str]
+        current_price: float, liquidation_price: float, position_side: Optional[str]
     ) -> Optional[float]:
         """
         Calculate the liquidation buffer percentage.
@@ -87,10 +85,7 @@ class RiskIndicators:
     # =========================================================================
 
     @staticmethod
-    def calculate_inventory_drift(
-        position_amt: float,
-        max_position: float
-    ) -> float:
+    def calculate_inventory_drift(position_amt: float, max_position: float) -> float:
         """
         Calculate inventory drift percentage.
 
@@ -226,9 +221,7 @@ class RiskIndicators:
 
     @staticmethod
     def calculate_overall_risk_level(
-        liq_buffer_status: Optional[str],
-        inv_drift_status: str,
-        max_dd_status: str
+        liq_buffer_status: Optional[str], inv_drift_status: str, max_dd_status: str
     ) -> str:
         """
         Calculate overall risk level from individual indicators.
@@ -279,7 +272,7 @@ class RiskIndicators:
         liquidation_price: float,
         max_position: float,
         pnl_history: List[float],
-        position_side: Optional[str] = None
+        position_side: Optional[str] = None,
     ) -> Dict:
         """
         Calculate all risk indicators from exchange data.
@@ -323,7 +316,9 @@ class RiskIndicators:
         )
 
         return {
-            "liquidation_buffer": round(liq_buffer, 2) if liq_buffer is not None else None,
+            "liquidation_buffer": (
+                round(liq_buffer, 2) if liq_buffer is not None else None
+            ),
             "liquidation_buffer_status": liq_buffer_status,
             "inventory_drift": round(inv_drift, 2),
             "inventory_drift_status": inv_drift_status,
@@ -332,4 +327,3 @@ class RiskIndicators:
             "max_drawdown_status": max_dd_status,
             "overall_risk_level": overall_risk,
         }
-

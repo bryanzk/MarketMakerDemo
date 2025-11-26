@@ -2,9 +2,10 @@
 Additional unit tests for /api/funding-rates endpoint in server.py
 """
 
+from unittest.mock import MagicMock, Mock, patch
+
 import pytest
 from fastapi.testclient import TestClient
-from unittest.mock import Mock, patch, MagicMock
 
 
 @pytest.fixture

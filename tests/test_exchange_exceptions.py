@@ -3,16 +3,18 @@ Unit tests for enhanced exception handling in exchange.py
 Tests specific ccxt exception types: InsufficientFunds, InvalidOrder, RateLimitExceeded, etc.
 """
 
+from unittest.mock import MagicMock, Mock, patch
+
 import pytest
-from unittest.mock import Mock, MagicMock, patch
 from ccxt import (
+    ExchangeError,
     InsufficientFunds,
     InvalidOrder,
-    RateLimitExceeded,
     NetworkError,
-    ExchangeError,
     OrderNotFound,
+    RateLimitExceeded,
 )
+
 from alphaloop.market.exchange import BinanceClient
 
 

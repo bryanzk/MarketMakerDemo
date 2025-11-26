@@ -9,8 +9,7 @@ Strategy Health Score Calculator / 策略健康度评分计算器
 - 稳定性 (权重 10%)
 """
 
-from typing import Dict, Any
-
+from typing import Any, Dict
 
 # 健康度各因素权重
 HEALTH_WEIGHTS = {

@@ -8,7 +8,7 @@ Portfolio Management Module / 组合管理模块
 - 风险等级计算 (Risk Level)
 """
 
-from alphaloop.portfolio.health import calculate_strategy_health, HEALTH_WEIGHTS
+from alphaloop.portfolio.health import HEALTH_WEIGHTS, calculate_strategy_health
 from alphaloop.portfolio.manager import PortfolioManager
 
 __all__ = [

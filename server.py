@@ -1,18 +1,19 @@
+import os
+import threading
+import time
+
+import uvicorn
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse
-from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
-import uvicorn
-import threading
-import os
-import time
 
 # Import the bot engine class
 from alphaloop.main import AlphaLoop
+from alphaloop.portfolio.manager import PortfolioManager, StrategyStatus
 from alphaloop.strategies.funding import FundingRateStrategy
 from alphaloop.strategies.strategy import FixedSpreadStrategy
-from alphaloop.portfolio.manager import PortfolioManager, StrategyStatus
 
 app = FastAPI()
 

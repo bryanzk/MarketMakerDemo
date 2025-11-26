@@ -7,10 +7,10 @@ Portfolio API Tests / 组合 API 测试
 对应用户故事文档：docs/user_guide/user_stories_portfolio.md
 """
 
-import pytest
 from unittest.mock import MagicMock, patch
-from fastapi.testclient import TestClient
 
+import pytest
+from fastapi.testclient import TestClient
 
 # ============================================================================
 # Epic 1: Portfolio Overview Tests
@@ -457,52 +457,332 @@ def mock_bot_with_strategies(monkeypatch):
 @pytest.fixture
 def mock_bot_mixed_pnl(monkeypatch):
     """Mock 有正负混合 PnL 的 bot"""
-    pass  # 实现时填充
+    import server
+
+    mock_pm = MagicMock()
+    mock_pm.get_portfolio_data.return_value = {
+        "total_pnl": 70.0,  # 100 + (-30)
+        "portfolio_sharpe": 1.5,
+        "active_count": 2,
+        "total_count": 2,
+        "risk_level": "low",
+        "strategies": [
+            {
+                "id": "fixed_spread",
+                "name": "Fixed Spread",
+                "status": "live",
+                "pnl": 100.0,
+                "sharpe": 2.0,
+                "health": 80,
+                "allocation": 0.5,
+                "roi": 0.02,
+            },
+            {
+                "id": "funding_rate",
+                "name": "Funding Rate",
+                "status": "live",
+                "pnl": -30.0,
+                "sharpe": 0.5,
+                "health": 60,
+                "allocation": 0.5,
+                "roi": -0.006,
+            },
+        ],
+    }
+    monkeypatch.setattr(server, "portfolio_manager", mock_pm)
 
 
 @pytest.fixture
 def mock_bot_with_trades(monkeypatch):
     """Mock 有交易历史的 bot"""
-    pass
+    import server
+
+    mock_pm = MagicMock()
+    mock_pm.get_portfolio_data.return_value = {
+        "total_pnl": 150.0,
+        "portfolio_sharpe": 2.5,  # Valid Sharpe ratio
+        "active_count": 2,
+        "total_count": 2,
+        "risk_level": "low",
+        "strategies": [
+            {
+                "id": "fixed_spread",
+                "name": "Fixed Spread",
+                "status": "live",
+                "pnl": 100.0,
+                "sharpe": 2.1,
+                "health": 85,
+                "allocation": 0.6,
+                "roi": 0.02,
+            },
+            {
+                "id": "funding_rate",
+                "name": "Funding Rate",
+                "status": "live",
+                "pnl": 50.0,
+                "sharpe": 2.5,
+                "health": 88,
+                "allocation": 0.4,
+                "roi": 0.0125,
+            },
+        ],
+    }
+    monkeypatch.setattr(server, "portfolio_manager", mock_pm)
 
 
 @pytest.fixture
 def mock_bot_no_trades(monkeypatch):
     """Mock 无交易历史的 bot"""
-    pass
+    import server
+
+    mock_pm = MagicMock()
+    mock_pm.get_portfolio_data.return_value = {
+        "total_pnl": 0.0,
+        "portfolio_sharpe": None,  # No data for Sharpe
+        "active_count": 0,
+        "total_count": 2,
+        "risk_level": "low",
+        "strategies": [],
+    }
+    monkeypatch.setattr(server, "portfolio_manager", mock_pm)
 
 
 @pytest.fixture
 def mock_bot_mixed_status(monkeypatch):
     """Mock 有混合状态策略的 bot"""
-    pass
+    import server
+
+    mock_pm = MagicMock()
+    mock_pm.get_portfolio_data.return_value = {
+        "total_pnl": 100.0,
+        "portfolio_sharpe": 1.8,
+        "active_count": 2,  # Only live strategies count
+        "total_count": 3,
+        "risk_level": "low",
+        "strategies": [
+            {
+                "id": "fixed_spread",
+                "name": "Fixed Spread",
+                "status": "live",
+                "pnl": 80.0,
+                "sharpe": 2.0,
+                "health": 85,
+                "allocation": 0.5,
+                "roi": 0.016,
+            },
+            {
+                "id": "funding_rate",
+                "name": "Funding Rate",
+                "status": "live",
+                "pnl": 20.0,
+                "sharpe": 1.5,
+                "health": 75,
+                "allocation": 0.3,
+                "roi": 0.004,
+            },
+            {
+                "id": "momentum",
+                "name": "Momentum",
+                "status": "stopped",
+                "pnl": 0.0,
+                "sharpe": 0.0,
+                "health": 50,
+                "allocation": 0.2,
+                "roi": 0.0,
+            },
+        ],
+    }
+    monkeypatch.setattr(server, "portfolio_manager", mock_pm)
 
 
 @pytest.fixture
 def mock_bot_healthy(monkeypatch):
-    """Mock 健康的 bot"""
-    pass
+    """Mock 健康的 bot - low risk"""
+    import server
+
+    mock_pm = MagicMock()
+    mock_pm.get_portfolio_data.return_value = {
+        "total_pnl": 200.0,
+        "portfolio_sharpe": 3.0,
+        "active_count": 2,
+        "total_count": 2,
+        "risk_level": "low",
+        "strategies": [
+            {
+                "id": "fixed_spread",
+                "name": "Fixed Spread",
+                "status": "live",
+                "pnl": 120.0,
+                "sharpe": 3.2,
+                "health": 95,
+                "allocation": 0.6,
+                "roi": 0.024,
+            },
+            {
+                "id": "funding_rate",
+                "name": "Funding Rate",
+                "status": "live",
+                "pnl": 80.0,
+                "sharpe": 2.8,
+                "health": 92,
+                "allocation": 0.4,
+                "roi": 0.016,
+            },
+        ],
+    }
+    monkeypatch.setattr(server, "portfolio_manager", mock_pm)
 
 
 @pytest.fixture
 def mock_bot_high_drawdown(monkeypatch):
-    """Mock 高回撤的 bot"""
-    pass
+    """Mock 高回撤的 bot - high risk"""
+    import server
+
+    mock_pm = MagicMock()
+    mock_pm.get_portfolio_data.return_value = {
+        "total_pnl": -100.0,
+        "portfolio_sharpe": -0.5,
+        "active_count": 2,
+        "total_count": 2,
+        "risk_level": "high",
+        "strategies": [
+            {
+                "id": "fixed_spread",
+                "name": "Fixed Spread",
+                "status": "live",
+                "pnl": -60.0,
+                "sharpe": -0.3,
+                "health": 30,
+                "allocation": 0.6,
+                "roi": -0.012,
+            },
+            {
+                "id": "funding_rate",
+                "name": "Funding Rate",
+                "status": "live",
+                "pnl": -40.0,
+                "sharpe": -0.7,
+                "health": 25,
+                "allocation": 0.4,
+                "roi": -0.008,
+            },
+        ],
+    }
+    monkeypatch.setattr(server, "portfolio_manager", mock_pm)
 
 
 @pytest.fixture
 def mock_bot_low_health(monkeypatch):
     """Mock 低健康度策略的 bot"""
-    pass
+    import server
+
+    mock_pm = MagicMock()
+    mock_pm.get_portfolio_data.return_value = {
+        "total_pnl": 50.0,
+        "portfolio_sharpe": 0.8,
+        "active_count": 2,
+        "total_count": 2,
+        "risk_level": "medium",
+        "strategies": [
+            {
+                "id": "fixed_spread",
+                "name": "Fixed Spread",
+                "status": "live",
+                "pnl": 30.0,
+                "sharpe": 1.0,
+                "health": 45,
+                "allocation": 0.5,
+                "roi": 0.006,
+            },
+            {
+                "id": "funding_rate",
+                "name": "Funding Rate",
+                "status": "live",
+                "pnl": 20.0,
+                "sharpe": 0.6,
+                "health": 40,
+                "allocation": 0.5,
+                "roi": 0.004,
+            },
+        ],
+    }
+    monkeypatch.setattr(server, "portfolio_manager", mock_pm)
 
 
 @pytest.fixture
 def mock_bot_with_capital(monkeypatch):
     """Mock 有资金分配的 bot"""
-    pass
+    import server
+
+    mock_pm = MagicMock()
+    mock_pm.get_portfolio_data.return_value = {
+        "total_pnl": 150.0,
+        "portfolio_sharpe": 2.0,
+        "active_count": 2,
+        "total_count": 2,
+        "risk_level": "low",
+        "strategies": [
+            {
+                "id": "fixed_spread",
+                "name": "Fixed Spread",
+                "status": "live",
+                "pnl": 100.0,
+                "sharpe": 2.1,
+                "health": 85,
+                "allocation": 0.6,
+                "roi": 0.02,
+            },
+            {
+                "id": "funding_rate",
+                "name": "Funding Rate",
+                "status": "live",
+                "pnl": 50.0,
+                "sharpe": 2.5,
+                "health": 88,
+                "allocation": 0.4,
+                "roi": 0.0125,
+            },
+        ],
+    }
+    monkeypatch.setattr(server, "portfolio_manager", mock_pm)
 
 
 @pytest.fixture
 def mock_bot_paused_strategy(monkeypatch):
     """Mock 有暂停策略的 bot"""
-    pass
+    import server
+
+    # Create a stateful mock that tracks strategy status
+    strategy_status = {"fixed_spread": "paused"}
+
+    def get_portfolio_data():
+        return {
+            "total_pnl": 100.0,
+            "portfolio_sharpe": 1.5,
+            "active_count": 1 if strategy_status["fixed_spread"] == "live" else 0,
+            "total_count": 1,
+            "risk_level": "low",
+            "strategies": [
+                {
+                    "id": "fixed_spread",
+                    "name": "Fixed Spread",
+                    "status": strategy_status["fixed_spread"],
+                    "pnl": 100.0,
+                    "sharpe": 2.0,
+                    "health": 80,
+                    "allocation": 1.0,
+                    "roi": 0.02,
+                },
+            ],
+        }
+
+    def resume_strategy(strategy_id):
+        if strategy_id in strategy_status:
+            strategy_status[strategy_id] = "live"
+            return True
+        return False
+
+    mock_pm = MagicMock()
+    mock_pm.get_portfolio_data.side_effect = get_portfolio_data
+    mock_pm.resume_strategy.side_effect = resume_strategy
+    monkeypatch.setattr(server, "portfolio_manager", mock_pm)

@@ -1,6 +1,8 @@
-import pytest
 from unittest.mock import Mock, patch
-from alphaloop.core.llm import LLMGateway, GeminiProvider, LLMProvider
+
+import pytest
+
+from alphaloop.core.llm import GeminiProvider, LLMGateway, LLMProvider
 
 
 class TestGeminiProvider:

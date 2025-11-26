@@ -1,8 +1,8 @@
 import os
+from unittest.mock import MagicMock, Mock, patch
 
 import certifi
 import pytest
-from unittest.mock import Mock, MagicMock, patch
 
 from alphaloop.market.exchange import BinanceClient
 

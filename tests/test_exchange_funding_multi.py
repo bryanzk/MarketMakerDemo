@@ -3,8 +3,10 @@ Unit tests for funding rate fetching functionality.
 Tests fetch_funding_rate_for_symbol and fetch_bulk_funding_rates methods.
 """
 
+from unittest.mock import MagicMock, Mock, patch
+
 import pytest
-from unittest.mock import Mock, patch, MagicMock
+
 from alphaloop.market.exchange import BinanceClient
 
 

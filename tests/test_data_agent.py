@@ -1,4 +1,5 @@
 import pytest
+
 from alphaloop.agents.data import DataAgent
 from alphaloop.core.config import METRICS_CONFIG
 

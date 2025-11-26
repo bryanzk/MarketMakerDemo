@@ -1,4 +1,5 @@
 import pytest
+
 from alphaloop.market.performance import PerformanceTracker
 
 

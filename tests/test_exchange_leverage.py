@@ -3,8 +3,10 @@ Tests for leverage and symbol limits methods in BinanceClient
 Covers: get_leverage, set_leverage, get_max_leverage, get_symbol_limits
 """
 
+from unittest.mock import MagicMock, Mock, patch
+
 import pytest
-from unittest.mock import Mock, MagicMock, patch
+
 from alphaloop.market.exchange import BinanceClient
 
 

@@ -1,13 +1,14 @@
-import time
 import logging
 import sys
 import threading
-from config import REFRESH_INTERVAL, LOG_LEVEL, SYMBOL
+import time
+
+from config import LOG_LEVEL, REFRESH_INTERVAL, SYMBOL
 from exchange import BinanceClient
-from strategy import FixedSpreadStrategy
-from risk import RiskManager
 from order_manager import OrderManager
 from performance import PerformanceTracker
+from risk import RiskManager
+from strategy import FixedSpreadStrategy
 
 # Setup Logging
 logging.basicConfig(

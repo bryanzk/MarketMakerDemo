@@ -2,9 +2,11 @@
 Unit tests for AlphaLoop.refresh_data method
 """
 
-import pytest
 import time
 from unittest.mock import Mock, patch
+
+import pytest
+
 from alphaloop.main import AlphaLoop
 
 

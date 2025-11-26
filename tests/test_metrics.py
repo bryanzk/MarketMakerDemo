@@ -1,6 +1,7 @@
-import pytest
 import numpy as np
-from alphaloop.metrics.definitions import SharpeRatio, Slippage, FillRate
+import pytest
+
+from alphaloop.metrics.definitions import FillRate, SharpeRatio, Slippage
 
 
 class TestSharpeRatio:

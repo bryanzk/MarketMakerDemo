@@ -1,5 +1,5 @@
 import pytest
-from alphaloop.core.utils import round_step_size, round_tick_size
+
 from alphaloop.core.utils import round_step_size, round_tick_size
 
 

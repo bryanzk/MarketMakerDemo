@@ -7,6 +7,27 @@ class FixedSpreadStrategy:
         self.spread = SPREAD_PCT
         self.quantity = QUANTITY
         self.leverage = LEVERAGE
+        # Store initial safe defaults for risk fallback
+        self._safe_defaults = {
+            "spread": SPREAD_PCT,
+            "quantity": QUANTITY,
+            "leverage": LEVERAGE,
+        }
+
+    def reset_to_safe_defaults(self):
+        """
+        Reset strategy parameters to initial safe defaults.
+        Called when risk validation fails.
+        Returns: dict with the reset values
+        """
+        self.spread = self._safe_defaults["spread"]
+        self.quantity = self._safe_defaults["quantity"]
+        self.leverage = self._safe_defaults["leverage"]
+        return self._safe_defaults.copy()
+
+    def get_safe_defaults(self):
+        """Return a copy of the safe default parameters."""
+        return self._safe_defaults.copy()
 
     def calculate_target_orders(self, market_data):
         """

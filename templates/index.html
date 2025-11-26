@@ -193,7 +193,12 @@
             color: white;
         ">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
-                <h2 style="margin: 0; font-size: 18px; color: #94a3b8;">🏦 Portfolio Overview</h2>
+                <div style="display: flex; align-items: center; gap: 15px;">
+                    <h2 style="margin: 0; font-size: 18px; color: #94a3b8;">🏦 Portfolio Overview</h2>
+                    <div style="font-size: 11px; color: #64748b; background: rgba(100,116,139,0.2); padding: 3px 8px; border-radius: 4px;">
+                        📅 Since: <span id="sessionStartTime" style="color: #94a3b8;">--</span>
+                    </div>
+                </div>
                 <div style="font-size: 13px; color: #94a3b8;">
                     Wallet: <span id="portfolioCapital" style="color: white; font-weight: bold;">$10,000</span>
                     <span style="margin: 0 8px;">|</span>
@@ -420,61 +425,123 @@
             <div class="card-grid">
                 <div class="card">
                     <h3>Control Panel</h3>
-                    <div style="display: flex; gap: 10px; margin-bottom: 15px;">
-                        <button id="startBtn" class="btn btn-success" onclick="startFixedSpreadBot()">Start Bot</button>
-                        <button id="stopBtn" class="btn btn-danger" onclick="controlBot('stop')" disabled>Stop
-                            Bot</button>
+                    
+                    <!-- Trading Pair - Highlighted -->
+                    <div style="background: linear-gradient(135deg, #1e3a5f 0%, #0f172a 100%); padding: 15px; border-radius: 10px; margin-bottom: 15px; border: 1px solid #334155;">
+                        <div style="font-size: 11px; color: #94a3b8; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px;">📊 Trading Pair</div>
+                        <select id="pairSelect" onchange="updatePair()" style="
+                            width: 100%;
+                            padding: 12px 15px;
+                            font-size: 18px;
+                            font-weight: bold;
+                            background: #0f172a;
+                            color: #10b981;
+                            border: 2px solid #10b981;
+                            border-radius: 8px;
+                            cursor: pointer;
+                            outline: none;
+                        ">
+                            <optgroup label="Mainstream">
+                                <option value="BTC/USDT:USDT">BTC/USDT</option>
+                                <option value="ETH/USDT:USDT" selected>ETH/USDT</option>
+                                <option value="SOL/USDT:USDT">SOL/USDT</option>
+                            </optgroup>
+                            <optgroup label="Memecoins">
+                                <option value="DOGE/USDT:USDT">DOGE/USDT</option>
+                                <option value="1000SHIB/USDT:USDT">1000SHIB/USDT</option>
+                                <option value="1000PEPE/USDT:USDT">1000PEPE/USDT</option>
+                                <option value="WIF/USDT:USDT">WIF/USDT</option>
+                                <option value="1000FLOKI/USDT:USDT">1000FLOKI/USDT</option>
+                            </optgroup>
+                        </select>
                     </div>
-                    <hr>
-                    <div style="margin-top: 15px;">
-                        <label>Trading Pair:
-                            <select id="pairSelect" onchange="updatePair()" style="padding: 5px; border-radius: 4px;">
-                                <optgroup label="Mainstream">
-                                    <option value="BTC/USDT:USDT">BTC/USDT</option>
-                                    <option value="ETH/USDT:USDT" selected>ETH/USDT</option>
-                                    <option value="SOL/USDT:USDT">SOL/USDT</option>
-                                </optgroup>
-                                <optgroup label="Memecoins">
-                                    <option value="DOGE/USDT:USDT">DOGE/USDT</option>
-                                    <option value="1000SHIB/USDT:USDT">1000SHIB/USDT</option>
-                                    <option value="1000PEPE/USDT:USDT">1000PEPE/USDT</option>
-                                    <option value="WIF/USDT:USDT">WIF/USDT</option>
-                                    <option value="1000FLOKI/USDT:USDT">1000FLOKI/USDT</option>
-                                </optgroup>
-                            </select>
-                        </label>
-                    </div>
-                    <hr>
-                    <div style="margin-top: 15px;">
-                        <label>Strategy:
-                            <select id="strategySelect" onchange="toggleStrategyParams()"
-                                style="padding: 5px; border-radius: 4px; width: 100%; margin-top: 5px;">
-                                <option value="fixed_spread">Fixed Spread</option>
-                                <option value="funding_rate">Funding Rate Skew</option>
-                            </select>
-                        </label>
-                    </div>
-                    <hr>
-                    <div style="margin-top: 15px;">
-                        <label>Spread (%): <input type="number" id="spreadInput" step="0.001" value="0.002"></label>
-                        <label>Qty: <input type="number" id="qtyInput" step="0.01" value="0.02"></label>
 
-                        <div id="skewFactorContainer" style="display: none; margin-top: 10px;">
-                            <label>Skew Factor: <input type="number" id="skewFactorInput" step="10" value="100"></label>
-                            <div style="font-size: 11px; color: #6b7280; margin-top: 2px;">Controls funding rate impact
-                                on price skew.</div>
+                    <!-- Start/Stop Buttons -->
+                    <div style="display: flex; gap: 10px; margin-bottom: 15px;">
+                        <button id="startBtn" class="btn btn-success" onclick="startFixedSpreadBot()" style="flex: 1; padding: 12px;">▶ Start Bot</button>
+                        <button id="stopBtn" class="btn btn-danger" onclick="controlBot('stop')" disabled style="flex: 1; padding: 12px;">⏹ Stop Bot</button>
+                    </div>
+
+                    <!-- Trading Parameters - Highlighted -->
+                    <div style="background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%); padding: 15px; border-radius: 10px; border: 1px solid #334155;">
+                        <div style="font-size: 11px; color: #94a3b8; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 12px;">⚙️ Trading Parameters</div>
+                        
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 15px;">
+                            <div>
+                                <label style="font-size: 12px; color: #94a3b8; display: block; margin-bottom: 5px;">Spread (%)</label>
+                                <input type="number" id="spreadInput" step="0.001" value="0.002" style="
+                                    width: 100%;
+                                    padding: 10px;
+                                    font-size: 16px;
+                                    font-weight: bold;
+                                    background: #0f172a;
+                                    color: #f59e0b;
+                                    border: 2px solid #475569;
+                                    border-radius: 6px;
+                                    box-sizing: border-box;
+                                ">
+                            </div>
+                            <div>
+                                <label style="font-size: 12px; color: #94a3b8; display: block; margin-bottom: 5px;">Quantity</label>
+                                <input type="number" id="qtyInput" step="0.01" value="0.02" style="
+                                    width: 100%;
+                                    padding: 10px;
+                                    font-size: 16px;
+                                    font-weight: bold;
+                                    background: #0f172a;
+                                    color: #f59e0b;
+                                    border: 2px solid #475569;
+                                    border-radius: 6px;
+                                    box-sizing: border-box;
+                                ">
+                            </div>
                         </div>
 
-                        <button class="btn btn-primary" style="margin-top: 10px; width: 100%;"
-                            onclick="updateConfig()">Update Config</button>
+                        <div id="skewFactorContainer" style="display: none; margin-bottom: 15px;">
+                            <label style="font-size: 12px; color: #94a3b8; display: block; margin-bottom: 5px;">Skew Factor</label>
+                            <input type="number" id="skewFactorInput" step="10" value="100" style="
+                                width: 100%;
+                                padding: 10px;
+                                font-size: 16px;
+                                font-weight: bold;
+                                background: #0f172a;
+                                color: #f59e0b;
+                                border: 2px solid #475569;
+                                border-radius: 6px;
+                                box-sizing: border-box;
+                            ">
+                            <div style="font-size: 11px; color: #6b7280; margin-top: 4px;">Controls funding rate impact on price skew.</div>
+                        </div>
+
+                        <button class="btn btn-primary" style="width: 100%; padding: 10px; font-weight: bold;"
+                            onclick="updateConfig()">💾 Update Config</button>
                     </div>
-                    <hr>
-                    <div style="margin-top: 15px;">
-                        <label>Leverage (<span id="leverageRange">1-125</span>x): <input type="number"
-                                id="leverageInput" min="1" max="125" value="5"></label>
-                        <button class="btn btn-primary" style="margin-top: 10px; width: 100%;"
-                            onclick="updateLeverage()">Update Leverage</button>
+
+                    <!-- Leverage Section -->
+                    <div style="background: #1e293b; padding: 12px; border-radius: 8px; margin-top: 12px; border: 1px solid #334155;">
+                        <label style="font-size: 12px; color: #94a3b8; display: block; margin-bottom: 8px;">Leverage (<span id="leverageRange">1-125</span>x)</label>
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <input type="number" id="leverageInput" min="1" max="125" value="5" style="
+                                width: 80px;
+                                padding: 8px;
+                                font-size: 14px;
+                                font-weight: bold;
+                                background: #0f172a;
+                                color: #38bdf8;
+                                border: 1px solid #475569;
+                                border-radius: 4px;
+                                text-align: center;
+                            ">
+                            <button class="btn btn-primary" style="flex: 1; padding: 8px 12px; font-size: 12px;"
+                                onclick="updateLeverage()">Update Leverage</button>
+                        </div>
                     </div>
+
+                    <!-- Hidden strategy select for compatibility -->
+                    <select id="strategySelect" style="display: none;" onchange="toggleStrategyParams()">
+                        <option value="fixed_spread">Fixed Spread</option>
+                        <option value="funding_rate">Funding Rate Skew</option>
+                    </select>
                 </div>
                 <div class="card">
                     <h3>Strategy Suggestions</h3>
@@ -2411,6 +2478,15 @@
                     minimumFractionDigits: 2,
                     maximumFractionDigits: 2
                 });
+            }
+
+            // Session Start Time
+            const sessionStartEl = document.getElementById('sessionStartTime');
+            if (sessionStartEl && data.session_start_time) {
+                const sessionDate = new Date(data.session_start_time);
+                // Format: "Nov 26, 09:00"
+                const options = { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false };
+                sessionStartEl.innerText = sessionDate.toLocaleDateString('en-US', options);
             }
         }
 

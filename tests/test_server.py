@@ -294,6 +294,10 @@ class TestServer:
         }
 
         with patch("server.bot_engine", mock_bot):
+            # Set session start time before test trades (1600000000 = 2020-09-13)
+            import server
+            server.session_start_time_ms = 1500000000 * 1000  # Earlier than test trades
+
             from server import app
 
             client = TestClient(app)
@@ -336,6 +340,10 @@ class TestServer:
         }
 
         with patch("server.bot_engine", mock_bot):
+            # Set session start time before test trades (1600000000 = 2020-09-13)
+            import server
+            server.session_start_time_ms = 1500000000 * 1000  # Earlier than test trades
+
             from server import app
 
             client = TestClient(app)
@@ -364,6 +372,10 @@ class TestServer:
         mock_bot.exchange.fetch_pnl_and_fees.side_effect = Exception("API Error")
 
         with patch("server.bot_engine", mock_bot):
+            # Set session start time before test trades (1600000000 = 2020-09-13)
+            import server
+            server.session_start_time_ms = 1500000000 * 1000  # Earlier than test trades
+
             from server import app
 
             client = TestClient(app)

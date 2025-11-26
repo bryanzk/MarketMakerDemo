@@ -391,10 +391,19 @@ class AlphaLoop:
         else:
             self.set_stage(f"Risk: Rejected ({reason})")
             logger.warning(f"Proposal rejected: {reason}")
+
+            # Auto-fallback to safe defaults when risk validation fails
+            safe_defaults = self.strategy.reset_to_safe_defaults()
+            logger.info(
+                f"Auto-fallback to safe defaults",
+                extra={"extra_data": {"safe_defaults": safe_defaults}},
+            )
+            self.set_stage(f"Risk: Fallback to safe spread {safe_defaults['spread']*100:.2f}%")
+
             self.alert = {
                 "type": "warning",
                 "message": f"Risk Rejection: {reason}",
-                "suggestion": "Check your strategy settings or market volatility.",
+                "suggestion": f"Auto-fallback to safe defaults (Spread: {safe_defaults['spread']*100:.2f}%).",
             }
 
     def run_continuous(self, cycles=5):

@@ -8,6 +8,29 @@ class FundingRateStrategy:
         self.quantity = QUANTITY
         self.leverage = LEVERAGE
         self.skew_factor = SKEW_FACTOR
+        # Store initial safe defaults for risk fallback
+        self._safe_defaults = {
+            "spread": SPREAD_PCT,
+            "quantity": QUANTITY,
+            "leverage": LEVERAGE,
+            "skew_factor": SKEW_FACTOR,
+        }
+
+    def reset_to_safe_defaults(self):
+        """
+        Reset strategy parameters to initial safe defaults.
+        Called when risk validation fails.
+        Returns: dict with the reset values
+        """
+        self.spread = self._safe_defaults["spread"]
+        self.quantity = self._safe_defaults["quantity"]
+        self.leverage = self._safe_defaults["leverage"]
+        self.skew_factor = self._safe_defaults["skew_factor"]
+        return self._safe_defaults.copy()
+
+    def get_safe_defaults(self):
+        """Return a copy of the safe default parameters."""
+        return self._safe_defaults.copy()
 
     def calculate_target_orders(self, market_data, funding_rate=0.0):
         """

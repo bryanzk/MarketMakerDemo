@@ -139,6 +139,12 @@ class TestAlphaLoop:
         mock_strategy.calculate_target_orders.return_value = (
             []
         )  # Return empty list to be iterable
+        # Mock the reset_to_safe_defaults method for auto-fallback
+        mock_strategy.reset_to_safe_defaults.return_value = {
+            "spread": 0.015,
+            "quantity": 0.02,
+            "leverage": 5,
+        }
         mock_strategy_cls.return_value = mock_strategy
 
         engine = AlphaLoop()
@@ -146,11 +152,12 @@ class TestAlphaLoop:
 
         # Verify
         mock_risk.validate_proposal.assert_called()
-        # Strategy spread should NOT have changed (mock object attribute wouldn't change automatically,
-        # but we can check that we didn't log "Applying new config" or similar if we could spy on logger)
-        # Better: check that alert was set
+        # Verify auto-fallback was triggered
+        mock_strategy.reset_to_safe_defaults.assert_called_once()
+        # Check that alert was set with fallback info
         assert engine.alert is not None
         assert "Risk Rejection" in engine.alert["message"]
+        assert "Auto-fallback" in engine.alert["suggestion"]
 
     @patch("alphaloop.main.BinanceClient")
     @patch("alphaloop.main.DataAgent")

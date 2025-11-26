@@ -1,6 +1,7 @@
 import os
 import threading
 import time
+from datetime import datetime, timezone
 
 import uvicorn
 from fastapi import FastAPI, Request
@@ -40,6 +41,52 @@ portfolio_manager = PortfolioManager(total_capital=10000.0)  # Default fallback
 
 # Store initial capital for reference
 initial_capital = 10000.0
+
+# Session start time for PnL calculation (default: today 9:00 AM UTC+8)
+# This can be updated via API
+session_start_time_ms: int = None
+
+
+def get_today_9am_timestamp_ms() -> int:
+    """
+    Get today's 9:00 AM timestamp in milliseconds (UTC+8 Beijing time).
+
+    Returns:
+        int: Timestamp in milliseconds
+    """
+    from datetime import timedelta
+
+    # Get current time in UTC
+    now_utc = datetime.now(timezone.utc)
+
+    # Convert to UTC+8 (Beijing time)
+    utc_plus_8 = timezone(timedelta(hours=8))
+    now_beijing = now_utc.astimezone(utc_plus_8)
+
+    # Get today's 9:00 AM in Beijing time
+    today_9am_beijing = now_beijing.replace(hour=9, minute=0, second=0, microsecond=0)
+
+    # If current time is before 9:00 AM, use yesterday's 9:00 AM
+    if now_beijing < today_9am_beijing:
+        today_9am_beijing = today_9am_beijing - timedelta(days=1)
+
+    # Convert to UTC then to milliseconds timestamp
+    today_9am_utc = today_9am_beijing.astimezone(timezone.utc)
+    return int(today_9am_utc.timestamp() * 1000)
+
+
+def get_session_start_time_ms() -> int:
+    """
+    Get the session start time for PnL calculation.
+    If not set, defaults to today's 9:00 AM (UTC+8).
+
+    Returns:
+        int: Timestamp in milliseconds
+    """
+    global session_start_time_ms
+    if session_start_time_ms is None:
+        session_start_time_ms = get_today_9am_timestamp_ms()
+    return session_start_time_ms
 
 
 def init_portfolio_capital():
@@ -97,6 +144,13 @@ class ConfigUpdate(BaseModel):
 
 class PairUpdate(BaseModel):
     symbol: str
+
+
+class SessionStartUpdate(BaseModel):
+    """Model for updating session start time"""
+
+    timestamp_ms: int = None  # Timestamp in milliseconds
+    reset_to_9am: bool = False  # If True, reset to today's 9:00 AM
 
 
 def run_bot_loop():
@@ -454,23 +508,36 @@ async def get_error_history(
 
 @app.get("/api/performance")
 async def get_performance():
+    """
+    Get performance data starting from session start time (default: today 9:00 AM UTC+8).
+
+    All PnL and commission data is fetched from Binance starting from the session start time.
+    """
+    # Get session start time for filtering
+    start_time_ms = get_session_start_time_ms()
+
     # Get metrics from DataAgent
     metrics = bot_engine.data.calculate_metrics()
 
-    # Calculate additional stats from trade history
+    # Calculate additional stats from trade history (filter by start time)
     trades = bot_engine.data.trade_history
-    total_trades = len(trades)
-    winning_trades = len([t for t in trades if t["pnl"] > 0])
-    losing_trades = len([t for t in trades if t["pnl"] <= 0])
+    # Filter trades that happened after session start
+    start_time_sec = start_time_ms / 1000
+    filtered_trades = [t for t in trades if t.get("timestamp", 0) >= start_time_sec]
 
-    realized_pnl = sum(t["pnl"] for t in trades)
+    total_trades = len(filtered_trades)
+    winning_trades = len([t for t in filtered_trades if t["pnl"] > 0])
+    losing_trades = len([t for t in filtered_trades if t["pnl"] <= 0])
 
-    # Fetch commission/fees from exchange if available
+    realized_pnl = sum(t["pnl"] for t in filtered_trades)
+
+    # Fetch commission/fees from exchange starting from session start time
     commission = 0.0
     net_pnl = realized_pnl
     if hasattr(bot_engine, "exchange") and bot_engine.exchange is not None:
         try:
-            pnl_data = bot_engine.exchange.fetch_pnl_and_fees()
+            # Pass start_time to fetch data from session start
+            pnl_data = bot_engine.exchange.fetch_pnl_and_fees(start_time=start_time_ms)
             commission = pnl_data.get("commission", 0.0)
             # Use exchange's realized PnL if available, otherwise use local calculation
             if pnl_data.get("realized_pnl", 0) != 0:
@@ -482,14 +549,13 @@ async def get_performance():
             # Fallback to local calculation if exchange call fails
             pass
 
-    # Construct PnL history for chart
+    # Construct PnL history for chart (only include trades after session start)
     pnl_history = []
     cumulative_pnl = 0
-    # Add initial point
-    if trades:
-        pnl_history.append([trades[0]["timestamp"] * 1000 - 1000, 0])
+    # Add initial point at session start
+    pnl_history.append([start_time_ms, 0])
 
-    for t in trades:
+    for t in filtered_trades:
         cumulative_pnl += t["pnl"]
         pnl_history.append([t["timestamp"] * 1000, cumulative_pnl])
 
@@ -503,6 +569,73 @@ async def get_performance():
         "win_rate": (winning_trades / total_trades * 100) if total_trades > 0 else 0,
         "metrics": metrics,
         "pnl_history": pnl_history,
+        "session_start_time": start_time_ms,
+    }
+
+
+@app.get("/api/session-start")
+async def get_session_start():
+    """
+    获取当前会话起始时间
+
+    Returns:
+        {
+            "session_start_time": int,       # 会话起始时间 (ms)
+            "session_start_datetime": str,   # ISO 格式的日期时间
+            "description": str               # 描述信息
+        }
+    """
+    start_time_ms = get_session_start_time_ms()
+
+    # Convert to ISO datetime string for display
+    start_datetime = datetime.fromtimestamp(
+        start_time_ms / 1000, tz=timezone.utc
+    ).isoformat()
+
+    return {
+        "session_start_time": start_time_ms,
+        "session_start_datetime": start_datetime,
+        "description": "PnL and commission data are calculated from this time onwards",
+    }
+
+
+@app.post("/api/session-start")
+async def update_session_start(update: SessionStartUpdate):
+    """
+    更新会话起始时间
+
+    可以设置自定义时间戳，或重置为今天上午9点。
+
+    Args:
+        update: SessionStartUpdate with either:
+            - timestamp_ms: Custom timestamp in milliseconds
+            - reset_to_9am: If True, reset to today's 9:00 AM (UTC+8)
+
+    Returns:
+        {
+            "status": "updated",
+            "session_start_time": int,
+            "session_start_datetime": str
+        }
+    """
+    global session_start_time_ms
+
+    if update.reset_to_9am:
+        session_start_time_ms = get_today_9am_timestamp_ms()
+    elif update.timestamp_ms is not None:
+        session_start_time_ms = update.timestamp_ms
+    else:
+        return {"error": "Please provide either timestamp_ms or set reset_to_9am=true"}
+
+    # Convert to ISO datetime string for display
+    start_datetime = datetime.fromtimestamp(
+        session_start_time_ms / 1000, tz=timezone.utc
+    ).isoformat()
+
+    return {
+        "status": "updated",
+        "session_start_time": session_start_time_ms,
+        "session_start_datetime": start_datetime,
     }
 
 
@@ -576,19 +709,22 @@ async def get_portfolio():
     """
     获取组合概览和策略对比数据
 
+    All PnL data is calculated from session start time (default: today 9:00 AM UTC+8).
+
     对应用户故事: US-1.1 ~ US-1.4, US-2.1 ~ US-2.5
     参考文档: docs/user_guide/portfolio_management.md
 
     Returns:
         {
-            "total_pnl": float,           # 组合总盈亏
-            "commission": float,          # 已缴纳交易费
+            "total_pnl": float,           # 组合总盈亏 (from session start)
+            "commission": float,          # 已缴纳交易费 (from session start)
             "net_pnl": float,             # 净盈亏 (扣除费用后)
             "portfolio_sharpe": float,    # 组合夏普比率
             "active_count": int,          # 活跃策略数
             "total_count": int,           # 总策略数
             "risk_level": str,            # 风险等级 (low/medium/high/critical)
             "total_capital": float,       # 总资金
+            "session_start_time": int,    # 会话起始时间 (ms)
             "strategies": [               # 策略列表 (按 PnL 降序)
                 {
                     "id": str,
@@ -603,6 +739,9 @@ async def get_portfolio():
             ]
         }
     """
+    # Get session start time for filtering
+    start_time_ms = get_session_start_time_ms()
+
     # Sync strategy status with bot state
     _sync_portfolio_with_bot()
 
@@ -610,13 +749,18 @@ async def get_portfolio():
     data = portfolio_manager.get_portfolio_data()
 
     # Fetch commission, wallet_balance and available_balance from exchange
+    # Use session start time for PnL and commission calculation
     commission = 0.0
+    realized_pnl = 0.0
     wallet_balance = data.get("total_capital", 0.0)
     available_balance = wallet_balance
+
     if hasattr(bot_engine, "exchange") and bot_engine.exchange is not None:
         try:
-            pnl_data = bot_engine.exchange.fetch_pnl_and_fees()
+            # Fetch PnL and commission from session start time
+            pnl_data = bot_engine.exchange.fetch_pnl_and_fees(start_time=start_time_ms)
             commission = pnl_data.get("commission", 0.0)
+            realized_pnl = pnl_data.get("realized_pnl", 0.0)
         except Exception:
             pass
 
@@ -631,6 +775,10 @@ async def get_portfolio():
         except Exception:
             pass
 
+    # Override total_pnl with exchange's realized PnL from session start
+    if realized_pnl != 0:
+        data["total_pnl"] = round(realized_pnl, 4)
+
     # Add commission, net_pnl, wallet and available_balance to response
     data["commission"] = round(commission, 4)
     data["net_pnl"] = round(data["total_pnl"] - commission, 4)
@@ -638,6 +786,7 @@ async def get_portfolio():
         wallet_balance, 2
     )  # Override with real-time wallet balance
     data["available_balance"] = round(available_balance, 2)
+    data["session_start_time"] = start_time_ms
 
     return data
 

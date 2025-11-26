@@ -56,10 +56,10 @@ def calculate_strategy_health(metrics: Dict[str, Any]) -> float:
     scores["profitability"] = min(100, max(0, 50 + pnl / 100))
 
     # 2. 风险调整收益评分 (0-100)
-    # 公式: min(100, sharpe * 40)
-    # sharpe = 0 → 0分, sharpe = 2.5 → 100分
+    # 公式: min(100, max(0, sharpe * 40))
+    # sharpe = 0 → 0分, sharpe = 2.5 → 100分, sharpe < 0 → 0分
     sharpe = metrics.get("sharpe", 0) or 0
-    scores["risk_adjusted"] = min(100, sharpe * 40)
+    scores["risk_adjusted"] = min(100, max(0, sharpe * 40))
 
     # 3. 执行质量评分 (0-100)
     # 公式: fill_rate * 100 - slippage * 10
@@ -77,6 +77,9 @@ def calculate_strategy_health(metrics: Dict[str, Any]) -> float:
 
     # 加权计算总分
     health = sum(scores[factor] * weight for factor, weight in HEALTH_WEIGHTS.items())
+
+    # 确保健康度在 0-100 范围内
+    health = max(0, min(100, health))
 
     return round(health, 1)
 

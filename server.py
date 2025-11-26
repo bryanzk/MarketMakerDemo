@@ -12,6 +12,7 @@ from pydantic import BaseModel
 # Import the bot engine class
 from alphaloop.main import AlphaLoop
 from alphaloop.portfolio.manager import PortfolioManager, StrategyStatus
+from alphaloop.portfolio.risk import RiskIndicators
 from alphaloop.strategies.funding import FundingRateStrategy
 from alphaloop.strategies.strategy import FixedSpreadStrategy
 
@@ -639,6 +640,64 @@ async def get_portfolio():
     data["available_balance"] = round(available_balance, 2)
 
     return data
+
+
+@app.get("/api/risk-indicators")
+async def get_risk_indicators():
+    """
+    获取风险指标数据
+
+    返回:
+    - liquidation_buffer: 强平缓冲百分比
+    - inventory_drift: 库存偏移百分比
+    - max_drawdown: 最大回撤百分比
+    - overall_risk_level: 综合风险等级
+
+    对应用户故事: US-R1, US-R2, US-R3, US-R4, US-R5
+    """
+    # Get current price and position data from exchange
+    current_price = 0.0
+    position_amt = 0.0
+    liquidation_price = 0.0
+    max_position = 1.0  # Default max position
+
+    if hasattr(bot_engine, "exchange") and bot_engine.exchange is not None:
+        try:
+            # Fetch market data for current price
+            market_data = bot_engine.exchange.fetch_market_data()
+            if market_data:
+                current_price = market_data.get("mid_price", 0.0)
+
+            # Fetch account data for position and liquidation price
+            account_data = bot_engine.exchange.fetch_account_data()
+            if account_data:
+                position_amt = account_data.get("position_amt", 0.0)
+                # Get liquidation price from position info
+                liquidation_price = account_data.get("liquidation_price", 0.0)
+
+            # Get max position from strategy config
+            if hasattr(bot_engine, "strategy") and bot_engine.strategy:
+                max_position = getattr(bot_engine.strategy, "quantity", 1.0) * 10
+        except Exception as e:
+            print(f"Error fetching exchange data for risk indicators: {e}")
+
+    # Build PnL history from trade history
+    pnl_history = [0.0]  # Start with 0
+    cumulative_pnl = 0.0
+    for trade in bot_engine.data.trade_history:
+        cumulative_pnl += trade.get("pnl", 0.0)
+        pnl_history.append(cumulative_pnl)
+
+    # Calculate risk indicators
+    indicators = RiskIndicators.from_exchange_data(
+        current_price=current_price,
+        position_amt=position_amt,
+        liquidation_price=liquidation_price,
+        max_position=max_position,
+        pnl_history=pnl_history
+    )
+
+    return indicators
 
 
 @app.post("/api/strategy/{strategy_id}/pause")

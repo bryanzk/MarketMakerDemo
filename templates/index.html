@@ -231,6 +231,70 @@
         </div>
 
         <!-- ================================================================== -->
+        <!-- Risk Indicators (US-R1, US-R2, US-R3) - P0 -->
+        <!-- ================================================================== -->
+        <div id="riskIndicators" style="
+            background: linear-gradient(135deg, #4a1d1d 0%, #6b2d2d 100%);
+            padding: 20px;
+            border-radius: 12px;
+            margin-bottom: 20px;
+            color: white;
+        ">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                <h2 style="margin: 0; font-size: 18px; color: #fca5a5;">⚠️ Risk Indicators</h2>
+                <div style="font-size: 13px;">
+                    Overall Risk: <span id="overallRiskLevel" class="risk-badge" style="
+                        padding: 4px 12px;
+                        border-radius: 12px;
+                        font-weight: bold;
+                        background: #10b981;
+                        color: white;
+                    ">LOW</span>
+                </div>
+            </div>
+            <div class="card-grid" style="grid-template-columns: repeat(3, 1fr); gap: 15px;">
+                <!-- Liquidation Buffer -->
+                <div id="liqBufferCard" style="background: rgba(255,255,255,0.1); padding: 15px; border-radius: 8px; border: 2px solid transparent;">
+                    <div style="font-size: 12px; color: #fca5a5; margin-bottom: 5px;">
+                        Liquidation Buffer
+                        <span style="cursor: help;" title="距离强制平仓的安全距离。低于10%需警惕，低于5%需立即行动。">ℹ️</span>
+                    </div>
+                    <div id="liqBufferValue" style="font-size: 1.8rem; font-weight: bold; color: #10b981;">--</div>
+                    <div id="liqBufferStatus" style="font-size: 11px; color: #94a3b8; margin-top: 5px;">
+                        <span class="status-dot" style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #6b7280; margin-right: 5px;"></span>
+                        No Position
+                    </div>
+                </div>
+                
+                <!-- Inventory Drift -->
+                <div id="invDriftCard" style="background: rgba(255,255,255,0.1); padding: 15px; border-radius: 8px; border: 2px solid transparent;">
+                    <div style="font-size: 12px; color: #fca5a5; margin-bottom: 5px;">
+                        Inventory Drift
+                        <span style="cursor: help;" title="库存偏移程度。正值=净多头，负值=净空头。偏移过大意味着方向性风险。">ℹ️</span>
+                    </div>
+                    <div id="invDriftValue" style="font-size: 1.8rem; font-weight: bold; color: #10b981;">0%</div>
+                    <div id="invDriftStatus" style="font-size: 11px; color: #94a3b8; margin-top: 5px;">
+                        <span class="status-dot" style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #10b981; margin-right: 5px;"></span>
+                        Balanced
+                    </div>
+                </div>
+                
+                <!-- Max Drawdown -->
+                <div id="maxDrawdownCard" style="background: rgba(255,255,255,0.1); padding: 15px; border-radius: 8px; border: 2px solid transparent;">
+                    <div style="font-size: 12px; color: #fca5a5; margin-bottom: 5px;">
+                        Max Drawdown
+                        <span style="cursor: help;" title="从峰值到谷底的最大亏损幅度。超过10%需检查策略，超过20%考虑暂停。">ℹ️</span>
+                    </div>
+                    <div id="maxDrawdownValue" style="font-size: 1.8rem; font-weight: bold; color: #10b981;">0%</div>
+                    <div id="maxDrawdownStatus" style="font-size: 11px; color: #94a3b8; margin-top: 5px;">
+                        <span class="status-dot" style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #10b981; margin-right: 5px;"></span>
+                        Excellent
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ================================================================== -->
         <!-- Strategy Comparison Table (US-2.x) -->
         <!-- ================================================================== -->
         <div id="strategyComparison" class="card" style="margin-bottom: 20px;">
@@ -2128,6 +2192,149 @@
             }
         }
 
+        // ================================================================
+        // Risk Indicators (P0)
+        // ================================================================
+
+        async function fetchRiskIndicators() {
+            try {
+                const res = await fetch('/api/risk-indicators');
+                const data = await res.json();
+                updateRiskIndicators(data);
+            } catch (e) {
+                console.error('Error fetching risk indicators:', e);
+            }
+        }
+
+        function updateRiskIndicators(data) {
+            // Status color mapping
+            const statusColors = {
+                // Liquidation Buffer
+                'safe': { color: '#10b981', text: 'Safe', dot: '#10b981' },
+                'warning': { color: '#f59e0b', text: 'Warning', dot: '#f59e0b' },
+                'danger': { color: '#f97316', text: 'Danger', dot: '#f97316' },
+                'critical': { color: '#ef4444', text: 'CRITICAL', dot: '#ef4444' },
+                // Inventory Drift
+                'balanced': { color: '#10b981', text: 'Balanced', dot: '#10b981' },
+                'offset': { color: '#f59e0b', text: 'Offset', dot: '#f59e0b' },
+                'severe': { color: '#f97316', text: 'Severe', dot: '#f97316' },
+                'extreme': { color: '#ef4444', text: 'EXTREME', dot: '#ef4444' },
+                // Max Drawdown
+                'excellent': { color: '#10b981', text: 'Excellent', dot: '#10b981' },
+                'normal': { color: '#22c55e', text: 'Normal', dot: '#22c55e' },
+            };
+
+            // Overall Risk Level
+            const overallEl = document.getElementById('overallRiskLevel');
+            if (overallEl && data.overall_risk_level) {
+                const riskConfig = {
+                    'low': { text: 'LOW', bg: '#10b981' },
+                    'medium': { text: 'MEDIUM', bg: '#f59e0b' },
+                    'high': { text: 'HIGH', bg: '#f97316' },
+                    'critical': { text: 'CRITICAL', bg: '#ef4444' },
+                };
+                const config = riskConfig[data.overall_risk_level] || riskConfig['low'];
+                overallEl.innerText = config.text;
+                overallEl.style.background = config.bg;
+                
+                // Flash animation for critical
+                if (data.overall_risk_level === 'critical') {
+                    overallEl.style.animation = 'pulse 1s infinite';
+                } else {
+                    overallEl.style.animation = 'none';
+                }
+            }
+
+            // Liquidation Buffer
+            const liqValueEl = document.getElementById('liqBufferValue');
+            const liqStatusEl = document.getElementById('liqBufferStatus');
+            const liqCardEl = document.getElementById('liqBufferCard');
+            if (liqValueEl) {
+                if (data.liquidation_buffer !== null && data.liquidation_buffer !== undefined) {
+                    liqValueEl.innerText = data.liquidation_buffer.toFixed(1) + '%';
+                    const config = statusColors[data.liquidation_buffer_status] || statusColors['safe'];
+                    liqValueEl.style.color = config.color;
+                    
+                    if (liqStatusEl) {
+                        liqStatusEl.innerHTML = `
+                            <span class="status-dot" style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: ${config.dot}; margin-right: 5px;"></span>
+                            ${config.text}
+                        `;
+                    }
+                    
+                    // Border warning
+                    if (liqCardEl) {
+                        if (data.liquidation_buffer_status === 'critical') {
+                            liqCardEl.style.borderColor = '#ef4444';
+                            liqCardEl.style.animation = 'pulse 1s infinite';
+                        } else if (data.liquidation_buffer_status === 'danger') {
+                            liqCardEl.style.borderColor = '#f97316';
+                            liqCardEl.style.animation = 'none';
+                        } else {
+                            liqCardEl.style.borderColor = 'transparent';
+                            liqCardEl.style.animation = 'none';
+                        }
+                    }
+                } else {
+                    liqValueEl.innerText = 'N/A';
+                    liqValueEl.style.color = '#6b7280';
+                    if (liqStatusEl) {
+                        liqStatusEl.innerHTML = `
+                            <span class="status-dot" style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #6b7280; margin-right: 5px;"></span>
+                            No Position
+                        `;
+                    }
+                }
+            }
+
+            // Inventory Drift
+            const invValueEl = document.getElementById('invDriftValue');
+            const invStatusEl = document.getElementById('invDriftStatus');
+            if (invValueEl) {
+                const drift = data.inventory_drift || 0;
+                const sign = drift >= 0 ? '+' : '';
+                invValueEl.innerText = sign + drift.toFixed(1) + '%';
+                
+                const config = statusColors[data.inventory_drift_status] || statusColors['balanced'];
+                invValueEl.style.color = config.color;
+                
+                // Add direction indicator
+                let directionIcon = '';
+                if (data.inventory_direction === 'long') {
+                    directionIcon = '↑ Long';
+                } else if (data.inventory_direction === 'short') {
+                    directionIcon = '↓ Short';
+                } else {
+                    directionIcon = '⟷ Neutral';
+                }
+                
+                if (invStatusEl) {
+                    invStatusEl.innerHTML = `
+                        <span class="status-dot" style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: ${config.dot}; margin-right: 5px;"></span>
+                        ${config.text} | ${directionIcon}
+                    `;
+                }
+            }
+
+            // Max Drawdown
+            const ddValueEl = document.getElementById('maxDrawdownValue');
+            const ddStatusEl = document.getElementById('maxDrawdownStatus');
+            if (ddValueEl) {
+                const dd = data.max_drawdown || 0;
+                ddValueEl.innerText = dd.toFixed(1) + '%';
+                
+                const config = statusColors[data.max_drawdown_status] || statusColors['excellent'];
+                ddValueEl.style.color = config.color;
+                
+                if (ddStatusEl) {
+                    ddStatusEl.innerHTML = `
+                        <span class="status-dot" style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: ${config.dot}; margin-right: 5px;"></span>
+                        ${config.text}
+                    `;
+                }
+            }
+        }
+
         function updatePortfolioOverview(data) {
             // Total PnL
             const totalPnlEl = document.getElementById('portfolioTotalPnl');
@@ -2355,6 +2562,7 @@
         // Poll every 1 second
         setInterval(fetchStatus, 1000);
         setInterval(fetchPortfolio, 2000); // Fetch portfolio every 2s
+        setInterval(fetchRiskIndicators, 3000); // Fetch risk indicators every 3s
         setInterval(fetchSuggestions, 5000); // Fetch suggestions every 5s
         setInterval(fetchPerformance, 2000); // Fetch performance every 2s
         setInterval(fetchOrderHistory, 3000); // Fetch order history every 3s
@@ -2371,6 +2579,7 @@
         fetchFundingErrorHistory();
         loadFundingPairs(); // Initial load of funding pairs
         fetchPortfolio(); // Initial load of portfolio data
+        fetchRiskIndicators(); // Initial load of risk indicators (P0)
     </script>
 </body>
 

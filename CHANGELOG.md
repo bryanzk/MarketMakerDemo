@@ -55,6 +55,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Multi-LLM Strategy Evaluation Framework**
+  - Support for Gemini, OpenAI (GPT-4o), and Claude providers
+  - `MultiLLMEvaluator` for parallel strategy evaluation
+  - Automatic provider discovery with `create_all_providers()`
+  - Simulation-based strategy comparison with scoring and ranking
+  - Comparison table generation for decision making
+
+- **Risk Indicators Module** (`alphaloop/portfolio/risk.py`)
+  - Liquidation Buffer calculation (US-R1)
+  - Inventory Drift monitoring (US-R2)
+  - Max Drawdown tracking (US-R3)
+  - Overall Risk Level assessment (US-R4)
+  - `GET /api/risk-indicators` API endpoint (US-R5)
+
+- **New Dependencies**
+  - `openai` - OpenAI API client
+  - `anthropic` - Anthropic Claude API client
+
+### Fixed
+- Portfolio Overview balance display
+- Portfolio API tests and isort formatting issues
+
+### Changed
+- Trading fee calculation and display improvements
+
 ### Planned for Phase 3
 - Inventory skew (position-based spread adjustment)
 - File logging

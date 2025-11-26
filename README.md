@@ -92,7 +92,19 @@ This project has comprehensive documentation. **If you are new to the system**, 
    - 添加新交易策略的分步指南
    - 集成要求和最佳实践
 
-11. **AlphaLoop Framework Documentation** (docs/alphaloop/)
+11. **[Multi-LLM Evaluation Guide](docs/user_guide/multi_llm_evaluation.md)** 🆕
+   - Compare strategies from Gemini, OpenAI, and Claude
+   - Simulation-based strategy validation
+   - 多模型策略评估与比较
+   - 基于模拟的策略验证
+
+12. **[Risk Indicators Guide](docs/user_guide/risk_indicators.md)** 🆕
+   - Liquidation Buffer, Inventory Drift, Max Drawdown
+   - Real-time risk monitoring
+   - 强平缓冲、库存偏移、最大回撤
+   - 实时风险监控
+
+13. **AlphaLoop Framework Documentation** (docs/alphaloop/)
    - **[Framework Design](docs/alphaloop/framework_design.md)**: The "Agent-First" architecture
      - 框架设计 - "智能体优先"架构
    - **[Agent Roles and Hierarchy](docs/alphaloop/agent_roles_and_hierarchy.md)**: Meet the AI agents

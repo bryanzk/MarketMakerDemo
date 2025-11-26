@@ -9,6 +9,9 @@ httpx
 python-dotenv
 google-generativeai
 pdoc
+# OpenAI and Anthropic for Multi-LLM Evaluation
+openai
+anthropic
 # Testing dependencies
 pytest
 pytest-cov

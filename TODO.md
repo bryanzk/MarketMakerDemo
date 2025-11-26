@@ -65,7 +65,9 @@
 - [ ] Performance metrics and visualization
 
 ### Advanced Risk Management
-- [ ] Maximum drawdown limits
+- [x] Maximum drawdown limits ✅ (Implemented in `RiskIndicators.calculate_max_drawdown()`)
+- [x] Liquidation buffer monitoring ✅ (Implemented in `RiskIndicators.calculate_liquidation_buffer()`)
+- [x] Inventory drift tracking ✅ (Implemented in `RiskIndicators.calculate_inventory_drift()`)
 - [ ] Daily loss limits
 - [ ] Circuit breaker on unusual market conditions
 
@@ -81,4 +83,4 @@
 
 ---
 
-**Last Updated**: 2025-11-20
+**Last Updated**: 2025-11-26

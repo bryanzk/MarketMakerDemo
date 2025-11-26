@@ -402,6 +402,7 @@ class BinanceClient:
             # Parse Position
             position_amt = 0.0
             entry_price = 0.0
+            liquidation_price = 0.0
 
             # Note: symbol in account info might be 'ETHUSDT' (no slash)
             # We need to match it against our symbol.
@@ -413,6 +414,8 @@ class BinanceClient:
                 if pos["symbol"] == target_symbol:
                     position_amt = float(pos["positionAmt"])
                     entry_price = float(pos["entryPrice"])
+                    # Binance provides liquidation price in position data
+                    liquidation_price = float(pos.get("liquidationPrice", 0.0))
                     break
 
             return {
@@ -420,6 +423,7 @@ class BinanceClient:
                 "entry_price": entry_price,
                 "balance": wallet_balance,  # Total wallet balance (matches Binance UI)
                 "available_balance": available_balance,  # Available for trading
+                "liquidation_price": liquidation_price,  # Forced liquidation price
             }
         except Exception as e:
             logger.error(f"Error fetching account data: {e}")

@@ -51,6 +51,44 @@ Run the script whenever you change public APIs, docstrings, or configuration to 
 GitHub Actions regenerates and publishes the API documentation on every push to `main`, guaranteeing consistency between code and docs.
 GitHub Actions 会在每次推送到 `main` 时重新生成并发布 API 文档，确保代码与文档同步。
 
+## 🔧 REST API Endpoints / REST API 端点
+
+### Risk Indicators / 风险指标
+
+#### `GET /api/risk-indicators`
+
+Returns real-time risk monitoring indicators.
+返回实时风险监控指标。
+
+**Response Example / 响应示例:**
+```json
+{
+  "liquidation_buffer": 15.2,
+  "liquidation_buffer_status": "warning",
+  "inventory_drift": 32.5,
+  "inventory_drift_status": "offset",
+  "inventory_direction": "long",
+  "max_drawdown": -4.8,
+  "max_drawdown_status": "excellent",
+  "overall_risk_level": "medium"
+}
+```
+
+**Fields / 字段说明:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `liquidation_buffer` | float | Distance to liquidation price (%) / 距离强平价格的百分比 |
+| `liquidation_buffer_status` | string | `safe` / `warning` / `danger` / `critical` |
+| `inventory_drift` | float | Position bias percentage (-100 to +100) / 持仓偏移百分比 |
+| `inventory_drift_status` | string | `balanced` / `offset` / `severe` / `extreme` |
+| `inventory_direction` | string | `long` / `short` / `neutral` |
+| `max_drawdown` | float | Maximum drawdown from peak (negative %) / 最大回撤百分比 |
+| `max_drawdown_status` | string | `excellent` / `normal` / `warning` / `danger` |
+| `overall_risk_level` | string | `low` / `medium` / `high` / `critical` |
+
+---
+
 ## 📖 Related Documentation / 相关文档
 - [README](../README.md) – Project overview and quick start.
   [README](../README.md) – 项目概览与快速上手。
@@ -58,5 +96,9 @@ GitHub Actions 会在每次推送到 `main` 时重新生成并发布 API 文档�
   [CI/CD 指南](cicd.md) – 持续集成与部署流程。
 - [Dashboard Guide](dashboard.md) – Monitoring metrics and charts.
   [Dashboard 指南](dashboard.md) – 监控指标与图表。
+- [Risk Indicators Guide](user_guide/risk_indicators.md) – Risk monitoring user guide.
+  [风险指标指南](user_guide/risk_indicators.md) – 风险监控用户指南。
+- [Multi-LLM Evaluation Guide](user_guide/multi_llm_evaluation.md) – Multi-model strategy evaluation.
+  [多 LLM 评估指南](user_guide/multi_llm_evaluation.md) – 多模型策略评估。
 - [AlphaLoop Framework](alphaloop/framework_design.md) – Architecture and design reference.
   [AlphaLoop 框架](alphaloop/framework_design.md) – 架构与设计参考。

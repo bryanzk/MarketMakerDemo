@@ -119,3 +119,4 @@ def get_health_color(health_score: float) -> str:
         return "#f97316"  # 橙色
     else:
         return "#ef4444"  # 红色
+

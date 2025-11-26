@@ -70,7 +70,7 @@ class TestLeverageManagement:
         """Test successful leverage setting"""
         # Reset call count from __init__
         mock_client.exchange.fapiPrivatePostLeverage.reset_mock()
-        
+
         mock_client.exchange.fapiPrivatePostLeverage.return_value = {
             "leverage": 10,
             "maxNotionalValue": "1000000",

@@ -232,7 +232,9 @@ class BinanceClient:
                         amount_precision = precision["amount"]
                         if isinstance(amount_precision, int) and amount_precision > 0:
                             step_size = 10 ** (-amount_precision)
-                        elif isinstance(amount_precision, float) and amount_precision < 1:
+                        elif (
+                            isinstance(amount_precision, float) and amount_precision < 1
+                        ):
                             step_size = amount_precision
 
             return {

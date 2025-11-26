@@ -41,5 +41,3 @@ def test_fetch_funding_rate_falls_back_to_last(mock_binanceusdm):
     rate = client.fetch_funding_rate()
 
     assert rate == pytest.approx(0.0000333)
-
-

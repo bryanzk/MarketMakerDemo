@@ -9,7 +9,9 @@ from alphaloop.strategies.funding import FundingRateStrategy
 
 
 class DummyStrategy:
-    def __init__(self, spread: float, quantity: float, leverage: int, skew_factor: float = None):
+    def __init__(
+        self, spread: float, quantity: float, leverage: int, skew_factor: float = None
+    ):
         self.spread = spread
         self.quantity = quantity
         self.leverage = leverage
@@ -19,7 +21,12 @@ class DummyStrategy:
 
 
 class DummyBotEngine:
-    def __init__(self, strategy: Any, orders: List[Dict[str, Any]], errors: List[Dict[str, Any]] = None):
+    def __init__(
+        self,
+        strategy: Any,
+        orders: List[Dict[str, Any]],
+        errors: List[Dict[str, Any]] = None,
+    ):
         self.strategy = strategy
         self.current_stage = "Idle"
         self.alert = None
@@ -258,7 +265,9 @@ class TestErrorHistoryAPI:
     def test_error_history_filter_by_strategy_type(self, client_with_errors):
         """GET /api/error-history filters by strategy_type."""
         client, _ = client_with_errors
-        resp = client.get("/api/error-history", params={"strategy_type": "funding_rate"})
+        resp = client.get(
+            "/api/error-history", params={"strategy_type": "funding_rate"}
+        )
         assert resp.status_code == 200
         errors = resp.json()
 
@@ -343,4 +352,3 @@ class TestErrorHistoryAPI:
         resp = client.get("/api/error-history")
         assert resp.status_code == 200
         assert resp.json() == []
-

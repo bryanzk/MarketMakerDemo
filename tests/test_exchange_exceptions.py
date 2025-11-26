@@ -41,7 +41,7 @@ class TestExceptionHandling:
         """Test that InsufficientFunds exception is properly caught and stored"""
         # Setup: create_order raises InsufficientFunds
         mock_client.exchange.create_order.side_effect = InsufficientFunds(
-            "binance {\"code\":-2019,\"msg\":\"Margin is insufficient.\"}"
+            'binance {"code":-2019,"msg":"Margin is insufficient."}'
         )
 
         orders = [{"side": "buy", "price": 1000.0, "quantity": 0.01}]
@@ -59,7 +59,7 @@ class TestExceptionHandling:
     def test_place_orders_invalid_order(self, mock_client):
         """Test that InvalidOrder exception captures Binance rejection details"""
         mock_client.exchange.create_order.side_effect = InvalidOrder(
-            "binance {\"code\":-1111,\"msg\":\"Precision is over the maximum defined for this asset.\"}"
+            'binance {"code":-1111,"msg":"Precision is over the maximum defined for this asset."}'
         )
 
         orders = [{"side": "sell", "price": 2000.0, "quantity": 0.001}]
@@ -74,11 +74,11 @@ class TestExceptionHandling:
     def test_place_orders_rate_limit(self, mock_client):
         """Test that RateLimitExceeded is logged and bot pauses"""
         mock_client.exchange.create_order.side_effect = RateLimitExceeded(
-            "binance {\"code\":-1003,\"msg\":\"Too many requests.\"}"
+            'binance {"code":-1003,"msg":"Too many requests."}'
         )
 
         orders = [{"side": "buy", "price": 1500.0, "quantity": 0.01}]
-        
+
         with patch("time.sleep") as mock_sleep:
             result = mock_client.place_orders(orders)
 
@@ -104,7 +104,7 @@ class TestExceptionHandling:
     def test_place_orders_exchange_error(self, mock_client):
         """Test generic ExchangeError is caught with full details"""
         mock_client.exchange.create_order.side_effect = ExchangeError(
-            "binance {\"code\":-4131,\"msg\":\"The counterparty's best price does not meet the PERCENT_PRICE filter limit.\"}"
+            'binance {"code":-4131,"msg":"The counterparty\'s best price does not meet the PERCENT_PRICE filter limit."}'
         )
 
         orders = [{"side": "sell", "price": 500.0, "quantity": 0.01}]
@@ -172,9 +172,7 @@ class TestExceptionHandling:
 
     def test_cancel_orders_network_error(self, mock_client):
         """Test that NetworkError in cancel is stored"""
-        mock_client.exchange.cancel_order.side_effect = NetworkError(
-            "Connection lost"
-        )
+        mock_client.exchange.cancel_order.side_effect = NetworkError("Connection lost")
 
         mock_client.cancel_orders(["12345"])
 
@@ -184,9 +182,7 @@ class TestExceptionHandling:
 
     def test_cancel_orders_exchange_error(self, mock_client):
         """Test that ExchangeError in cancel is stored"""
-        mock_client.exchange.cancel_order.side_effect = ExchangeError(
-            "API error"
-        )
+        mock_client.exchange.cancel_order.side_effect = ExchangeError("API error")
 
         mock_client.cancel_orders(["54321"])
 

@@ -31,7 +31,7 @@ class TestOpenAIProvider:
     def test_init_success(self):
         """Test successful initialization with API key"""
         with patch.dict("os.environ", {"OPENAI_API_KEY": "test_key"}):
-            with patch("alphaloop.core.llm.OpenAI") as mock_openai:
+            with patch("openai.OpenAI") as mock_openai:
                 mock_client = Mock()
                 mock_openai.return_value = mock_client
                 provider = OpenAIProvider()
@@ -48,21 +48,21 @@ class TestOpenAIProvider:
     def test_init_with_custom_model(self):
         """Test initialization with custom model"""
         with patch.dict("os.environ", {"OPENAI_API_KEY": "test_key"}):
-            with patch("alphaloop.core.llm.OpenAI"):
+            with patch("openai.OpenAI"):
                 provider = OpenAIProvider(model="gpt-3.5-turbo")
                 assert provider._model_name == "gpt-3.5-turbo"
 
     def test_name_property(self):
         """Test name property returns correct format"""
         with patch.dict("os.environ", {"OPENAI_API_KEY": "test_key"}):
-            with patch("alphaloop.core.llm.OpenAI"):
+            with patch("openai.OpenAI"):
                 provider = OpenAIProvider()
                 assert provider.name == "OpenAI (gpt-4o)"
 
     def test_generate_success(self):
         """Test successful content generation"""
         with patch.dict("os.environ", {"OPENAI_API_KEY": "test_key"}):
-            with patch("alphaloop.core.llm.OpenAI") as mock_openai:
+            with patch("openai.OpenAI") as mock_openai:
                 mock_client = Mock()
                 mock_response = Mock()
                 mock_response.choices = [Mock()]
@@ -80,7 +80,7 @@ class TestOpenAIProvider:
     def test_generate_error(self):
         """Test error handling during generation"""
         with patch.dict("os.environ", {"OPENAI_API_KEY": "test_key"}):
-            with patch("alphaloop.core.llm.OpenAI") as mock_openai:
+            with patch("openai.OpenAI") as mock_openai:
                 mock_client = Mock()
                 mock_client.chat.completions.create.side_effect = Exception("API Error")
                 mock_openai.return_value = mock_client
@@ -103,13 +103,13 @@ class TestClaudeProvider:
     def test_init_success(self):
         """Test successful initialization with API key"""
         with patch.dict("os.environ", {"ANTHROPIC_API_KEY": "test_key"}):
-            with patch("alphaloop.core.llm.anthropic") as mock_anthropic:
+            with patch("anthropic.Anthropic") as mock_anthropic:
                 mock_client = Mock()
-                mock_anthropic.Anthropic.return_value = mock_client
+                mock_anthropic.return_value = mock_client
                 provider = ClaudeProvider()
                 assert provider.api_key == "test_key"
                 assert provider._model_name == "claude-sonnet-4-20250514"
-                mock_anthropic.Anthropic.assert_called_with(api_key="test_key")
+                mock_anthropic.assert_called_with(api_key="test_key")
 
     def test_init_failure_no_key(self):
         """Test initialization failure when API key is missing"""
@@ -120,27 +120,27 @@ class TestClaudeProvider:
     def test_init_with_custom_model(self):
         """Test initialization with custom model"""
         with patch.dict("os.environ", {"ANTHROPIC_API_KEY": "test_key"}):
-            with patch("alphaloop.core.llm.anthropic"):
+            with patch("anthropic.Anthropic"):
                 provider = ClaudeProvider(model="claude-3-opus-20240229")
                 assert provider._model_name == "claude-3-opus-20240229"
 
     def test_name_property(self):
         """Test name property returns correct format"""
         with patch.dict("os.environ", {"ANTHROPIC_API_KEY": "test_key"}):
-            with patch("alphaloop.core.llm.anthropic"):
+            with patch("anthropic.Anthropic"):
                 provider = ClaudeProvider()
                 assert provider.name == "Claude (claude-sonnet-4-20250514)"
 
     def test_generate_success(self):
         """Test successful content generation"""
         with patch.dict("os.environ", {"ANTHROPIC_API_KEY": "test_key"}):
-            with patch("alphaloop.core.llm.anthropic") as mock_anthropic:
+            with patch("anthropic.Anthropic") as mock_anthropic:
                 mock_client = Mock()
                 mock_response = Mock()
                 mock_response.content = [Mock()]
                 mock_response.content[0].text = "Generated content"
                 mock_client.messages.create.return_value = mock_response
-                mock_anthropic.Anthropic.return_value = mock_client
+                mock_anthropic.return_value = mock_client
 
                 provider = ClaudeProvider()
                 result = provider.generate("Test prompt")
@@ -151,10 +151,10 @@ class TestClaudeProvider:
     def test_generate_error(self):
         """Test error handling during generation"""
         with patch.dict("os.environ", {"ANTHROPIC_API_KEY": "test_key"}):
-            with patch("alphaloop.core.llm.anthropic") as mock_anthropic:
+            with patch("anthropic.Anthropic") as mock_anthropic:
                 mock_client = Mock()
                 mock_client.messages.create.side_effect = Exception("API Error")
-                mock_anthropic.Anthropic.return_value = mock_client
+                mock_anthropic.return_value = mock_client
 
                 provider = ClaudeProvider()
                 with pytest.raises(RuntimeError, match="Claude API error"):
@@ -215,8 +215,8 @@ class TestCreateAllProviders:
         ):
             with patch("google.generativeai.configure"):
                 with patch("google.generativeai.GenerativeModel"):
-                    with patch("alphaloop.core.llm.OpenAI"):
-                        with patch("alphaloop.core.llm.anthropic"):
+                    with patch("openai.OpenAI"):
+                        with patch("anthropic.Anthropic"):
                             providers = create_all_providers()
                             assert len(providers) == 3
                             assert any(p.name.startswith("Gemini") for p in providers)
@@ -234,7 +234,7 @@ class TestCreateAllProviders:
         ):
             with patch("google.generativeai.configure"):
                 with patch("google.generativeai.GenerativeModel"):
-                    with patch("alphaloop.core.llm.OpenAI"):
+                    with patch("openai.OpenAI"):
                         providers = create_all_providers()
                         assert len(providers) == 2
                         assert any(p.name.startswith("Gemini") for p in providers)
@@ -257,8 +257,13 @@ class TestCreateAllProviders:
         ):
             with patch("google.generativeai.configure"):
                 with patch("google.generativeai.GenerativeModel"):
-                    # Simulate OpenAI import error
-                    with patch("alphaloop.core.llm.OpenAI", side_effect=ImportError):
+                    # Simulate OpenAI import error by making the import raise ImportError
+                    original_import = __import__
+                    def mock_import(name, *args, **kwargs):
+                        if name == "openai":
+                            raise ImportError("No module named 'openai'")
+                        return original_import(name, *args, **kwargs)
+                    with patch("builtins.__import__", side_effect=mock_import):
                         providers = create_all_providers()
                         # Should still get Gemini
                         assert len(providers) >= 1
@@ -279,14 +284,14 @@ class TestCreateProvider:
     def test_create_provider_openai(self):
         """Test creating OpenAI provider"""
         with patch.dict("os.environ", {"OPENAI_API_KEY": "test_key"}):
-            with patch("alphaloop.core.llm.OpenAI"):
+            with patch("openai.OpenAI"):
                 provider = create_provider("openai")
                 assert isinstance(provider, OpenAIProvider)
 
     def test_create_provider_claude(self):
         """Test creating Claude provider"""
         with patch.dict("os.environ", {"ANTHROPIC_API_KEY": "test_key"}):
-            with patch("alphaloop.core.llm.anthropic"):
+            with patch("anthropic.Anthropic"):
                 provider = create_provider("claude")
                 assert isinstance(provider, ClaudeProvider)
 

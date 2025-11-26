@@ -37,9 +37,9 @@ class TestStrategyAdvisorPrompt:
         prompt = StrategyAdvisorPrompt.generate(context)
 
         assert "ETHUSDT" in prompt
-        assert "2500.0" in prompt
-        assert "0.035" in prompt  # volatility_24h
-        assert "0.0001" in prompt  # funding_rate
+        assert "2,500.00" in prompt or "2500" in prompt  # Formatted price
+        assert "3.50%" in prompt or "0.035" in prompt  # volatility_24h (formatted as percentage)
+        assert "0.0100%" in prompt or "0.0001" in prompt  # funding_rate (formatted as percentage)
 
     def test_generate_includes_template_structure(self):
         """Test that generated prompt includes template structure"""
@@ -167,7 +167,7 @@ class TestMarketDiagnosisPrompt:
         prompt = MarketDiagnosisPrompt.generate(context)
 
         assert "ETHUSDT" in prompt
-        assert "2500.0" in prompt
+        assert "2,500.00" in prompt or "2500" in prompt  # Formatted price
 
     def test_generate_includes_diagnosis_structure(self):
         """Test that generated prompt includes diagnosis structure"""

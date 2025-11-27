@@ -502,7 +502,9 @@ class MultiLLMEvaluator:
         )
 
     @staticmethod
-    def get_parameter_statistics(results: List[EvaluationResult]) -> ParameterStatistics:
+    def get_parameter_statistics(
+        results: List[EvaluationResult],
+    ) -> ParameterStatistics:
         """
         计算参数统计
 
@@ -605,11 +607,14 @@ class MultiLLMEvaluator:
         # Weight by simulation score
         total_weight = sum(max(r.score, 1) for r in agreeing_results)
         if total_weight == 0:
-            weighted_confidence = np.mean([r.proposal.confidence for r in agreeing_results])
+            weighted_confidence = np.mean(
+                [r.proposal.confidence for r in agreeing_results]
+            )
         else:
-            weighted_confidence = sum(
-                r.proposal.confidence * max(r.score, 1) for r in agreeing_results
-            ) / total_weight
+            weighted_confidence = (
+                sum(r.proposal.confidence * max(r.score, 1) for r in agreeing_results)
+                / total_weight
+            )
 
         # Calculate consensus confidence / 计算共识置信度
         consensus_confidence = float(agreement_factor * weighted_confidence)
@@ -648,8 +653,8 @@ class MultiLLMEvaluator:
         parameter_stats = self.get_parameter_statistics(results)
 
         # Calculate consensus confidence / 计算共识置信度
-        consensus_confidence, confidence_breakdown = self.calculate_consensus_confidence(
-            results, strategy_consensus
+        consensus_confidence, confidence_breakdown = (
+            self.calculate_consensus_confidence(results, strategy_consensus)
         )
 
         # Count successful/failed evaluations / 统计成功/失败数量
@@ -726,9 +731,13 @@ class MultiLLMEvaluator:
         ]
 
         # Combine reasoning from agreeing models / 合并同意模型的理由
-        combined_reasoning = f"Consensus from {len(agreeing_results)}/{len(valid_results)} models. "
+        combined_reasoning = (
+            f"Consensus from {len(agreeing_results)}/{len(valid_results)} models. "
+        )
         if agreeing_results:
-            reasons = [r.proposal.reasoning for r in agreeing_results if r.proposal.reasoning]
+            reasons = [
+                r.proposal.reasoning for r in agreeing_results if r.proposal.reasoning
+            ]
             if reasons:
                 combined_reasoning += " | ".join(reasons[:3])  # Limit to first 3
 
@@ -744,7 +753,9 @@ class MultiLLMEvaluator:
 
         # Calculate expected return (average of agreeing models) / 计算预期收益
         expected_returns = [r.proposal.expected_return for r in agreeing_results]
-        avg_expected_return = float(np.mean(expected_returns)) if expected_returns else 0.0
+        avg_expected_return = (
+            float(np.mean(expected_returns)) if expected_returns else 0.0
+        )
 
         return StrategyProposal(
             recommended_strategy=strategy_consensus.consensus_strategy,
@@ -789,7 +800,9 @@ class MultiLLMEvaluator:
         lines.append(f"  Consensus Strategy / 共识策略: {sc.consensus_strategy}")
         lines.append(f"  Consensus Level / 共识程度: {sc.consensus_level.upper()}")
         lines.append(f"  Agreement Ratio / 共识比例: {sc.consensus_ratio:.1%}")
-        lines.append(f"  Models Agreeing / 同意模型数: {sc.consensus_count}/{sc.total_models}")
+        lines.append(
+            f"  Models Agreeing / 同意模型数: {sc.consensus_count}/{sc.total_models}"
+        )
         lines.append("")
 
         # Vote Distribution / 投票分布
@@ -797,13 +810,19 @@ class MultiLLMEvaluator:
         for strategy, votes in sc.strategy_votes.items():
             pct = sc.strategy_percentages.get(strategy, 0)
             providers = sc.providers_by_strategy.get(strategy, [])
-            lines.append(f"  {strategy}: {votes} votes ({pct:.0%}) - {', '.join(providers)}")
+            lines.append(
+                f"  {strategy}: {votes} votes ({pct:.0%}) - {', '.join(providers)}"
+            )
         lines.append("")
 
         # Consensus Confidence / 共识置信度
         lines.append("【Consensus Confidence / 共识置信度】")
-        lines.append(f"  Overall Confidence / 综合置信度: {aggregated.consensus_confidence:.1%}")
-        lines.append(f"  Recommendation Strength / 推荐强度: {aggregated.get_recommendation_strength().upper()}")
+        lines.append(
+            f"  Overall Confidence / 综合置信度: {aggregated.consensus_confidence:.1%}"
+        )
+        lines.append(
+            f"  Recommendation Strength / 推荐强度: {aggregated.get_recommendation_strength().upper()}"
+        )
         lines.append("")
 
         # Parameter Statistics / 参数统计
@@ -812,8 +831,12 @@ class MultiLLMEvaluator:
         lines.append(f"  Spread / 价差:")
         lines.append(f"    Mean: {ps.spread_mean:.4f}, Median: {ps.spread_median:.4f}")
         lines.append(f"    Range: [{ps.spread_min:.4f}, {ps.spread_max:.4f}]")
-        lines.append(f"  Skew Factor / 倾斜因子: Mean {ps.skew_mean:.1f}, Median {ps.skew_median:.1f}")
-        lines.append(f"  Confidence / 置信度: {ps.confidence_mean:.1%} (min: {ps.confidence_min:.1%}, max: {ps.confidence_max:.1%})")
+        lines.append(
+            f"  Skew Factor / 倾斜因子: Mean {ps.skew_mean:.1f}, Median {ps.skew_median:.1f}"
+        )
+        lines.append(
+            f"  Confidence / 置信度: {ps.confidence_mean:.1%} (min: {ps.confidence_min:.1%}, max: {ps.confidence_max:.1%})"
+        )
         lines.append("")
 
         # Performance Summary / 性能摘要

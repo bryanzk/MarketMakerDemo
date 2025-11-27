@@ -152,7 +152,7 @@ flowchart TD
 flowchart TD
     Start([开始模拟 / Start Simulation<br/>初始化: 价格、波动率、策略参数<br/>Initialize: price, volatility, strategy params]) --> LoopStart{循环开始<br/>Loop Start<br/>i = 1 to 500}
     
-    LoopStart -->|i <= 500| GenMarket[生成市场数据 / Generate Market Data<br/>1. 随机游走: price += gauss(0, price × volatility)<br/>2. 计算价差: spread = price × 0.0002<br/>3. 计算买卖价: bid = price - spread/2, ask = price + spread/2]
+    LoopStart -->|i <= 500| GenMarket["生成市场数据 / Generate Market Data<br/>1. 随机游走: price += gauss(0, price * volatility)<br/>2. 计算价差: spread = price * 0.0002<br/>3. 计算买卖价: bid = price - spread/2, ask = price + spread/2"]
     
     GenMarket --> CalcOrders[计算目标订单 / Calculate Target Orders<br/>使用 FixedSpread 策略<br/>Use FixedSpread Strategy<br/>参数: spread, quantity, leverage]
     
@@ -345,7 +345,7 @@ flowchart TD
     Sim2 --> Result2[结果 2: PnL₂, WinRate₂, Sharpe₂<br/>Result 2: PnL₂, WinRate₂, Sharpe₂]
     Sim3 --> Result3[结果 3: PnL₃, WinRate₃, Sharpe₃<br/>Result 3: PnL₃, WinRate₃, Sharpe₃]
     
-    Result1 --> Score[计算得分并排名<br/>Calculate Scores & Rank<br/>Score = PnL×40% + Sharpe×30% + WinRate×20% + Conf×10%]
+    Result1 --> Score["计算得分并排名<br/>Calculate Scores & Rank<br/>Score = PnL*40% + Sharpe*30% + WinRate*20% + Conf*10%"]
     Result2 --> Score
     Result3 --> Score
     
@@ -358,7 +358,7 @@ flowchart TD
     style Sim3 fill:#fff4e6
     style Score fill:#f3e5f5
     
-    Note1[注意: 所有模拟使用<br/>相同的算法和环境<br/>Note: All simulations use<br/>same algorithm & environment]
+    Note1["注意: 所有模拟使用<br/>相同的算法和环境<br/>Note: All simulations use<br/>same algorithm and environment"]
     Note1 -.-> Sim1
     Note1 -.-> Sim2
     Note1 -.-> Sim3

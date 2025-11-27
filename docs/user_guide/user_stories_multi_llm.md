@@ -317,6 +317,40 @@ Scenario: Model performance statistics / 统计模型表现
 
 ---
 
+## US-ML-009: Trader Uses Dedicated LLM Trade Page / 交易员使用独立 LLM 交易页面
+
+### Story Description / 故事描述
+
+**As a** quant researcher / 量化研究员  
+**I want to** open a standalone `LLMTrade` page that combines Fixed Spread controls and multi-LLM evaluation widgets / 想打开独立的 `LLMTrade` 页面，将固定价差控制面板与多 LLM 评估组件结合  
+**So that** I can experiment with AI proposals without affecting the main dashboard / 以便在不干扰主仪表盘的情况下验证多模型建议
+
+### Acceptance Criteria / 验收标准
+
+```gherkin
+Scenario: Navigate to LLMTrade page / 访问 LLMTrade 页面
+  Given server is running / 服务已启动
+  When I visit /evaluation / 我访问 /evaluation
+  Then I should see FixedSpread strategy controls, config inputs, evaluation module / 我应该看到固定价差控制、参数输入、评估模块
+
+Scenario: Reuse backend APIs / 复用后端接口
+  When I click Run Evaluation / 点击 Run Evaluation
+  Then page calls /api/evaluation/run and renders individual + consensus results / 页面调用 /api/evaluation/run 并展示模型与共识结果
+
+Scenario: Apply from standalone page / 在独立页面应用参数
+  When I click Apply Consensus / 点击 Apply Consensus
+  Then page calls /api/evaluation/apply with source=consensus / 页面以 source=consensus 调用 /api/evaluation/apply
+  And current FixedSpread config updates accordingly / 当前固定价差配置相应更新
+```
+
+### Technical Notes / 技术备注
+
+- Template: `templates/LLMTrade.html` shares components with main dashboard / 模板 `templates/LLMTrade.html` 复用主面板组件  
+- Route: `/evaluation` returns new template / `/evaluation` 路由返回新模板  
+- JS bundles evaluation logic + control panel interactions / JS 组合评估逻辑与控制面板交互
+
+---
+
 ## Priority Matrix / 优先级矩阵
 
 | User Story / 用户故事 | Priority / 优先级 | Complexity / 复杂度 | MVP |
@@ -329,6 +363,7 @@ Scenario: Model performance statistics / 统计模型表现
 | US-ML-006 | P1 | Low / 低 | ✅ |
 | US-ML-007 | P1 | Medium / 中 | ❌ |
 | US-ML-008 | P2 | High / 高 | ❌ |
+| US-ML-009 | P1 | Medium / 中 | ✅ |
 
 ---
 

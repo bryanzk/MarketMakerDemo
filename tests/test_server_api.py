@@ -6,6 +6,14 @@ from fastapi.testclient import TestClient
 
 import server
 from alphaloop.strategies.funding import FundingRateStrategy
+from alphaloop.evaluation.schemas import (
+    AggregatedResult,
+    EvaluationResult,
+    ParameterStatistics,
+    SimulationResult,
+    StrategyConsensus,
+    StrategyProposal,
+)
 
 
 class DummyStrategy:
@@ -185,6 +193,242 @@ def test_error_history_filters_by_type(client_fixed_strategy):
     assert err0["type"] == "invalid_quantity"
     assert err0["symbol"] == "ETH/USDT:USDT"
 
+
+@pytest.fixture
+def client_with_evaluation(monkeypatch):
+    """Test client with mocked evaluation environment."""
+
+    class DummyExchange:
+        symbol = "ETHUSDT"
+
+        def fetch_market_data(self):
+            return {
+                "symbol": "ETHUSDT",
+                "mid_price": 2000.0,
+                "best_bid": 1999.5,
+                "best_ask": 2000.5,
+                "funding_rate": 0.0001,
+            }
+
+        def fetch_account_data(self):
+            return {
+                "position_amt": 0.1,
+                "unrealizedProfit": 5.0,
+                "balance": 1000.0,
+                "leverage": 3,
+            }
+
+    monkeypatch.setattr(server, "get_default_exchange", lambda: DummyExchange())
+    monkeypatch.setattr(server, "create_all_providers", lambda: ["mock"])
+
+    proposal1 = StrategyProposal(
+        recommended_strategy="FundingRate",
+        spread=0.012,
+        skew_factor=120.0,
+        quantity=0.15,
+        leverage=2.5,
+        reasoning="Positive funding rate.",
+        confidence=0.85,
+        provider_name="Gemini (mock)",
+    )
+    proposal2 = StrategyProposal(
+        recommended_strategy="FixedSpread",
+        spread=0.015,
+        skew_factor=100.0,
+        quantity=0.10,
+        leverage=1.5,
+        reasoning="Volatility suggests wider spread.",
+        confidence=0.75,
+        provider_name="OpenAI (mock)",
+    )
+
+    sim1 = SimulationResult(
+        realized_pnl=180.0,
+        total_trades=45,
+        winning_trades=26,
+        win_rate=0.58,
+        sharpe_ratio=2.1,
+        simulation_steps=500,
+    )
+    sim2 = SimulationResult(
+        realized_pnl=120.0,
+        total_trades=38,
+        winning_trades=20,
+        win_rate=0.52,
+        sharpe_ratio=1.5,
+        simulation_steps=500,
+    )
+
+    eval_results = [
+        EvaluationResult(
+            provider_name="Gemini (mock)",
+            proposal=proposal1,
+            simulation=sim1,
+            score=85.0,
+            rank=1,
+            latency_ms=1200,
+        ),
+        EvaluationResult(
+            provider_name="OpenAI (mock)",
+            proposal=proposal2,
+            simulation=sim2,
+            score=72.0,
+            rank=2,
+            latency_ms=980,
+        ),
+    ]
+
+    aggregated = AggregatedResult(
+        strategy_consensus=StrategyConsensus(
+            consensus_strategy="FundingRate",
+            consensus_level="majority",
+            consensus_ratio=0.67,
+            consensus_count=2,
+            total_models=3,
+            strategy_votes={"FundingRate": 2, "FixedSpread": 1},
+            strategy_percentages={"FundingRate": 0.67, "FixedSpread": 0.33},
+            providers_by_strategy={
+                "FundingRate": ["Gemini (mock)", "Claude (mock)"],
+                "FixedSpread": ["OpenAI (mock)"],
+            },
+        ),
+        parameter_stats=ParameterStatistics(
+            spread_mean=0.0123,
+            spread_median=0.012,
+            spread_min=0.01,
+            spread_max=0.015,
+            spread_std=0.001,
+            skew_mean=135.0,
+            skew_median=135.0,
+            quantity_mean=0.125,
+            quantity_median=0.125,
+            leverage_mean=2.0,
+            leverage_median=2.0,
+            confidence_mean=0.80,
+            confidence_min=0.75,
+            confidence_max=0.85,
+        ),
+        consensus_confidence=0.85,
+        confidence_breakdown={},
+        consensus_proposal=StrategyProposal(
+            recommended_strategy="FundingRate",
+            spread=0.012,
+            skew_factor=135.0,
+            quantity=0.12,
+            leverage=2.0,
+            reasoning="Consensus reasoning.",
+            confidence=0.85,
+            provider_name="Consensus",
+        ),
+        individual_results=eval_results,
+        successful_evaluations=2,
+        failed_evaluations=0,
+        avg_pnl=150.0,
+        avg_sharpe=1.8,
+        avg_win_rate=0.55,
+        avg_latency_ms=1090.0,
+    )
+
+    class FakeEvaluator:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def evaluate(self, context):
+            return eval_results
+
+        def aggregate_results(self, results):
+            return aggregated
+
+        @staticmethod
+        def generate_comparison_table(results):
+            return "mock table"
+
+        @staticmethod
+        def generate_consensus_summary(aggregated_result):
+            return {"summary": "mock consensus"}
+
+    async def immediate_to_thread(func, *args, **kwargs):
+        return func(*args, **kwargs)
+
+    monkeypatch.setattr(server, "MultiLLMEvaluator", FakeEvaluator)
+    monkeypatch.setattr(server.asyncio, "to_thread", immediate_to_thread)
+
+    strategy = DummyStrategy(spread=0.002, quantity=0.1, leverage=3)
+    dummy_bot = DummyBotEngine(strategy=strategy, orders=[])
+    monkeypatch.setattr(server, "bot_engine", dummy_bot)
+
+    return TestClient(server.app)
+
+
+def test_run_evaluation_returns_results(client_with_evaluation):
+    resp = client_with_evaluation.post("/api/evaluation/run", json={"symbol": "BTCUSDT"})
+    assert resp.status_code == 200
+    data = resp.json()
+
+    assert len(data["individual_results"]) == 2
+    assert data["individual_results"][0]["provider_name"] == "Gemini (mock)"
+    assert data["aggregated"]["strategy_consensus"]["consensus_strategy"] == "FundingRate"
+    assert "comparison_table" in data
+    assert "consensus_report" in data
+
+
+def test_apply_evaluation_consensus(client_with_evaluation, monkeypatch):
+    client_with_evaluation.post("/api/evaluation/run", json={"symbol": "ETHUSDT"})
+
+    captured = {}
+
+    async def fake_update_config(config):
+        captured["config"] = config
+        return {"status": "updated"}
+
+    async def fake_update_leverage(leverage):
+        captured["leverage"] = leverage
+        return {"status": "updated"}
+
+    monkeypatch.setattr(server, "update_config", fake_update_config)
+    monkeypatch.setattr(server, "update_leverage", fake_update_leverage)
+
+    resp = client_with_evaluation.post("/api/evaluation/apply", json={"source": "consensus"})
+    assert resp.status_code == 200
+    assert captured["config"].strategy_type == "funding_rate"
+    assert captured["config"].spread == pytest.approx(1.2)  # percentage
+    assert captured["leverage"] == 2
+
+
+def test_apply_evaluation_individual_provider(client_with_evaluation, monkeypatch):
+    client_with_evaluation.post("/api/evaluation/run", json={"symbol": "ETHUSDT"})
+
+    captured = {}
+
+    async def fake_update_config(config):
+        captured["config"] = config
+        return {"status": "updated"}
+
+    async def fake_update_leverage(leverage):
+        captured["leverage"] = leverage
+        return {"status": "updated"}
+
+    monkeypatch.setattr(server, "update_config", fake_update_config)
+    monkeypatch.setattr(server, "update_leverage", fake_update_leverage)
+
+    resp = client_with_evaluation.post(
+        "/api/evaluation/apply",
+        json={"source": "individual", "provider_name": "Gemini (mock)"},
+    )
+    assert resp.status_code == 200
+    assert captured["config"].strategy_type == "funding_rate"
+    assert captured["config"].spread == pytest.approx(1.2)
+    assert captured["leverage"] == 2
+
+
+def test_apply_individual_provider_not_found(client_with_evaluation):
+    client_with_evaluation.post("/api/evaluation/run", json={"symbol": "ETHUSDT"})
+    resp = client_with_evaluation.post(
+        "/api/evaluation/apply",
+        json={"source": "individual", "provider_name": "Unknown"},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["error"].startswith("Provider Unknown not found")
 
 class TestErrorHistoryAPI:
     """Comprehensive tests for /api/error-history endpoint."""

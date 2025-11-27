@@ -1,0 +1,505 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>LLM Trade Lab</title>
+    <style>
+        body {
+            margin: 0;
+            font-family: "Inter", "PingFang SC", sans-serif;
+            background: #f5f5fa;
+            color: #1f2937;
+        }
+
+        a {
+            color: #3b82f6;
+            text-decoration: none;
+        }
+
+        .page {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 24px;
+        }
+
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 24px;
+        }
+
+        .panel {
+            background: #ffffff;
+            border-radius: 14px;
+            box-shadow: 0 8px 30px rgba(15, 23, 42, 0.08);
+            padding: 24px;
+            margin-bottom: 24px;
+        }
+
+        .panel h2 {
+            margin: 0 0 16px;
+            font-size: 20px;
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 16px;
+            margin-top: 16px;
+        }
+
+        label {
+            font-size: 13px;
+            color: #6b7280;
+            display: block;
+            margin-bottom: 6px;
+        }
+
+        input,
+        select {
+            width: 100%;
+            padding: 10px;
+            border-radius: 8px;
+            border: 1px solid #e5e7eb;
+            background: #f9fafb;
+            font-size: 14px;
+            box-sizing: border-box;
+        }
+
+        .btn {
+            border: none;
+            border-radius: 8px;
+            padding: 10px 16px;
+            font-size: 14px;
+            cursor: pointer;
+        }
+
+        .btn-primary {
+            background: #4f46e5;
+            color: #fff;
+        }
+
+        .btn-secondary {
+            background: #e5e7eb;
+            color: #374151;
+        }
+
+        .btn-success {
+            background: #22c55e;
+            color: #fff;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 12px;
+        }
+
+        table th,
+        table td {
+            padding: 8px;
+            text-align: left;
+            border-bottom: 1px solid #f3f4f6;
+        }
+
+        .message {
+            margin-top: 12px;
+            font-size: 13px;
+        }
+
+        .message.error {
+            color: #b91c1c;
+        }
+
+        .consensus-card {
+            border: 1px dashed #c4b5fd;
+            padding: 12px;
+            border-radius: 10px;
+            background: #f5f3ff;
+            margin-top: 16px;
+        }
+
+        .nav-link {
+            font-size: 14px;
+            padding: 8px 14px;
+            border-radius: 999px;
+            background: #eef2ff;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="page">
+        <header>
+            <div>
+                <h1 style="margin:0;">LLM Trade Lab</h1>
+                <div style="font-size:13px; color:#6b7280;">Fixed Spread Controls + Multi-LLM Evaluation</div>
+            </div>
+            <a class="nav-link" href="/">← Back to Dashboard</a>
+        </header>
+
+        <section class="panel">
+            <h2>Fixed Spread Strategy Control Panel / 固定价差策略控制面板</h2>
+            <div class="grid">
+                <div>
+                    <label>Trading Pair / 交易对</label>
+                    <div style="display:flex; gap:8px;">
+                        <select id="pairSelect">
+                            <option value="ETH/USDT:USDT">ETH/USDT:USDT</option>
+                            <option value="BTC/USDT:USDT">BTC/USDT:USDT</option>
+                            <option value="SOL/USDT:USDT">SOL/USDT:USDT</option>
+                        </select>
+                        <button class="btn btn-secondary" onclick="switchPair()">Switch</button>
+                    </div>
+                </div>
+            </div>
+            <div class="grid" style="margin-top: 16px;">
+                <div>
+                    <label>Spread (%) / 价差 (%)</label>
+                    <input type="number" id="spreadInput" step="0.01" value="1.5">
+                </div>
+                <div>
+                    <label>Quantity / 数量</label>
+                    <input type="number" id="quantityInput" step="0.01" value="0.1">
+                </div>
+                <div>
+                    <label>Skew Factor / 倾斜因子</label>
+                    <input type="number" id="skewInput" step="5" value="120">
+                </div>
+                <div>
+                    <label>Leverage / 杠杆</label>
+                    <input type="number" id="leverageInput" min="1" max="125" value="5">
+                </div>
+            </div>
+            <div style="display:flex; gap:12px; margin-top:16px;">
+                <button class="btn btn-primary" onclick="updateConfig()">💾 Save Strategy Config</button>
+                <button class="btn btn-secondary" onclick="updateLeverage()">⚡ Update Leverage</button>
+            </div>
+            <div id="controlMessage" class="message"></div>
+        </section>
+
+        <section class="panel">
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+                <div>
+                    <h2 style="margin:0;">Multi-LLM Evaluation / 多模型评估</h2>
+                    <div style="font-size:13px; color:#6b7280;">Gemini · OpenAI · Claude</div>
+                </div>
+                <button id="runEvaluationBtn" class="btn btn-primary" onclick="runEvaluation()">🚀 Run Evaluation</button>
+            </div>
+            <div id="evaluationStatusText" class="message" style="color:#6b7280; margin-top:12px;">Ready.</div>
+            <div id="evaluationErrorBox" class="message error" style="display:none;"></div>
+
+            <div id="evaluationConsensusCard" class="consensus-card" style="display:none;">
+                <div style="font-size:14px; font-weight:bold; color:#6d28d9;">🤝 Consensus Recommendation / 共识建议</div>
+                <div style="margin-top:8px; font-size:13px;">
+                    <div>Strategy: <span id="evaluationConsensusStrategy" style="font-weight:bold;">--</span></div>
+                    <div>Consensus Level: <span id="evaluationConsensusLevel">--</span></div>
+                    <div>Confidence: <span id="evaluationConsensusConfidence">--</span></div>
+                    <div>Spread / Skew / Qty / Lev:
+                        <span id="evaluationConsensusParams" style="font-weight:bold;">--</span>
+                    </div>
+                </div>
+                <div id="evaluationConsensusStats" style="margin-top:6px; font-size:12px; color:#4b5563;">--</div>
+                <div id="evaluationConsensusReasoning" style="margin-top:8px; font-size:12px; color:#6b7280;">--</div>
+                <button class="btn btn-success" style="margin-top:12px; width:100%;"
+                    onclick="applyEvaluation('consensus')">Apply Consensus</button>
+            </div>
+
+            <div id="evaluationResultsWrapper" style="margin-top:20px; display:none;">
+                <div style="display:flex; justify-content:space-between; align-items:center;">
+                    <div style="font-size:13px; font-weight:bold;">Model Comparison / 模型对比</div>
+                    <div id="evaluationLastRun" style="font-size:11px; color:#6b7280;"></div>
+                </div>
+                <div style="overflow-x:auto; margin-top:8px;">
+                    <table>
+                        <thead>
+                            <tr style="background:#f3f4f6;">
+                                <th>Rank</th>
+                                <th>Provider</th>
+                                <th>Strategy</th>
+                                <th>Spread</th>
+                                <th>Skew</th>
+                                <th>Qty</th>
+                                <th>Lev</th>
+                                <th>Confidence</th>
+                                <th>PnL</th>
+                                <th>Sharpe</th>
+                                <th>Win%</th>
+                                <th>Score</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody id="evaluationResultsBody"></tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+    </div>
+
+    <script>
+        const controlMessage = document.getElementById('controlMessage');
+        let currentEvalSymbol = 'ETHUSDT';
+        let evaluationState = {
+            loading: false,
+            results: [],
+            aggregated: null,
+            lastError: null,
+            lastRunSymbol: null,
+            lastRunAt: null,
+        };
+
+        function showMessage(el, text, isError = false) {
+            if (!el) return;
+            el.innerText = text;
+            el.classList.toggle('error', isError);
+        }
+
+        function normalizeSymbol(symbol) {
+            if (!symbol) return 'ETHUSDT';
+            return symbol.toUpperCase().replace(/[:\/-]/g, '');
+        }
+
+        async function loadStatus() {
+            try {
+                const res = await fetch('/api/status');
+                const data = await res.json();
+                if (data.spread !== undefined) {
+                    document.getElementById('spreadInput').value = (data.spread * 100).toFixed(3);
+                }
+                document.getElementById('quantityInput').value = data.quantity ?? 0.1;
+                if (data.skew_factor !== undefined) {
+                    document.getElementById('skewInput').value = data.skew_factor;
+                }
+                document.getElementById('leverageInput').value = data.leverage ?? 5;
+                currentEvalSymbol = normalizeSymbol(data.symbol);
+
+                const pairSelect = document.getElementById('pairSelect');
+                if (pairSelect && data.symbol) {
+                    for (const option of pairSelect.options) {
+                        if (option.value.toUpperCase() === data.symbol.toUpperCase()) {
+                            pairSelect.value = option.value;
+                            break;
+                        }
+                    }
+                }
+            } catch (err) {
+                showMessage(controlMessage, `Failed to load status: ${err.message}`, true);
+            }
+        }
+
+        async function updateConfig() {
+            try {
+                const payload = {
+                    spread: parseFloat(document.getElementById('spreadInput').value || '0'),
+                    quantity: parseFloat(document.getElementById('quantityInput').value || '0'),
+                    strategy_type: 'fixed_spread',
+                    strategy_id: 'default',
+                    skew_factor: parseFloat(document.getElementById('skewInput').value || '0'),
+                };
+                const res = await fetch('/api/config', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload),
+                });
+                const data = await res.json();
+                if (data.error) throw new Error(data.error);
+                showMessage(controlMessage, 'Strategy config updated.');
+            } catch (err) {
+                showMessage(controlMessage, err.message || 'Failed to update config', true);
+            }
+        }
+
+        async function updateLeverage() {
+            try {
+                const leverage = parseInt(document.getElementById('leverageInput').value || '1', 10);
+                const res = await fetch('/api/leverage', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(leverage),
+                });
+                const data = await res.json();
+                if (data.error) throw new Error(data.error);
+                showMessage(controlMessage, `Leverage updated to ${data.leverage}x`);
+            } catch (err) {
+                showMessage(controlMessage, err.message || 'Failed to update leverage', true);
+            }
+        }
+
+        async function switchPair() {
+            try {
+                const symbol = document.getElementById('pairSelect').value;
+                const res = await fetch('/api/pair', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ symbol }),
+                });
+                const data = await res.json();
+                if (data.error) throw new Error(data.error);
+                currentEvalSymbol = normalizeSymbol(symbol);
+                showMessage(controlMessage, `Switched to ${symbol}`);
+                loadStatus();
+            } catch (err) {
+                showMessage(controlMessage, err.message || 'Failed to switch pair', true);
+            }
+        }
+
+        function getEvaluationSymbol() {
+            const select = document.getElementById('pairSelect');
+            const raw = select && select.value ? select.value : currentEvalSymbol;
+            return normalizeSymbol(raw);
+        }
+
+        function formatPercent(value, decimals = 1) {
+            if (value === null || value === undefined || isNaN(value)) return '--';
+            return `${(value * 100).toFixed(decimals)}%`;
+        }
+
+        function formatNumber(value, decimals = 2) {
+            if (value === null || value === undefined || isNaN(value)) return '--';
+            return Number(value).toFixed(decimals);
+        }
+
+        function formatCurrency(value) {
+            if (value === null || value === undefined || isNaN(value)) return '--';
+            return `$${Number(value).toFixed(2)}`;
+        }
+
+        function updateEvaluationUI() {
+            const statusEl = document.getElementById('evaluationStatusText');
+            const runBtn = document.getElementById('runEvaluationBtn');
+            const errorBox = document.getElementById('evaluationErrorBox');
+            const consensusCard = document.getElementById('evaluationConsensusCard');
+            const resultsWrapper = document.getElementById('evaluationResultsWrapper');
+            const resultsBody = document.getElementById('evaluationResultsBody');
+            const lastRunEl = document.getElementById('evaluationLastRun');
+
+            if (runBtn) runBtn.disabled = evaluationState.loading;
+            if (evaluationState.loading) {
+                statusEl.innerText = 'Running evaluation... Please wait.';
+            } else if (evaluationState.lastRunAt) {
+                statusEl.innerText = `Last run: ${evaluationState.lastRunSymbol} @ ${new Date(evaluationState.lastRunAt).toLocaleTimeString()}`;
+            } else {
+                statusEl.innerText = 'Ready.';
+            }
+
+            if (evaluationState.lastError) {
+                errorBox.style.display = 'block';
+                errorBox.innerText = evaluationState.lastError;
+            } else {
+                errorBox.style.display = 'none';
+            }
+
+            if (consensusCard) {
+                const aggregated = evaluationState.aggregated;
+                if (aggregated && aggregated.consensus_proposal && aggregated.strategy_consensus) {
+                    const proposal = aggregated.consensus_proposal;
+                    const consensus = aggregated.strategy_consensus;
+                    const confidence = aggregated.consensus_confidence ?? 0;
+                    consensusCard.style.display = 'block';
+                    document.getElementById('evaluationConsensusStrategy').innerText = proposal.recommended_strategy || '--';
+                    document.getElementById('evaluationConsensusLevel').innerText =
+                        `${(consensus.consensus_level || '--').toUpperCase()} (${formatPercent(consensus.consensus_ratio || 0, 1)})`;
+                    document.getElementById('evaluationConsensusConfidence').innerText = formatPercent(confidence, 1);
+                    document.getElementById('evaluationConsensusParams').innerText =
+                        `${formatPercent(proposal.spread || 0, 2)} · Skew ${formatNumber(proposal.skew_factor || 0, 0)} · Qty ${formatNumber(proposal.quantity || 0, 3)} · Lev ${formatNumber(proposal.leverage || 0, 1)}x`;
+                    document.getElementById('evaluationConsensusReasoning').innerText =
+                        proposal.reasoning || 'Consensus reasoning unavailable.';
+                    document.getElementById('evaluationConsensusStats').innerText =
+                        `Avg PnL ${formatCurrency(aggregated.avg_pnl || 0)} · Avg Sharpe ${formatNumber(aggregated.avg_sharpe || 0, 2)} · Avg Win ${formatPercent(aggregated.avg_win_rate || 0, 1)}`;
+                } else {
+                    consensusCard.style.display = 'none';
+                }
+            }
+
+            if (resultsWrapper) {
+                if (evaluationState.results.length > 0) {
+                    resultsWrapper.style.display = 'block';
+                    lastRunEl.innerText = evaluationState.lastRunAt
+                        ? `Updated ${new Date(evaluationState.lastRunAt).toLocaleTimeString()}`
+                        : '';
+                    const rows = evaluationState.results.map((result) => {
+                        const proposal = result.proposal || {};
+                        const simulation = result.simulation || {};
+                        const disabledApply = !proposal.parse_success ? 'disabled' : '';
+                        const providerSafe = (result.provider_name || '').replace(/"/g, '&quot;');
+                        const highlight = result.rank === 1 ? 'style="background:#fef3c7;"' : '';
+                        return `
+                            <tr ${highlight}>
+                                <td>${result.rank ?? '--'}</td>
+                                <td>${result.provider_name || '--'}</td>
+                                <td>${proposal.recommended_strategy || '--'}</td>
+                                <td>${formatPercent(proposal.spread || 0, 2)}</td>
+                                <td>${formatNumber(proposal.skew_factor || 0, 0)}</td>
+                                <td>${formatNumber(proposal.quantity || 0, 3)}</td>
+                                <td>${formatNumber(proposal.leverage || 0, 1)}x</td>
+                                <td>${formatPercent(proposal.confidence || 0, 1)}</td>
+                                <td>${formatCurrency(simulation.realized_pnl)}</td>
+                                <td>${formatNumber(simulation.sharpe_ratio || 0, 2)}</td>
+                                <td>${formatPercent(simulation.win_rate || 0, 1)}</td>
+                                <td>${formatNumber(result.score || 0, 1)}</td>
+                                <td><button class="btn btn-secondary" style="font-size:11px;" ${disabledApply}
+                                    onclick="applyEvaluation('individual', '${providerSafe}')">Apply</button></td>
+                            </tr>`;
+                    }).join('');
+                    resultsBody.innerHTML = rows;
+                } else {
+                    resultsWrapper.style.display = 'none';
+                    lastRunEl.innerText = '';
+                }
+            }
+        }
+
+        async function runEvaluation() {
+            if (evaluationState.loading) return;
+            evaluationState.loading = true;
+            evaluationState.lastError = null;
+            updateEvaluationUI();
+            try {
+                const res = await fetch('/api/evaluation/run', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ symbol: getEvaluationSymbol() }),
+                });
+                const data = await res.json();
+                if (data.error) throw new Error(data.error);
+                evaluationState.results = data.individual_results || [];
+                evaluationState.aggregated = data.aggregated || null;
+                evaluationState.lastRunSymbol = data.symbol || getEvaluationSymbol();
+                evaluationState.lastRunAt = new Date().toISOString();
+            } catch (err) {
+                evaluationState.lastError = err.message || 'Failed to run evaluation';
+            } finally {
+                evaluationState.loading = false;
+                updateEvaluationUI();
+            }
+        }
+
+        async function applyEvaluation(source, providerName = null) {
+            try {
+                const payload = { source };
+                if (providerName) payload.provider_name = providerName;
+                const res = await fetch('/api/evaluation/apply', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload),
+                });
+                const data = await res.json();
+                if (data.error) throw new Error(data.error);
+                showMessage(controlMessage, 'Applied evaluation proposal.');
+                loadStatus();
+            } catch (err) {
+                showMessage(controlMessage, err.message || 'Failed to apply proposal', true);
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            loadStatus();
+            updateEvaluationUI();
+        });
+    </script>
+</body>
+
+</html>
+

@@ -539,6 +539,11 @@
                     <div id="stageDisplay" style="font-size: 12px; color: #6b7280; margin-top: 5px; font-weight: bold;">
                         Idle
                     </div>
+                    <div style="margin-top: 8px;">
+                        <a href="/evaluation" class="btn btn-secondary" style="font-size: 12px; padding:6px 12px;">
+                            🔎 Open LLM Trade Lab
+                        </a>
+                    </div>
                 </div>
             </div>
 
@@ -789,6 +794,77 @@
 
                             <button class="btn btn-success" style="margin-top: 15px; width: 100%; font-size: 12px;"
                                 onclick="applySuggestion()">Apply Recommendation</button>
+                        </div>
+                    </div>
+
+                    <!-- Multi-LLM Evaluation Panel -->
+                    <div class="card" style="flex-shrink: 0;" id="evaluationCard">
+                        <div style="display: flex; justify-content: space-between; align-items: center; gap: 10px;">
+                            <div>
+                                <h3 style="margin: 0;">Multi-LLM Evaluation / 多模型评估</h3>
+                                <div style="font-size: 12px; color: #6b7280;">Gemini · OpenAI · Claude</div>
+                            </div>
+                            <button id="runEvaluationBtn" class="btn btn-primary" style="font-size: 12px;"
+                                onclick="runEvaluation()">🚀 Run Evaluation</button>
+                        </div>
+
+                        <div id="evaluationStatusText" style="margin-top: 10px; font-size: 12px; color: #6b7280;">
+                            Waiting for evaluation...
+                        </div>
+
+                        <div id="evaluationErrorBox"
+                            style="display: none; margin-top: 10px; background: #fef2f2; border-left: 3px solid #ef4444; padding: 8px; font-size: 12px; color: #991b1b;">
+                        </div>
+
+                        <div id="evaluationConsensusCard"
+                            style="display: none; margin-top: 12px; border: 1px dashed #c4b5fd; padding: 12px; border-radius: 8px; background: #f5f3ff;">
+                            <div style="font-size: 14px; font-weight: bold; color: #6d28d9;">🤝 Consensus Recommendation</div>
+                            <div style="margin-top: 8px; font-size: 13px;">
+                                <div>Strategy: <span id="evaluationConsensusStrategy" style="font-weight: bold;">--</span></div>
+                                <div>Consensus Level: <span id="evaluationConsensusLevel">--</span></div>
+                                <div>Confidence: <span id="evaluationConsensusConfidence">--</span></div>
+                                <div>Spread / Skew / Qty / Leverage:
+                                    <span id="evaluationConsensusParams" style="font-weight: bold;">--</span>
+                                </div>
+                            </div>
+                            <div id="evaluationConsensusStats" style="margin-top: 6px; font-size: 12px; color: #4b5563;">
+                                Avg PnL / Sharpe / WinRate: --
+                            </div>
+                            <div style="margin-top: 10px; font-size: 12px; color: #6b7280;" id="evaluationConsensusReasoning">
+                                --
+                            </div>
+                            <button class="btn btn-success" style="margin-top: 12px; width: 100%; font-size: 12px;"
+                                onclick="applyEvaluation('consensus')">Apply Consensus</button>
+                        </div>
+
+                        <div id="evaluationResultsWrapper" style="margin-top: 15px; display: none;">
+                            <div style="display: flex; justify-content: space-between; align-items: center;">
+                                <div style="font-size: 13px; font-weight: bold;">Model Comparison</div>
+                                <div id="evaluationLastRun"
+                                    style="font-size: 11px; color: #6b7280; text-align: right;"></div>
+                            </div>
+                            <div style="overflow-x: auto; margin-top: 8px;">
+                                <table style="width: 100%; font-size: 12px; border-collapse: collapse;">
+                                    <thead>
+                                        <tr style="background: #f3f4f6; text-align: left;">
+                                            <th>Rank</th>
+                                            <th>Provider</th>
+                                            <th>Strategy</th>
+                                            <th>Spread</th>
+                                            <th>Skew</th>
+                                            <th>Qty</th>
+                                            <th>Leverage</th>
+                                            <th>Confidence</th>
+                                            <th>PnL</th>
+                                            <th>Sharpe</th>
+                                            <th>Win%</th>
+                                            <th>Score</th>
+                                            <th></th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="evaluationResultsBody"></tbody>
+                                </table>
+                            </div>
                         </div>
                     </div>
                     
@@ -2371,6 +2447,14 @@
         let currentSuggestion = null;
         let suggestionsLoaded = false;
         let suggestionsFetching = false;
+        let evaluationState = {
+            loading: false,
+            results: [],
+            aggregated: null,
+            lastError: null,
+            lastRunSymbol: null,
+            lastRunAt: null,
+        };
 
         async function fetchSuggestions() {
             // Skip if already fetching
@@ -2439,6 +2523,168 @@
                 suggestionsFetching = false;
             }
         }
+
+        function getEvaluationSymbol() {
+            const select = document.getElementById('pairSelect');
+            const raw = select && select.value ? select.value : 'ETHUSDT';
+            return raw.toUpperCase().replace(/[:\/-]/g, '');
+        }
+
+        function formatPercent(value, decimals = 1) {
+            if (value === null || value === undefined || isNaN(value)) return '--';
+            return `${(value * 100).toFixed(decimals)}%`;
+        }
+
+        function formatNumber(value, decimals = 2) {
+            if (value === null || value === undefined || isNaN(value)) return '--';
+            return Number(value).toFixed(decimals);
+        }
+
+        function formatCurrency(value) {
+            if (value === null || value === undefined || isNaN(value)) return '--';
+            return `$${Number(value).toFixed(2)}`;
+        }
+
+        function updateEvaluationUI() {
+            const statusEl = document.getElementById('evaluationStatusText');
+            const runBtn = document.getElementById('runEvaluationBtn');
+            const errorBox = document.getElementById('evaluationErrorBox');
+            const consensusCard = document.getElementById('evaluationConsensusCard');
+            const resultsWrapper = document.getElementById('evaluationResultsWrapper');
+            const resultsBody = document.getElementById('evaluationResultsBody');
+            const lastRunEl = document.getElementById('evaluationLastRun');
+
+            if (!statusEl) return;
+
+            if (runBtn) runBtn.disabled = evaluationState.loading;
+
+            if (evaluationState.loading) {
+                statusEl.innerText = 'Running evaluation... Please wait.';
+            } else if (evaluationState.lastRunAt) {
+                statusEl.innerText = `Last run: ${evaluationState.lastRunSymbol || '--'} @ ${new Date(evaluationState.lastRunAt).toLocaleTimeString()}`;
+            } else {
+                statusEl.innerText = 'Ready to evaluate.';
+            }
+
+            if (errorBox) {
+                if (evaluationState.lastError) {
+                    errorBox.style.display = 'block';
+                    errorBox.innerText = evaluationState.lastError;
+                } else {
+                    errorBox.style.display = 'none';
+                }
+            }
+
+                if (consensusCard) {
+                const aggregated = evaluationState.aggregated;
+                if (aggregated && aggregated.consensus_proposal && aggregated.strategy_consensus) {
+                    const proposal = aggregated.consensus_proposal;
+                    const consensus = aggregated.strategy_consensus;
+                    consensusCard.style.display = 'block';
+                    const confidence = aggregated.consensus_confidence ?? 0;
+                    document.getElementById('evaluationConsensusStrategy').innerText = proposal.recommended_strategy || '--';
+                    document.getElementById('evaluationConsensusLevel').innerText = `${(consensus.consensus_level || '--').toUpperCase()} (${formatPercent(consensus.consensus_ratio || 0, 1)})`;
+                    document.getElementById('evaluationConsensusConfidence').innerText = formatPercent(confidence, 1);
+                    document.getElementById('evaluationConsensusParams').innerText =
+                        `${formatPercent(proposal.spread || 0, 2)} · Skew ${formatNumber(proposal.skew_factor || 0, 0)} · Qty ${formatNumber(proposal.quantity || 0, 3)} · Lev ${formatNumber(proposal.leverage || 0, 1)}x`;
+                        document.getElementById('evaluationConsensusStats').innerText =
+                            `Avg PnL ${formatCurrency(aggregated.avg_pnl || 0)} · Avg Sharpe ${formatNumber(aggregated.avg_sharpe || 0, 2)} · Avg Win ${formatPercent(aggregated.avg_win_rate || 0, 1)}`;
+                    document.getElementById('evaluationConsensusReasoning').innerText =
+                        proposal.reasoning || 'Consensus reasoning unavailable.';
+                } else {
+                    consensusCard.style.display = 'none';
+                }
+            }
+
+            if (resultsWrapper && resultsBody) {
+                if (evaluationState.results.length > 0) {
+                    resultsWrapper.style.display = 'block';
+                    lastRunEl.innerText = evaluationState.lastRunAt
+                        ? `Updated ${new Date(evaluationState.lastRunAt).toLocaleTimeString()}`
+                        : '';
+                    const rows = evaluationState.results.map((result) => {
+                        const proposal = result.proposal || {};
+                        const simulation = result.simulation || {};
+                        const disabledApply = !proposal.parse_success ? 'disabled' : '';
+                        const providerSafe = (result.provider_name || '').replace(/"/g, '&quot;');
+                        const rowClass = result.rank === 1 ? 'style="background: #fef3c7;"' : '';
+                        return `
+                        <tr ${rowClass}>
+                            <td>${result.rank ?? '--'}</td>
+                            <td>${result.provider_name || '--'}</td>
+                            <td>${proposal.recommended_strategy || '--'}</td>
+                            <td>${formatPercent(proposal.spread || 0, 2)}</td>
+                            <td>${formatNumber(proposal.skew_factor || 0, 0)}</td>
+                            <td>${formatNumber(proposal.quantity || 0, 3)}</td>
+                            <td>${formatNumber(proposal.leverage || 0, 1)}x</td>
+                            <td>${formatPercent(proposal.confidence || 0, 1)}</td>
+                            <td>${formatCurrency(simulation.realized_pnl)}</td>
+                            <td>${formatNumber(simulation.sharpe_ratio || 0, 2)}</td>
+                            <td>${formatPercent(simulation.win_rate || 0, 1)}</td>
+                            <td>${formatNumber(result.score || 0, 1)}</td>
+                            <td>
+                                <button class="btn btn-secondary" style="font-size: 11px;" ${disabledApply}
+                                    onclick="applyEvaluation('individual', '${providerSafe}')">
+                                    Apply
+                                </button>
+                            </td>
+                        </tr>`;
+                    }).join('');
+                    resultsBody.innerHTML = rows;
+                } else {
+                    resultsWrapper.style.display = 'none';
+                    if (lastRunEl) lastRunEl.innerText = '';
+                }
+            }
+        }
+
+        async function runEvaluation() {
+            if (evaluationState.loading) return;
+            evaluationState.loading = true;
+            evaluationState.lastError = null;
+            updateEvaluationUI();
+
+            try {
+                const symbolPayload = getEvaluationSymbol();
+                const res = await fetch('/api/evaluation/run', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ symbol: symbolPayload }),
+                });
+                const data = await res.json();
+                if (data.error) throw new Error(data.error);
+                evaluationState.results = data.individual_results || [];
+                evaluationState.aggregated = data.aggregated || null;
+                evaluationState.lastRunSymbol = data.symbol || symbolPayload;
+                evaluationState.lastRunAt = new Date().toISOString();
+            } catch (err) {
+                evaluationState.lastError = err?.message || 'Failed to run evaluation';
+            } finally {
+                evaluationState.loading = false;
+                updateEvaluationUI();
+            }
+        }
+
+        async function applyEvaluation(source, providerName = null) {
+            try {
+                const payload = { source };
+                if (providerName) payload.provider_name = providerName;
+                const res = await fetch('/api/evaluation/apply', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload),
+                });
+                const data = await res.json();
+                if (data.error) throw new Error(data.error);
+                showToast('Applied evaluation proposal successfully', 'success');
+                fetchStatus();
+            } catch (err) {
+                showToast(err?.message || 'Failed to apply proposal', 'error');
+            }
+        }
+
+        // Initialize evaluation UI on load
+        updateEvaluationUI();
 
         async function applySuggestionOption(spread) {
             document.getElementById('spreadInput').value = spread;

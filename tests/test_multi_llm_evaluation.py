@@ -935,3 +935,723 @@ class TestEndToEndIntegration:
         summaries = [r.to_summary() for r in results]
         assert len(summaries) == 3
         assert all("provider" in s for s in summaries)
+
+
+# ============================================================================
+# US-ML-007: 策略共识分析
+# ============================================================================
+
+
+class TestUSML007_StrategyConsensus:
+    """US-ML-007: 策略共识分析"""
+
+    @pytest.fixture
+    def sample_market_context(self):
+        from alphaloop.evaluation.schemas import MarketContext
+
+        return MarketContext(
+            symbol="ETHUSDT",
+            mid_price=2500.0,
+            best_bid=2499.5,
+            best_ask=2500.5,
+            spread_bps=4.0,
+            volatility_24h=0.035,
+            volatility_1h=0.012,
+            funding_rate=0.0001,
+            funding_rate_trend="rising",
+        )
+
+    def test_AC1_full_consensus_when_all_agree(self, sample_market_context):
+        """
+        验收标准: 当所有模型推荐相同策略时，共识程度为 'full'
+        """
+        from alphaloop.evaluation.evaluator import MultiLLMEvaluator
+
+        # All recommend FundingRate
+        providers = []
+        for name in ["Gemini", "OpenAI", "Claude"]:
+            p = Mock()
+            p.name = name
+            p.generate.return_value = '{"recommended_strategy": "FundingRate", "spread": 0.01, "confidence": 0.85}'
+            providers.append(p)
+
+        evaluator = MultiLLMEvaluator(providers=providers, simulation_steps=50)
+        results = evaluator.evaluate(sample_market_context)
+
+        consensus = MultiLLMEvaluator.get_strategy_consensus(results)
+
+        assert consensus.consensus_strategy == "FundingRate"
+        assert consensus.consensus_level == "full"
+        assert consensus.consensus_ratio == 1.0
+        assert consensus.is_unanimous() is True
+
+    def test_AC2_majority_consensus_when_two_agree(self, sample_market_context):
+        """
+        验收标准: 当多数模型推荐相同策略时，共识程度为 'majority'
+        """
+        from alphaloop.evaluation.evaluator import MultiLLMEvaluator
+
+        # 2 recommend FundingRate, 1 recommends FixedSpread
+        gemini = Mock()
+        gemini.name = "Gemini"
+        gemini.generate.return_value = '{"recommended_strategy": "FundingRate", "spread": 0.01, "confidence": 0.85}'
+
+        openai = Mock()
+        openai.name = "OpenAI"
+        openai.generate.return_value = '{"recommended_strategy": "FundingRate", "spread": 0.012, "confidence": 0.78}'
+
+        claude = Mock()
+        claude.name = "Claude"
+        claude.generate.return_value = '{"recommended_strategy": "FixedSpread", "spread": 0.015, "confidence": 0.70}'
+
+        evaluator = MultiLLMEvaluator(providers=[gemini, openai, claude], simulation_steps=50)
+        results = evaluator.evaluate(sample_market_context)
+
+        consensus = MultiLLMEvaluator.get_strategy_consensus(results)
+
+        assert consensus.consensus_strategy == "FundingRate"
+        assert consensus.consensus_level == "majority"
+        assert consensus.consensus_ratio == 2 / 3
+        assert consensus.has_majority() is True
+        assert consensus.is_unanimous() is False
+
+    def test_AC3_split_consensus_when_evenly_divided(self, sample_market_context):
+        """
+        验收标准: 当投票平分时，共识程度为 'split'
+        """
+        from alphaloop.evaluation.evaluator import MultiLLMEvaluator
+
+        # 1 FundingRate, 1 FixedSpread
+        gemini = Mock()
+        gemini.name = "Gemini"
+        gemini.generate.return_value = '{"recommended_strategy": "FundingRate", "spread": 0.01, "confidence": 0.85}'
+
+        openai = Mock()
+        openai.name = "OpenAI"
+        openai.generate.return_value = '{"recommended_strategy": "FixedSpread", "spread": 0.015, "confidence": 0.78}'
+
+        evaluator = MultiLLMEvaluator(providers=[gemini, openai], simulation_steps=50)
+        results = evaluator.evaluate(sample_market_context)
+
+        consensus = MultiLLMEvaluator.get_strategy_consensus(results)
+
+        assert consensus.consensus_level == "split"
+        assert consensus.consensus_ratio == 0.5
+        assert consensus.has_majority() is False
+
+    def test_AC4_providers_grouped_by_strategy(self, sample_market_context):
+        """
+        验收标准: 按策略分组的 Provider 列表应该正确
+        """
+        from alphaloop.evaluation.evaluator import MultiLLMEvaluator
+
+        gemini = Mock()
+        gemini.name = "Gemini"
+        gemini.generate.return_value = '{"recommended_strategy": "FundingRate", "spread": 0.01, "confidence": 0.85}'
+
+        openai = Mock()
+        openai.name = "OpenAI"
+        openai.generate.return_value = '{"recommended_strategy": "FixedSpread", "spread": 0.015, "confidence": 0.78}'
+
+        claude = Mock()
+        claude.name = "Claude"
+        claude.generate.return_value = '{"recommended_strategy": "FundingRate", "spread": 0.012, "confidence": 0.80}'
+
+        evaluator = MultiLLMEvaluator(providers=[gemini, openai, claude], simulation_steps=50)
+        results = evaluator.evaluate(sample_market_context)
+
+        consensus = MultiLLMEvaluator.get_strategy_consensus(results)
+
+        assert "FundingRate" in consensus.providers_by_strategy
+        assert "FixedSpread" in consensus.providers_by_strategy
+        assert len(consensus.providers_by_strategy["FundingRate"]) == 2
+        assert len(consensus.providers_by_strategy["FixedSpread"]) == 1
+
+
+# ============================================================================
+# US-ML-008: 参数统计分析
+# ============================================================================
+
+
+class TestUSML008_ParameterStatistics:
+    """US-ML-008: 参数统计分析"""
+
+    @pytest.fixture
+    def sample_market_context(self):
+        from alphaloop.evaluation.schemas import MarketContext
+
+        return MarketContext(
+            symbol="ETHUSDT",
+            mid_price=2500.0,
+            best_bid=2499.5,
+            best_ask=2500.5,
+            spread_bps=4.0,
+            volatility_24h=0.035,
+            volatility_1h=0.012,
+            funding_rate=0.0001,
+            funding_rate_trend="rising",
+        )
+
+    def test_AC1_spread_statistics_calculated(self, sample_market_context):
+        """
+        验收标准: 应该正确计算 spread 的统计数据
+        """
+        from alphaloop.evaluation.evaluator import MultiLLMEvaluator
+
+        providers = []
+        spreads = [0.010, 0.012, 0.015]
+        for i, (name, spread) in enumerate(zip(["Gemini", "OpenAI", "Claude"], spreads)):
+            p = Mock()
+            p.name = name
+            p.generate.return_value = f'{{"recommended_strategy": "FixedSpread", "spread": {spread}, "confidence": 0.8}}'
+            providers.append(p)
+
+        evaluator = MultiLLMEvaluator(providers=providers, simulation_steps=50)
+        results = evaluator.evaluate(sample_market_context)
+
+        stats = MultiLLMEvaluator.get_parameter_statistics(results)
+
+        # Mean of [0.010, 0.012, 0.015] = 0.01233...
+        assert 0.012 < stats.spread_mean < 0.013
+        # Median of [0.010, 0.012, 0.015] = 0.012
+        assert stats.spread_median == 0.012
+        assert stats.spread_min == 0.010
+        assert stats.spread_max == 0.015
+        assert stats.spread_std > 0
+
+    def test_AC2_confidence_statistics_calculated(self, sample_market_context):
+        """
+        验收标准: 应该正确计算 confidence 的统计数据
+        """
+        from alphaloop.evaluation.evaluator import MultiLLMEvaluator
+
+        providers = []
+        confidences = [0.70, 0.85, 0.92]
+        for name, conf in zip(["Gemini", "OpenAI", "Claude"], confidences):
+            p = Mock()
+            p.name = name
+            p.generate.return_value = f'{{"recommended_strategy": "FixedSpread", "spread": 0.01, "confidence": {conf}}}'
+            providers.append(p)
+
+        evaluator = MultiLLMEvaluator(providers=providers, simulation_steps=50)
+        results = evaluator.evaluate(sample_market_context)
+
+        stats = MultiLLMEvaluator.get_parameter_statistics(results)
+
+        assert stats.confidence_min == 0.70
+        assert stats.confidence_max == 0.92
+        assert 0.80 < stats.confidence_mean < 0.85
+
+    def test_AC3_empty_results_return_default_stats(self):
+        """
+        验收标准: 空结果应该返回默认统计数据
+        """
+        from alphaloop.evaluation.evaluator import MultiLLMEvaluator
+
+        stats = MultiLLMEvaluator.get_parameter_statistics([])
+
+        assert stats.spread_mean == 0.0
+        assert stats.spread_median == 0.0
+        assert stats.confidence_mean == 0.0
+
+
+# ============================================================================
+# US-ML-009: 共识置信度计算
+# ============================================================================
+
+
+class TestUSML009_ConsensusConfidence:
+    """US-ML-009: 共识置信度计算"""
+
+    @pytest.fixture
+    def sample_market_context(self):
+        from alphaloop.evaluation.schemas import MarketContext
+
+        return MarketContext(
+            symbol="ETHUSDT",
+            mid_price=2500.0,
+            best_bid=2499.5,
+            best_ask=2500.5,
+            spread_bps=4.0,
+            volatility_24h=0.035,
+            volatility_1h=0.012,
+            funding_rate=0.0001,
+            funding_rate_trend="rising",
+        )
+
+    def test_AC1_full_consensus_has_highest_confidence(self, sample_market_context):
+        """
+        验收标准: 全体一致时置信度最高
+        """
+        from alphaloop.evaluation.evaluator import MultiLLMEvaluator
+
+        providers = []
+        for name in ["Gemini", "OpenAI", "Claude"]:
+            p = Mock()
+            p.name = name
+            p.generate.return_value = '{"recommended_strategy": "FundingRate", "spread": 0.01, "confidence": 0.90}'
+            providers.append(p)
+
+        evaluator = MultiLLMEvaluator(providers=providers, simulation_steps=50)
+        results = evaluator.evaluate(sample_market_context)
+
+        consensus = MultiLLMEvaluator.get_strategy_consensus(results)
+        conf, breakdown = MultiLLMEvaluator.calculate_consensus_confidence(results, consensus)
+
+        # Full consensus with 0.9 individual confidence = 1.0 * 0.9 = 0.9
+        assert conf >= 0.85
+        assert breakdown["agreement_factor"] == 1.0
+
+    def test_AC2_majority_consensus_has_reduced_confidence(self, sample_market_context):
+        """
+        验收标准: 多数共识时置信度应该降低
+        """
+        from alphaloop.evaluation.evaluator import MultiLLMEvaluator
+
+        gemini = Mock()
+        gemini.name = "Gemini"
+        gemini.generate.return_value = '{"recommended_strategy": "FundingRate", "spread": 0.01, "confidence": 0.90}'
+
+        openai = Mock()
+        openai.name = "OpenAI"
+        openai.generate.return_value = '{"recommended_strategy": "FundingRate", "spread": 0.012, "confidence": 0.85}'
+
+        claude = Mock()
+        claude.name = "Claude"
+        claude.generate.return_value = '{"recommended_strategy": "FixedSpread", "spread": 0.015, "confidence": 0.80}'
+
+        evaluator = MultiLLMEvaluator(providers=[gemini, openai, claude], simulation_steps=50)
+        results = evaluator.evaluate(sample_market_context)
+
+        consensus = MultiLLMEvaluator.get_strategy_consensus(results)
+        conf, breakdown = MultiLLMEvaluator.calculate_consensus_confidence(results, consensus)
+
+        # Majority consensus factor = 0.8
+        assert breakdown["agreement_factor"] == 0.8
+        assert conf < 0.9  # Should be lower than full consensus
+
+    def test_AC3_breakdown_contains_individual_confidences(self, sample_market_context):
+        """
+        验收标准: 分解应该包含每个模型的置信度
+        """
+        from alphaloop.evaluation.evaluator import MultiLLMEvaluator
+
+        providers = []
+        for name, conf in [("Gemini", 0.85), ("OpenAI", 0.78), ("Claude", 0.92)]:
+            p = Mock()
+            p.name = name
+            p.generate.return_value = f'{{"recommended_strategy": "FundingRate", "spread": 0.01, "confidence": {conf}}}'
+            providers.append(p)
+
+        evaluator = MultiLLMEvaluator(providers=providers, simulation_steps=50)
+        results = evaluator.evaluate(sample_market_context)
+
+        consensus = MultiLLMEvaluator.get_strategy_consensus(results)
+        conf, breakdown = MultiLLMEvaluator.calculate_consensus_confidence(results, consensus)
+
+        assert "individual_confidences" in breakdown
+        assert len(breakdown["individual_confidences"]) == 3
+
+
+# ============================================================================
+# US-ML-010: 结果聚合
+# ============================================================================
+
+
+class TestUSML010_ResultAggregation:
+    """US-ML-010: 结果聚合"""
+
+    @pytest.fixture
+    def sample_market_context(self):
+        from alphaloop.evaluation.schemas import MarketContext
+
+        return MarketContext(
+            symbol="ETHUSDT",
+            mid_price=2500.0,
+            best_bid=2499.5,
+            best_ask=2500.5,
+            spread_bps=4.0,
+            volatility_24h=0.035,
+            volatility_1h=0.012,
+            funding_rate=0.0001,
+            funding_rate_trend="rising",
+        )
+
+    def test_AC1_aggregate_returns_complete_result(self, sample_market_context):
+        """
+        验收标准: aggregate_results 应该返回完整的聚合结果
+        """
+        from alphaloop.evaluation.evaluator import MultiLLMEvaluator
+
+        providers = []
+        for name in ["Gemini", "OpenAI", "Claude"]:
+            p = Mock()
+            p.name = name
+            p.generate.return_value = '{"recommended_strategy": "FundingRate", "spread": 0.012, "skew_factor": 120, "confidence": 0.85}'
+            providers.append(p)
+
+        evaluator = MultiLLMEvaluator(providers=providers, simulation_steps=50)
+        results = evaluator.evaluate(sample_market_context)
+
+        aggregated = evaluator.aggregate_results(results)
+
+        # Check all components are present
+        assert aggregated.strategy_consensus is not None
+        assert aggregated.parameter_stats is not None
+        assert aggregated.consensus_proposal is not None
+        assert aggregated.consensus_confidence > 0
+        assert aggregated.successful_evaluations == 3
+        assert aggregated.failed_evaluations == 0
+
+    def test_AC2_consensus_proposal_uses_median_parameters(self, sample_market_context):
+        """
+        验收标准: 共识建议应该使用中位数参数
+        """
+        from alphaloop.evaluation.evaluator import MultiLLMEvaluator
+
+        spreads = [0.010, 0.012, 0.015]
+        providers = []
+        for name, spread in zip(["Gemini", "OpenAI", "Claude"], spreads):
+            p = Mock()
+            p.name = name
+            p.generate.return_value = f'{{"recommended_strategy": "FundingRate", "spread": {spread}, "confidence": 0.8}}'
+            providers.append(p)
+
+        evaluator = MultiLLMEvaluator(providers=providers, simulation_steps=50)
+        results = evaluator.evaluate(sample_market_context)
+
+        aggregated = evaluator.aggregate_results(results)
+
+        # Median of [0.010, 0.012, 0.015] = 0.012
+        assert aggregated.consensus_proposal.spread == 0.012
+        assert aggregated.consensus_proposal.provider_name == "Consensus"
+
+    def test_AC3_aggregated_includes_performance_averages(self, sample_market_context):
+        """
+        验收标准: 聚合结果应该包含性能平均值
+        """
+        from alphaloop.evaluation.evaluator import MultiLLMEvaluator
+
+        providers = []
+        for name in ["Gemini", "OpenAI", "Claude"]:
+            p = Mock()
+            p.name = name
+            p.generate.return_value = '{"recommended_strategy": "FundingRate", "spread": 0.01, "confidence": 0.85}'
+            providers.append(p)
+
+        evaluator = MultiLLMEvaluator(providers=providers, simulation_steps=100)
+        results = evaluator.evaluate(sample_market_context)
+
+        aggregated = evaluator.aggregate_results(results)
+
+        # Check performance averages are calculated
+        assert isinstance(aggregated.avg_pnl, float)
+        assert isinstance(aggregated.avg_sharpe, float)
+        assert isinstance(aggregated.avg_win_rate, float)
+        assert isinstance(aggregated.avg_latency_ms, float)
+
+    def test_AC4_handles_partial_failures(self, sample_market_context):
+        """
+        验收标准: 应该正确处理部分失败的情况
+        """
+        from alphaloop.evaluation.evaluator import MultiLLMEvaluator
+
+        working = Mock()
+        working.name = "WorkingModel"
+        working.generate.return_value = '{"recommended_strategy": "FundingRate", "spread": 0.01, "confidence": 0.85}'
+
+        failing = Mock()
+        failing.name = "FailingModel"
+        failing.generate.return_value = "invalid json!!!"
+
+        evaluator = MultiLLMEvaluator(providers=[working, failing], simulation_steps=50)
+        results = evaluator.evaluate(sample_market_context)
+
+        aggregated = evaluator.aggregate_results(results)
+
+        assert aggregated.successful_evaluations == 1
+        assert aggregated.failed_evaluations == 1
+        assert aggregated.strategy_consensus.total_models == 1
+
+    def test_AC5_to_summary_returns_dict(self, sample_market_context):
+        """
+        验收标准: to_summary 应该返回格式化的字典
+        """
+        from alphaloop.evaluation.evaluator import MultiLLMEvaluator
+
+        providers = []
+        for name in ["Gemini", "OpenAI", "Claude"]:
+            p = Mock()
+            p.name = name
+            p.generate.return_value = '{"recommended_strategy": "FundingRate", "spread": 0.01, "confidence": 0.85}'
+            providers.append(p)
+
+        evaluator = MultiLLMEvaluator(providers=providers, simulation_steps=50)
+        results = evaluator.evaluate(sample_market_context)
+
+        aggregated = evaluator.aggregate_results(results)
+        summary = aggregated.to_summary()
+
+        assert "consensus_strategy" in summary
+        assert "consensus_level" in summary
+        assert "consensus_confidence" in summary
+        assert "successful_models" in summary
+
+    def test_AC6_recommendation_strength_correct(self, sample_market_context):
+        """
+        验收标准: 推荐强度应该正确反映共识程度
+        """
+        from alphaloop.evaluation.evaluator import MultiLLMEvaluator
+
+        # Full consensus
+        providers = []
+        for name in ["Gemini", "OpenAI", "Claude"]:
+            p = Mock()
+            p.name = name
+            p.generate.return_value = '{"recommended_strategy": "FundingRate", "spread": 0.01, "confidence": 0.85}'
+            providers.append(p)
+
+        evaluator = MultiLLMEvaluator(providers=providers, simulation_steps=50)
+        results = evaluator.evaluate(sample_market_context)
+
+        aggregated = evaluator.aggregate_results(results)
+
+        assert aggregated.get_recommendation_strength() == "strong"
+
+
+# ============================================================================
+# US-ML-011: 共识摘要报告生成
+# ============================================================================
+
+
+class TestUSML011_ConsensusSummaryReport:
+    """US-ML-011: 共识摘要报告生成"""
+
+    @pytest.fixture
+    def sample_market_context(self):
+        from alphaloop.evaluation.schemas import MarketContext
+
+        return MarketContext(
+            symbol="ETHUSDT",
+            mid_price=2500.0,
+            best_bid=2499.5,
+            best_ask=2500.5,
+            spread_bps=4.0,
+            volatility_24h=0.035,
+            volatility_1h=0.012,
+            funding_rate=0.0001,
+            funding_rate_trend="rising",
+        )
+
+    def test_AC1_generates_formatted_report(self, sample_market_context):
+        """
+        验收标准: 应该生成格式化的摘要报告
+        """
+        from alphaloop.evaluation.evaluator import MultiLLMEvaluator
+
+        providers = []
+        for name in ["Gemini", "OpenAI", "Claude"]:
+            p = Mock()
+            p.name = name
+            p.generate.return_value = '{"recommended_strategy": "FundingRate", "spread": 0.012, "skew_factor": 120, "confidence": 0.85, "reasoning": "Positive funding rate"}'
+            providers.append(p)
+
+        evaluator = MultiLLMEvaluator(providers=providers, simulation_steps=50)
+        results = evaluator.evaluate(sample_market_context)
+
+        aggregated = evaluator.aggregate_results(results)
+        report = MultiLLMEvaluator.generate_consensus_summary(aggregated)
+
+        assert isinstance(report, str)
+        assert len(report) > 0
+        assert "CONSENSUS" in report.upper()
+
+    def test_AC2_report_contains_key_sections(self, sample_market_context):
+        """
+        验收标准: 报告应该包含关键部分
+        """
+        from alphaloop.evaluation.evaluator import MultiLLMEvaluator
+
+        providers = []
+        for name in ["Gemini", "OpenAI", "Claude"]:
+            p = Mock()
+            p.name = name
+            p.generate.return_value = '{"recommended_strategy": "FundingRate", "spread": 0.012, "confidence": 0.85}'
+            providers.append(p)
+
+        evaluator = MultiLLMEvaluator(providers=providers, simulation_steps=50)
+        results = evaluator.evaluate(sample_market_context)
+
+        aggregated = evaluator.aggregate_results(results)
+        report = MultiLLMEvaluator.generate_consensus_summary(aggregated)
+
+        # Check key sections are present
+        assert "Strategy Consensus" in report or "策略共识" in report
+        assert "Vote Distribution" in report or "投票分布" in report
+        assert "Parameter Statistics" in report or "参数统计" in report
+        assert "Performance Summary" in report or "性能摘要" in report
+
+    def test_AC3_report_shows_vote_distribution(self, sample_market_context):
+        """
+        验收标准: 报告应该显示投票分布
+        """
+        from alphaloop.evaluation.evaluator import MultiLLMEvaluator
+
+        gemini = Mock()
+        gemini.name = "Gemini"
+        gemini.generate.return_value = '{"recommended_strategy": "FundingRate", "spread": 0.01, "confidence": 0.85}'
+
+        openai = Mock()
+        openai.name = "OpenAI"
+        openai.generate.return_value = '{"recommended_strategy": "FixedSpread", "spread": 0.015, "confidence": 0.78}'
+
+        claude = Mock()
+        claude.name = "Claude"
+        claude.generate.return_value = '{"recommended_strategy": "FundingRate", "spread": 0.012, "confidence": 0.80}'
+
+        evaluator = MultiLLMEvaluator(providers=[gemini, openai, claude], simulation_steps=50)
+        results = evaluator.evaluate(sample_market_context)
+
+        aggregated = evaluator.aggregate_results(results)
+        report = MultiLLMEvaluator.generate_consensus_summary(aggregated)
+
+        # Should show both strategies
+        assert "FundingRate" in report
+        assert "FixedSpread" in report
+
+
+# ============================================================================
+# 数据模型测试扩展 (Extended Schema Tests)
+# ============================================================================
+
+
+class TestAggregatedResultSchema:
+    """测试聚合结果数据模型"""
+
+    def test_create_aggregated_result(self):
+        """应该能创建聚合结果"""
+        from alphaloop.evaluation.schemas import (
+            AggregatedResult,
+            StrategyConsensus,
+            ParameterStatistics,
+        )
+
+        aggregated = AggregatedResult(
+            strategy_consensus=StrategyConsensus(
+                consensus_strategy="FundingRate",
+                consensus_count=3,
+                total_models=3,
+                consensus_level="full",
+                consensus_ratio=1.0,
+            ),
+            parameter_stats=ParameterStatistics(
+                spread_mean=0.012,
+                spread_median=0.012,
+            ),
+            consensus_confidence=0.85,
+            successful_evaluations=3,
+            failed_evaluations=0,
+        )
+
+        assert aggregated.strategy_consensus.consensus_strategy == "FundingRate"
+        assert aggregated.consensus_confidence == 0.85
+
+    def test_strategy_consensus_helpers(self):
+        """测试 StrategyConsensus 辅助方法"""
+        from alphaloop.evaluation.schemas import StrategyConsensus
+
+        # Full consensus
+        full = StrategyConsensus(
+            consensus_strategy="FundingRate",
+            consensus_count=3,
+            total_models=3,
+            consensus_ratio=1.0,
+        )
+        assert full.is_unanimous() is True
+        assert full.has_majority() is True
+
+        # Majority consensus
+        majority = StrategyConsensus(
+            consensus_strategy="FundingRate",
+            consensus_count=2,
+            total_models=3,
+            consensus_ratio=2 / 3,
+        )
+        assert majority.is_unanimous() is False
+        assert majority.has_majority() is True
+
+        # Split consensus
+        split = StrategyConsensus(
+            consensus_strategy="FundingRate",
+            consensus_count=1,
+            total_models=2,
+            consensus_ratio=0.5,
+        )
+        assert split.is_unanimous() is False
+        assert split.has_majority() is False
+
+    def test_aggregated_result_to_summary(self):
+        """测试聚合结果摘要生成"""
+        from alphaloop.evaluation.schemas import (
+            AggregatedResult,
+            StrategyConsensus,
+            ParameterStatistics,
+        )
+
+        aggregated = AggregatedResult(
+            strategy_consensus=StrategyConsensus(
+                consensus_strategy="FundingRate",
+                consensus_level="full",
+                consensus_ratio=1.0,
+            ),
+            parameter_stats=ParameterStatistics(
+                spread_min=0.010,
+                spread_max=0.015,
+            ),
+            consensus_confidence=0.85,
+            successful_evaluations=3,
+            failed_evaluations=0,
+            avg_pnl=150.0,
+            avg_sharpe=1.8,
+            avg_win_rate=0.55,
+        )
+
+        summary = aggregated.to_summary()
+
+        assert summary["consensus_strategy"] == "FundingRate"
+        assert "85" in summary["consensus_confidence"]
+        assert summary["successful_models"] == 3
+
+    def test_recommendation_strength(self):
+        """测试推荐强度计算"""
+        from alphaloop.evaluation.schemas import AggregatedResult, StrategyConsensus
+
+        # Strong (unanimous)
+        strong = AggregatedResult(
+            strategy_consensus=StrategyConsensus(
+                consensus_count=3,
+                total_models=3,
+                consensus_ratio=1.0,
+            )
+        )
+        assert strong.get_recommendation_strength() == "strong"
+
+        # Moderate (majority)
+        moderate = AggregatedResult(
+            strategy_consensus=StrategyConsensus(
+                consensus_count=2,
+                total_models=3,
+                consensus_ratio=2 / 3,
+            )
+        )
+        assert moderate.get_recommendation_strength() == "moderate"
+
+        # Weak (split)
+        weak = AggregatedResult(
+            strategy_consensus=StrategyConsensus(
+                consensus_count=1,
+                total_models=2,
+                consensus_ratio=0.5,
+            )
+        )
+        assert weak.get_recommendation_strength() == "weak"

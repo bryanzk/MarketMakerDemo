@@ -360,6 +360,45 @@ When deploying via Antigravity’s Vibe feature to Cloud Run, configure it for t
 *   **Health checks**: expose `/health`; return HTTP 500 when reconnection fails so Cloud Run restarts the container.  
     **健康检查**：提供 `/health` 端点；若 WebSocket 无法重连则返回 500，触发 Cloud Run 自愈。
 
+### 9.4 Multi-LLM Consensus Engine / 多 LLM 共识引擎
+
+The newest evaluation cycle extends beyond single-model scoring by introducing a consensus layer that transforms raw LLM suggestions into a unified, auditable recommendation for downstream agents.  
+最新的评估循环在单一模型评分之上引入“共识层”，把所有 LLM 的建议汇总为一份可追溯的统一结论，方便下游代理直接消费。
+
+**Data contracts / 数据契约**  
+- `StrategyConsensus` captures vote counts、agreement ratios、and the providers that back each strategy type.  
+  `StrategyConsensus` 记录每种策略的票数、共识比例以及支持该策略的模型列表。  
+- `ParameterStatistics` stores mean/median spread、skew、quantity、leverage、confidence so the system can reason about dispersion and stability.  
+  `ParameterStatistics` 保存价差、倾斜因子、数量、杠杆与置信度的均值/中位数，帮助判断参数分布与稳定性。  
+- `AggregatedResult` bundles consensus metrics, performance averages, and a synthesized `StrategyProposal` ready for Web/API surfaces.  
+  `AggregatedResult` 将共识指标、性能均值与整合后的 `StrategyProposal` 打包输出，便于 Web/API 直接展示。
+
+**Aggregation workflow / 聚合流程**  
+1. `MultiLLMEvaluator.evaluate()` collects `EvaluationResult` objects from Gemini、OpenAI、Claude 等模型。  
+   `MultiLLMEvaluator.evaluate()` 负责从 Gemini、OpenAI、Claude 等模型收集 `EvaluationResult`。  
+2. `get_strategy_consensus()` and `get_parameter_statistics()` transform the results into vote tallies and robust parameter summaries.  
+   `get_strategy_consensus()` 与 `get_parameter_statistics()` 将这些结果转换为投票统计与鲁棒的参数描述。  
+3. `aggregate_results()` computes consensus confidence, success/failed counts, performance averages, and builds the median-based consensus proposal.  
+   `aggregate_results()` 计算共识置信度、成功/失败次数及 PnL/Sharpe/延迟等平均值，并基于中位数参数生成共识建议。  
+4. `generate_consensus_summary()` produces a bilingual text report for logs, chat-ops, or PDF exports.  
+   `generate_consensus_summary()` 生成双语文本报告，适合写入日志、聊天机器人或 PDF 导出。
+
+**Testing matrix / 测试矩阵**  
+- US-ML-007/008 cover strategy consensus levels (full/majority/split) and parameter statistics accuracy.  
+  US-ML-007/008 验证全票、过半、平票场景下的策略共识与参数统计。  
+- US-ML-009/010 ensure consensus confidence math、aggregation summaries、and failure handling behave deterministically.  
+  US-ML-009/010 确保共识置信度计算、聚合摘要以及失败回退都可重复验证。  
+- US-ML-011 validates the formatting of the consensus summary so dashboards can render vote distribution、parameter blocks、performance averages.  
+  US-ML-011 保障共识报告包含投票分布、参数区块与性能均值，方便前端渲染。
+
+**Integration guidance / 集成建议**  
+- Server endpoints can expose the aggregated payload via `/api/evaluation/run`, while `/api/evaluation/apply` reuses the consensus proposal to update `AlphaLoop`.  
+  服务器端点可通过 `/api/evaluation/run` 返回聚合结果，并在 `/api/evaluation/apply` 中复用共识建议来更新 `AlphaLoop`。  
+- Portfolio agents may adjust allocations based on `consensus_confidence` (e.g., ≥0.8 treated as “strong consensus”).  
+  组合管理代理可以基于 `consensus_confidence`（如 ≥0.8 视为“强共识”）来调整资金分配。  
+- Observability dashboards should log `providers_by_strategy` so operators know which LLMs backed each recommendation.  
+  观测面板需记录 `providers_by_strategy`，便于运维人员追踪每条建议所依赖的模型。
+
 ## 10. 结论与未来展望
 
 Building a perpetual trading stack atop Antigravity spans financial engineering, distributed systems, and AI. Our four-layer evaluation loop—infra latency, execution drag, risk defenses, strategy alpha—creates a closed feedback circuit.

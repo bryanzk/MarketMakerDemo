@@ -86,6 +86,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Per-instance symbol management (`set_symbol()`)
   - Complete isolation between strategies for fault tolerance
   - New documentation: `docs/architecture_changes_per_instance_exchange.md`
+- **Consensus Aggregation & Reporting / 共识聚合与报告**
+  - Introduced `StrategyConsensus`, `ParameterStatistics`, `AggregatedResult` data contracts for cross-model reasoning / 新增跨模型推理的数据契约
+  - `MultiLLMEvaluator.aggregate_results()` and `generate_consensus_summary()` now deliver confidence-scored proposals plus bilingual reports / `MultiLLMEvaluator.aggregate_results()` 与 `generate_consensus_summary()` 输出带置信度的共识建议和双语报告
+  - Documentation updates (`docs/user_guide/multi_llm_evaluation.md`, `docs/alphaloop/evaluation_framework.md`) and US-ML-007~011 tests cover consensus workflows / 文档与 US-ML-007~011 测试全面覆盖共识流程
 
 - **New Dependencies**
   - `openai` - OpenAI API client

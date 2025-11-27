@@ -237,6 +237,268 @@ A: Suggestions: / 建议：
 
 ---
 
+## API Reference for Web Integration / Web 集成 API 参考
+
+> **For Agent 3: Web/API** - Use this section to implement the web API endpoints.
+> **给 Agent 3: Web/API** - 使用此部分实现 Web API 接口。
+
+### Recommended API Endpoints / 建议的 API 接口
+
+#### 1. POST `/api/evaluation/run` - Run Multi-LLM Evaluation / 运行多 LLM 评估
+
+**Request / 请求:**
+```json
+{
+    "symbol": "ETHUSDT",
+    "simulation_steps": 500
+}
+```
+
+**Response / 响应:**
+```json
+{
+    "individual_results": [
+        {
+            "provider_name": "Gemini (gemini-1.5-pro)",
+            "rank": 1,
+            "score": 85.0,
+            "latency_ms": 1250,
+            "proposal": {
+                "recommended_strategy": "FundingRate",
+                "spread": 0.012,
+                "skew_factor": 120,
+                "quantity": 0.15,
+                "leverage": 2.0,
+                "confidence": 0.85,
+                "risk_level": "medium",
+                "reasoning": "Positive funding rate detected..."
+            },
+            "simulation": {
+                "realized_pnl": 180.0,
+                "total_trades": 45,
+                "win_rate": 0.58,
+                "sharpe_ratio": 2.1,
+                "max_drawdown": 0.05
+            }
+        },
+        {
+            "provider_name": "OpenAI (gpt-4o)",
+            "rank": 2,
+            "score": 72.0,
+            "latency_ms": 980,
+            "proposal": {
+                "recommended_strategy": "FixedSpread",
+                "spread": 0.015,
+                "skew_factor": 100,
+                "quantity": 0.1,
+                "leverage": 1.5,
+                "confidence": 0.78,
+                "risk_level": "low",
+                "reasoning": "High volatility suggests wider spread..."
+            },
+            "simulation": {
+                "realized_pnl": 120.0,
+                "total_trades": 38,
+                "win_rate": 0.52,
+                "sharpe_ratio": 1.5,
+                "max_drawdown": 0.08
+            }
+        },
+        {
+            "provider_name": "Claude (claude-sonnet-4-20250514)",
+            "rank": 3,
+            "score": 92.0,
+            "latency_ms": 1850,
+            "proposal": {
+                "recommended_strategy": "FundingRate",
+                "spread": 0.010,
+                "skew_factor": 150,
+                "quantity": 0.12,
+                "leverage": 2.5,
+                "confidence": 0.92,
+                "risk_level": "medium",
+                "reasoning": "Strong funding opportunity..."
+            },
+            "simulation": {
+                "realized_pnl": 200.0,
+                "total_trades": 52,
+                "win_rate": 0.60,
+                "sharpe_ratio": 2.5,
+                "max_drawdown": 0.04
+            }
+        }
+    ],
+    "aggregated": {
+        "strategy_consensus": {
+            "consensus_strategy": "FundingRate",
+            "consensus_level": "majority",
+            "consensus_ratio": 0.67,
+            "strategy_votes": {
+                "FundingRate": 2,
+                "FixedSpread": 1
+            },
+            "providers_by_strategy": {
+                "FundingRate": ["Gemini (gemini-1.5-pro)", "Claude (claude-sonnet-4-20250514)"],
+                "FixedSpread": ["OpenAI (gpt-4o)"]
+            }
+        },
+        "parameter_stats": {
+            "spread_mean": 0.0123,
+            "spread_median": 0.012,
+            "spread_min": 0.010,
+            "spread_max": 0.015,
+            "confidence_mean": 0.85,
+            "confidence_min": 0.78,
+            "confidence_max": 0.92
+        },
+        "consensus_confidence": 0.85,
+        "recommendation_strength": "moderate",
+        "consensus_proposal": {
+            "recommended_strategy": "FundingRate",
+            "spread": 0.012,
+            "skew_factor": 135,
+            "quantity": 0.12,
+            "leverage": 2.0,
+            "confidence": 0.85,
+            "risk_level": "medium",
+            "reasoning": "Consensus from 2/3 models. Positive funding rate detected... | Strong funding opportunity..."
+        },
+        "avg_pnl": 166.67,
+        "avg_sharpe": 2.03,
+        "avg_win_rate": 0.567,
+        "avg_latency_ms": 1360,
+        "successful_evaluations": 3,
+        "failed_evaluations": 0
+    }
+}
+```
+
+#### 2. POST `/api/evaluation/apply` - Apply Proposal / 应用建议
+
+**Request / 请求:**
+```json
+{
+    "source": "consensus",
+    "provider_name": null
+}
+```
+Or apply a specific provider's proposal / 或应用特定 Provider 的建议:
+```json
+{
+    "source": "individual",
+    "provider_name": "Claude (claude-sonnet-4-20250514)"
+}
+```
+
+**Response / 响应:**
+```json
+{
+    "status": "applied",
+    "applied_config": {
+        "strategy_type": "funding_rate",
+        "spread": 0.012,
+        "skew_factor": 135,
+        "quantity": 0.12
+    }
+}
+```
+
+### Backend Usage Example / 后端使用示例
+
+```python
+# In server.py / 在 server.py 中
+
+from alphaloop.evaluation import MultiLLMEvaluator, MarketContext, AggregatedResult
+from alphaloop.core.llm import create_all_providers
+
+@app.post("/api/evaluation/run")
+async def run_evaluation(request: EvaluationRequest):
+    # 1. Create market context from current data
+    exchange = get_default_exchange()
+    market_data = exchange.fetch_market_data()
+    
+    context = MarketContext(
+        symbol=request.symbol,
+        mid_price=market_data["mid_price"],
+        best_bid=market_data["best_bid"],
+        best_ask=market_data["best_ask"],
+        spread_bps=(market_data["best_ask"] - market_data["best_bid"]) / market_data["mid_price"] * 10000,
+        volatility_24h=0.035,  # From data agent
+        volatility_1h=0.012,
+        funding_rate=market_data.get("funding_rate", 0.0001),
+        funding_rate_trend="rising",
+    )
+    
+    # 2. Create evaluator with all available providers
+    providers = create_all_providers()
+    evaluator = MultiLLMEvaluator(
+        providers=providers,
+        simulation_steps=request.simulation_steps or 500
+    )
+    
+    # 3. Run evaluation
+    results = evaluator.evaluate(context)
+    
+    # 4. Aggregate results
+    aggregated = evaluator.aggregate_results(results)
+    
+    # 5. Return structured response
+    return {
+        "individual_results": [r.to_summary() for r in results],
+        "aggregated": aggregated.to_summary(),
+        "comparison_table": MultiLLMEvaluator.generate_comparison_table(results),
+        "consensus_report": MultiLLMEvaluator.generate_consensus_summary(aggregated),
+    }
+```
+
+### Frontend Display Recommendations / 前端展示建议
+
+#### 1. Individual Results Table / 单独结果表格
+
+Display a comparison table showing each LLM's results:
+展示对比表格，显示每个 LLM 的结果：
+
+| 排名 | 模型 | 策略 | 价差 | 倾斜因子 | 置信度 | 模拟PnL | 胜率 | 夏普 | 评分 | 延迟 |
+|-----|------|------|------|---------|-------|---------|------|------|------|------|
+| 1 | Claude | FundingRate | 1.00% | 150 | 92% | $200 | 60% | 2.50 | 92.0 | 1850ms |
+| 2 | Gemini | FundingRate | 1.20% | 120 | 85% | $180 | 58% | 2.10 | 85.0 | 1250ms |
+| 3 | OpenAI | FixedSpread | 1.50% | 100 | 78% | $120 | 52% | 1.50 | 72.0 | 980ms |
+
+#### 2. Consensus Card / 共识卡片
+
+Display a prominent card showing the consensus recommendation:
+展示一个突出的卡片，显示共识建议：
+
+```
+┌─────────────────────────────────────────────────────┐
+│  🤝 CONSENSUS RECOMMENDATION / 共识建议              │
+│                                                     │
+│  Strategy: FundingRate                              │
+│  Consensus Level: MAJORITY (2/3 models)             │
+│  Confidence: 85%                                    │
+│  Recommendation Strength: MODERATE                  │
+│                                                     │
+│  ┌─────────────────────────────────────────────┐   │
+│  │ Spread: 1.20%    Skew: 135    Leverage: 2x  │   │
+│  │ Expected PnL: $166.67   Sharpe: 2.03        │   │
+│  └─────────────────────────────────────────────┘   │
+│                                                     │
+│  [Apply Consensus] [View Details]                   │
+└─────────────────────────────────────────────────────┘
+```
+
+#### 3. Vote Distribution Chart / 投票分布图
+
+Show a pie chart or bar chart of strategy votes:
+展示策略投票的饼图或柱状图：
+
+```
+FundingRate: ████████████████ 67% (2 votes)
+FixedSpread: ████████         33% (1 vote)
+```
+
+---
+
 ## Next Steps / 下一步
 
 - See [User Stories](./user_stories_multi_llm.md) for specific use cases / 查看 [用户故事](./user_stories_multi_llm.md) 了解具体使用场景

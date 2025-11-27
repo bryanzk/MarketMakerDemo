@@ -133,6 +133,11 @@ class TestAlphaLoop:
         }  # Needed to proceed
         mock_client.fetch_open_orders.return_value = []
         mock_client.place_orders.return_value = []
+        mock_client.fetch_account_data.return_value = {
+            "balance": 1000.0,
+            "position_amt": 0.0,
+            "entry_price": 0.0,
+        }
         mock_client_cls.return_value = mock_client
 
         mock_data = Mock()
@@ -652,6 +657,44 @@ class TestMultiStrategy:
         assert "default" in status["strategy_instances"]
         assert "strategy_2" in status["strategy_instances"]
 
+    @patch("alphaloop.market.strategy_instance.BinanceClient")
+    @patch("alphaloop.main.DataAgent")
+    @patch("alphaloop.main.QuantAgent")
+    @patch("alphaloop.main.RiskAgent")
+    def test_run_cycle_respects_instance_running_state(self, mock_risk, mock_quant, mock_data, mock_client):
+        """Ensure stopped strategy instances are skipped during run_cycle execution"""
+        mock_data.return_value.calculate_metrics.return_value = {
+            "volatility": 0.01,
+            "sharpe_ratio": 1.5,
+        }
+        mock_quant.return_value.analyze_and_propose.return_value = {"spread": 0.01}
+        mock_risk.return_value.validate_proposal.return_value = (True, "ok")
+        mock_client_instance = Mock()
+        mock_client_instance.fetch_market_data.return_value = {"mid_price": 100.0}
+        mock_client_instance.fetch_funding_rate.return_value = 0.0
+        mock_client_instance.fetch_account_data.return_value = {
+            "position_amt": 0.0,
+            "entry_price": 0.0,
+        }
+        mock_client_instance.fetch_open_orders.return_value = []
+        mock_client.return_value = mock_client_instance
+
+        engine = AlphaLoop()
+        # Default instance should run; add a second instance and keep it stopped
+        engine.add_strategy_instance("strategy_2", "fixed_spread")
+        engine.strategy_instances["strategy_2"].running = False
+        engine.strategy_instances["strategy_2"].use_real_exchange = True
+
+        # Default instance uses the mocked exchange and remains running
+        default_instance = engine.strategy_instances["default"]
+        default_instance.use_real_exchange = True
+        default_instance.running = True
+
+        with patch.object(engine, "_run_strategy_instance_cycle") as cycle_mock:
+            engine.run_cycle()
+
+        cycle_mock.assert_called_once_with(default_instance)
+
 
 class TestErrorHandlingAndAlerts:
     """Test error handling and alert setting for strategy instances"""
@@ -666,6 +709,11 @@ class TestErrorHandlingAndAlerts:
         mock_client_instance.fetch_market_data.return_value = {"mid_price": 100.0}
         mock_client_instance.fetch_open_orders.return_value = []
         mock_client_instance.place_orders.return_value = []  # No orders placed
+        mock_client_instance.fetch_account_data.return_value = {
+            "balance": 1000.0,
+            "position_amt": 0.0,
+            "entry_price": 0.0,
+        }
         mock_client_instance.last_order_error = {
             "type": "insufficient_funds",
             "message": "Insufficient balance to place sell order: Margin is insufficient.",
@@ -740,6 +788,11 @@ class TestErrorHandlingAndAlerts:
             [],  # First call: no orders (error occurred)
             [{"id": "ord2", "side": "buy"}],  # Second call: success
         ]
+        mock_client_instance.fetch_account_data.return_value = {
+            "balance": 1000.0,
+            "position_amt": 0.0,
+            "entry_price": 0.0,
+        }
         mock_client_instance.last_order_error = {
             "type": "insufficient_funds",
             "message": "Insufficient balance",

@@ -242,6 +242,43 @@ class TestServer:
             assert mock_bot.strategy.spread == 0.005  # 0.5% -> 0.005
             assert mock_bot.strategy.quantity == 0.05
 
+    def test_update_config_scopes_to_target_strategy(self, mock_bot, mock_exchange):
+        """Ensure updating one strategy instance does not mutate the default instance"""
+        funding_instance = Mock()
+        funding_instance.strategy = Mock()
+        funding_instance.strategy.spread = 0.001
+        funding_instance.strategy.quantity = 0.01
+        funding_instance.strategy.skew_factor = 50.0
+        funding_instance.strategy_type = "funding_rate"
+        funding_instance.strategy_id = "funding_rate"
+        mock_bot.strategy_instances["funding_rate"] = funding_instance
+
+        original_default_spread = mock_bot.strategy.spread
+
+        with patch("server.bot_engine", mock_bot), patch(
+            "server.get_default_exchange", return_value=mock_exchange
+        ):
+            from server import app
+
+            client = TestClient(app)
+
+            payload = {
+                "spread": 0.3,
+                "quantity": 0.02,
+                "strategy_type": "funding_rate",
+                "strategy_id": "funding_rate",
+            }
+
+            response = client.post("/api/config", json=payload)
+
+            assert response.status_code == 200
+            data = response.json()
+            assert data["status"] == "updated"
+            assert funding_instance.strategy.spread == 0.003
+            assert funding_instance.strategy.quantity == 0.02
+            # Default strategy should remain unchanged
+            assert mock_bot.strategy.spread == original_default_spread
+
     def test_update_leverage_success(self, mock_bot, mock_exchange):
         """Test POST /api/leverage with valid value"""
         with patch("server.bot_engine", mock_bot), patch(
@@ -326,7 +363,27 @@ class TestServer:
             data = response.json()
             assert data["status"] == "updated"
             assert data["symbol"] == "BTC/USDT:USDT"
-            mock_bot.set_symbol.assert_called_with("BTC/USDT:USDT")
+            mock_bot.set_symbol.assert_called_with(
+                "BTC/USDT:USDT", strategy_id="default"
+            )
+
+    def test_update_pair_supports_strategy_id(self, mock_bot, mock_exchange):
+        """Test POST /api/pair can target specific strategy instance"""
+        with patch("server.bot_engine", mock_bot), patch(
+            "server.get_default_exchange", return_value=mock_exchange
+        ):
+            from server import app
+
+            client = TestClient(app)
+
+            payload = {"symbol": "BTC/USDT:USDT", "strategy_id": "funding_rate"}
+
+            response = client.post("/api/pair", json=payload)
+
+            assert response.status_code == 200
+            mock_bot.set_symbol.assert_called_with(
+                "BTC/USDT:USDT", strategy_id="funding_rate"
+            )
 
     def test_update_pair_failure(self, mock_bot, mock_exchange):
         """Test POST /api/pair with invalid symbol"""

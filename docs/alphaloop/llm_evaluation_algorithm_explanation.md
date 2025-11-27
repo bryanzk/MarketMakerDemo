@@ -689,6 +689,106 @@ flowchart TD
    - 不同 LLM 的结果不同是因为参数不同，而非模拟算法不同
    - Different LLM results differ due to different parameters, not different algorithms
 
+### Simulation Input Parameters / 模拟输入参数
+
+**模拟过程使用的参数 / Parameters Used in Simulation**:
+
+模拟过程接收两类输入参数：
+
+#### 1. Fixed Parameters / 固定参数（所有 500 步相同）
+
+**来自 LLM 建议的策略参数 / Strategy Parameters from LLM Proposal**:
+- **`spread`** (价差): 做市价差，范围 0.005-0.03 (0.5%-3%)
+- **`quantity`** (数量): 订单数量，范围 0.05-0.5
+- **`leverage`** (杠杆): 杠杆倍数，范围 1-5
+- **注意**: `skew_factor` 不使用（仅用于 FundingRate 策略）
+
+**来自市场上下文的参数 / Parameters from Market Context**:
+- **`initial_price`**: 来自 `context.mid_price`（初始价格）
+- **`volatility`**: 来自 `context.volatility_1h`（1小时波动率）
+
+**模拟器配置参数 / Simulator Configuration**:
+- **`steps`**: 模拟步数，默认 500 步（可在 `MultiLLMEvaluator` 初始化时配置）
+
+**固定市场参数 / Fixed Market Parameters**:
+- 市场价差: 固定为 2 bps (`spread = price * 0.0002`)
+- `tick_size`: 0.01
+- `step_size`: 0.001
+
+#### 2. Dynamically Generated Data / 动态生成的数据（每一步都不同）
+
+**重要说明 / Important Note**: 虽然初始参数是固定的，但每一步都会生成新的市场数据。
+
+**价格生成过程 / Price Generation Process**:
+```python
+# 每一步都会执行：
+change = random.gauss(0, current_price * volatility)  # 随机变化
+current_price += change  # 价格更新
+best_bid = current_price - spread / 2  # 基于新价格计算
+best_ask = current_price + spread / 2  # 基于新价格计算
+```
+
+**每一步生成的市场数据 / Market Data Generated Each Step**:
+- `mid_price`: 基于随机游走模型动态生成
+- `best_bid`: 基于新价格计算
+- `best_ask`: 基于新价格计算
+- `tick_size`: 0.01（固定）
+- `step_size`: 0.001（固定）
+
+#### 模拟过程示例 / Simulation Process Example
+
+**Step 1**:
+- 初始价格: $2500.00（来自 `context.mid_price`）
+- 生成随机变化: `change = gauss(0, 2500 * 0.02)`
+- 新价格: $2500.00 + change（例如 $2501.50）
+- 市场数据: `{mid_price: 2501.50, best_bid: 2501.45, best_ask: 2501.55}`
+
+**Step 2**:
+- 当前价格: $2501.50（上一步的结果）
+- 生成随机变化: `change = gauss(0, 2501.50 * 0.02)`
+- 新价格: $2501.50 + change（例如 $2499.80）
+- 市场数据: `{mid_price: 2499.80, best_bid: 2499.75, best_ask: 2499.85}`
+
+**Step 3 to Step 500**:
+- 每一步都基于上一步的价格生成新价格
+- 价格遵循随机游走模型：`P(t+1) = P(t) + ε(t)`
+- 其中 `ε(t) ~ N(0, P(t) × volatility)`
+
+#### 参数使用总结表 / Parameter Usage Summary
+
+| 参数类别 | 参数名 | 来源 | 是否变化 | 说明 |
+|---------|--------|------|---------|------|
+| **策略参数** | `spread` | LLM 建议 | 固定 | 做市价差 |
+| | `quantity` | LLM 建议 | 固定 | 订单数量 |
+| | `leverage` | LLM 建议 | 固定 | 杠杆倍数 |
+| **市场参数** | `initial_price` | MarketContext | 固定 | 初始价格（仅用于第一步） |
+| | `volatility` | MarketContext | 固定 | 波动率参数（用于生成随机变化） |
+| **配置参数** | `steps` | MultiLLMEvaluator | 固定 | 模拟步数 |
+| **动态生成** | `mid_price` | 随机游走 | **变化** | 每一步都不同 |
+| | `best_bid` | 基于 mid_price | **变化** | 每一步都不同 |
+| | `best_ask` | 基于 mid_price | **变化** | 每一步都不同 |
+| **固定值** | 市场价差 | 固定计算 | 固定 | 2 bps |
+| | `tick_size` | 固定值 | 固定 | 0.01 |
+| | `step_size` | 固定值 | 固定 | 0.001 |
+
+#### 关键要点 / Key Points
+
+1. **不是重复使用相同数据 / Not Reusing Same Data**:
+   - 500 步模拟是一个**连续过程**，不是重复 500 次相同操作
+   - 每一步基于上一步的结果生成新的市场数据
+
+2. **价格是动态的 / Price is Dynamic**:
+   - 价格遵循随机游走模型，每一步都会变化
+   - 变化幅度由波动率参数控制
+
+3. **策略参数是固定的 / Strategy Parameters are Fixed**:
+   - LLM 建议的参数（spread, quantity, leverage）在整个模拟过程中保持不变
+   - 这确保了模拟的一致性，可以公平比较不同参数组合的表现
+
+4. **模拟的真实性 / Simulation Realism**:
+   - 通过动态生成价格，模拟了真实市场的价格波动
+   - 策略在不同价格条件下的表现可以被评估
+
 ### Simulation Execution Count / 模拟执行次数
 
 **关键指标 / Key Metrics**:

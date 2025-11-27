@@ -3,6 +3,7 @@ import os
 import threading
 import time
 from datetime import datetime, timezone
+from typing import Optional
 
 import uvicorn
 
@@ -154,11 +155,13 @@ class ConfigUpdate(BaseModel):
     spread: float
     quantity: float
     strategy_type: str = "fixed_spread"
+    strategy_id: Optional[str] = None
     skew_factor: float = 100.0
 
 
 class PairUpdate(BaseModel):
     symbol: str
+    strategy_id: Optional[str] = "default"
 
 
 class SessionStartUpdate(BaseModel):
@@ -182,6 +185,37 @@ class AllocationLimitsUpdate(BaseModel):
 class StrategyAllocationUpdate(BaseModel):
     """Model for updating single strategy allocation"""
     allocation: float  # 0-1
+
+
+def _get_or_create_strategy_instance(
+    desired_id: Optional[str], strategy_type: str
+):
+    """
+    Resolve or create a strategy instance with the requested type.
+    """
+    if desired_id and desired_id in bot_engine.strategy_instances:
+        return bot_engine.strategy_instances[desired_id]
+
+    for instance in bot_engine.strategy_instances.values():
+        if instance.strategy_type == strategy_type:
+            return instance
+
+    instance_id = desired_id or strategy_type
+    # Inherit symbol from default instance if available
+    default_instance = bot_engine.strategy_instances.get("default")
+    inherited_symbol = default_instance.symbol if default_instance else None
+    success = bot_engine.add_strategy_instance(
+        instance_id, strategy_type, symbol=inherited_symbol
+    )
+    if success:
+        new_instance = bot_engine.strategy_instances.get(instance_id)
+        if new_instance and default_instance and instance_id != "default":
+            new_instance.strategy.spread = default_instance.strategy.spread
+            new_instance.strategy.quantity = default_instance.strategy.quantity
+            new_instance.strategy.leverage = default_instance.strategy.leverage
+        return new_instance
+
+    return bot_engine.strategy_instances.get(instance_id)
 
 
 def run_bot_loop():
@@ -365,6 +399,9 @@ async def control_bot(action: str):
             exchange = get_default_exchange()
             if exchange and hasattr(exchange, "last_order_error"):
                 exchange.last_order_error = None
+            # Ensure every strategy instance is marked as running when global start is issued
+            for instance in bot_engine.strategy_instances.values():
+                instance.running = True
             is_running = True
             bot_thread = threading.Thread(target=run_bot_loop)
             bot_thread.daemon = True
@@ -373,6 +410,8 @@ async def control_bot(action: str):
         return {"status": "started"}
     elif action == "stop":
         is_running = False
+        for instance in bot_engine.strategy_instances.values():
+            instance.running = False
         bot_engine.alert = None  # Clear alerts on stop
         bot_engine.current_stage = "Idle"
         return {"status": "stopped"}
@@ -396,34 +435,11 @@ async def update_config(config: ConfigUpdate):
     if not approved:
         return {"error": f"Risk Rejection: {reason}"}
 
-    # 2. Apply if approved
+    # 2. Resolve target strategy instance
+    target_instance = _get_or_create_strategy_instance(
+        config.strategy_id, config.strategy_type
+    )
 
-    # Find or create the appropriate strategy instance for this strategy type
-    target_instance = None
-    
-    # First, try to find an existing instance with matching strategy type
-    for instance_id, instance in bot_engine.strategy_instances.items():
-        if instance.strategy_type == config.strategy_type:
-            target_instance = instance
-            break
-    
-    # If no instance found, create a new one
-    if not target_instance:
-        # Use strategy_type as instance ID (e.g., "fixed_spread" or "funding_rate")
-        instance_id = config.strategy_type
-        success = bot_engine.add_strategy_instance(instance_id, config.strategy_type)
-        if success:
-            target_instance = bot_engine.strategy_instances.get(instance_id)
-            # Copy parameters from default instance if it exists
-            default_instance = bot_engine.strategy_instances.get("default")
-            if default_instance:
-                target_instance.strategy.spread = default_instance.strategy.spread
-                target_instance.strategy.quantity = default_instance.strategy.quantity
-                target_instance.strategy.leverage = default_instance.strategy.leverage
-        else:
-            # Instance already exists, use it
-            target_instance = bot_engine.strategy_instances.get(instance_id)
-    
     if not target_instance:
         return {"error": f"Failed to get or create strategy instance for {config.strategy_type}"}
 
@@ -435,19 +451,12 @@ async def update_config(config: ConfigUpdate):
     if hasattr(target_instance.strategy, "skew_factor"):
         target_instance.strategy.skew_factor = config.skew_factor
     
-    # Also update default instance and legacy reference for backward compatibility
+    # Update legacy default reference only when default instance was targeted
     default_instance = bot_engine.strategy_instances.get("default")
-    if default_instance and default_instance.strategy_type == config.strategy_type:
-        # Only update default if it matches the strategy type
-        default_instance.strategy.spread = new_spread
-        default_instance.strategy.quantity = config.quantity
-        if hasattr(default_instance.strategy, "skew_factor"):
-            default_instance.strategy.skew_factor = config.skew_factor
-    
-    bot_engine.strategy.spread = new_spread
-    bot_engine.strategy.quantity = config.quantity
-    if hasattr(bot_engine.strategy, "skew_factor"):
-        bot_engine.strategy.skew_factor = config.skew_factor
+    if target_instance.strategy_id == "default" and default_instance:
+        bot_engine.strategy = default_instance.strategy
+    elif default_instance:
+        bot_engine.strategy = default_instance.strategy
 
     # Clear any existing alerts / order errors since we fixed the config
     bot_engine.alert = None
@@ -476,18 +485,18 @@ async def update_leverage(leverage: int):
 
 @app.post("/api/pair")
 async def update_pair(pair: PairUpdate):
-    success = bot_engine.set_symbol(pair.symbol)
+    target_strategy_id = pair.strategy_id or "default"
+    success = bot_engine.set_symbol(pair.symbol, strategy_id=target_strategy_id)
     if success:
         # Immediately refresh data so UI gets updated even if bot is stopped
-        # refresh_data is now on StrategyInstance
-        default_instance = bot_engine.strategy_instances.get("default")
-        if default_instance:
-            default_instance.refresh_data()
+        target_instance = bot_engine.strategy_instances.get(target_strategy_id)
+        if target_instance:
+            target_instance.refresh_data()
         return {"status": "updated", "symbol": pair.symbol}
     else:
         return {
             "status": "error",
-            "message": f"Failed to update to symbol {pair.symbol}",
+            "message": f"Failed to update to symbol {pair.symbol} for strategy '{target_strategy_id}'",
         }
 
 
@@ -1001,29 +1010,10 @@ async def control_strategy_instance(strategy_id: str, action: str = Query(..., d
             instance_id = "default"
     elif target_strategy_type:
         # Look for an instance with matching strategy type
-        # First, try to find an existing instance with this type
-        for sid, inst in bot_engine.strategy_instances.items():
-            if inst.strategy_type == target_strategy_type:
-                instance = inst
-                instance_id = sid
-                break
-        
-        # If no instance found, create a new one with strategy_id as the instance ID
-        if not instance:
-            # Create new instance for this strategy type
-            instance_id = strategy_id
-            success = bot_engine.add_strategy_instance(instance_id, target_strategy_type)
-            if not success:
-                # If instance already exists with different type, use it
-                instance = bot_engine.strategy_instances.get(instance_id)
-            else:
-                instance = bot_engine.strategy_instances.get(instance_id)
-                # Copy parameters from default instance if it exists
-                default_instance = bot_engine.strategy_instances.get("default")
-                if default_instance:
-                    instance.strategy.spread = default_instance.strategy.spread
-                    instance.strategy.quantity = default_instance.strategy.quantity
-                    instance.strategy.leverage = default_instance.strategy.leverage
+        resolved_instance = _get_or_create_strategy_instance(strategy_id, target_strategy_type)
+        if resolved_instance:
+            instance = resolved_instance
+            instance_id = resolved_instance.strategy_id
     elif strategy_id in bot_engine.strategy_instances:
         instance_id = strategy_id
         instance = bot_engine.strategy_instances[instance_id]
@@ -1362,6 +1352,7 @@ def _sync_portfolio_with_bot():
 
     # Sync each strategy instance separately
     if hasattr(bot_engine, "strategy_instances") and bot_engine.strategy_instances:
+        symbol_consumers = {}
         for instance_id, instance in bot_engine.strategy_instances.items():
             # Map instance to portfolio strategy_id
             # Use strategy_type to find the corresponding portfolio strategy
@@ -1392,10 +1383,26 @@ def _sync_portfolio_with_bot():
 
             # Try to get data from instance's exchange
             if instance.use_real_exchange and instance.exchange is not None:
+                symbol_key = getattr(instance.exchange, "symbol", None)
+                duplicate_symbol = False
+                if symbol_key:
+                    if symbol_key in symbol_consumers:
+                        logger.warning(
+                            "Symbol %s already accounted for by %s, skipping duplicate PnL for %s",
+                            symbol_key,
+                            symbol_consumers[symbol_key],
+                            portfolio_strategy_id,
+                        )
+                        duplicate_symbol = True
+                    else:
+                        symbol_consumers[symbol_key] = portfolio_strategy_id
+
                 try:
-                    # Fetch PnL and commission from session start time
-                    pnl_data = instance.exchange.fetch_pnl_and_fees(start_time=start_time_ms)
-                    realized_pnl = pnl_data.get("realized_pnl", 0.0)
+                    if not duplicate_symbol:
+                        pnl_data = instance.exchange.fetch_pnl_and_fees(
+                            start_time=start_time_ms
+                        )
+                        realized_pnl = pnl_data.get("realized_pnl", 0.0)
                 except Exception as e:
                     logger.debug(f"Error fetching PnL for {instance_id}: {e}")
 

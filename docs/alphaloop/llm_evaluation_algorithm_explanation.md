@@ -110,7 +110,7 @@ leverage=parameter_stats.leverage_median,
 
 ```mermaid
 flowchart TD
-    Start([开始评估 / Start Evaluation]) --> LLMCall[调用多个 LLM / Call Multiple LLMs<br/>Gemini, OpenAI, Claude]
+    Start(["开始评估 / Start Evaluation"]) --> LLMCall["调用多个 LLM / Call Multiple LLMs<br/>Gemini, OpenAI, Claude"]
     
     LLMCall --> LLM1[LLM 1: 返回策略建议<br/>Strategy Proposal 1]
     LLMCall --> LLM2[LLM 2: 返回策略建议<br/>Strategy Proposal 2]
@@ -128,7 +128,7 @@ flowchart TD
     Score2 --> Rank
     Score3 --> Rank
     
-    Rank --> End([返回评估结果 / Return Results])
+    Rank --> End(["返回评估结果 / Return Results"])
     
     style Start fill:#e1f5ff
     style End fill:#d4edda
@@ -150,17 +150,17 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    Start([开始模拟 / Start Simulation<br/>初始化: 价格、波动率、策略参数<br/>Initialize: price, volatility, strategy params]) --> LoopStart{循环开始<br/>Loop Start<br/>i = 1 to 500}
+    Start(["开始模拟 / Start Simulation<br/>初始化: 价格、波动率、策略参数<br/>Initialize: price, volatility, strategy params"]) --> LoopStart{"循环开始<br/>Loop Start<br/>i = 1 to 500"}
     
     LoopStart -->|i <= 500| GenMarket["生成市场数据 / Generate Market Data<br/>1. 随机游走: price += gauss(0, price * volatility)<br/>2. 计算价差: spread = price * 0.0002<br/>3. 计算买卖价: bid = price - spread/2, ask = price + spread/2"]
     
     GenMarket --> CalcOrders[计算目标订单 / Calculate Target Orders<br/>使用 FixedSpread 策略<br/>Use FixedSpread Strategy<br/>参数: spread, quantity, leverage]
     
-    CalcOrders --> CheckBuy{检查买单<br/>Check Buy Order<br/>order_price >= best_bid?}
+    CalcOrders --> CheckBuy{"检查买单<br/>Check Buy Order<br/>order_price >= best_bid?"}
     CheckBuy -->|是 / Yes| FillBuy[成交买单 / Fill Buy Order<br/>position += quantity<br/>更新持仓 / Update Position]
     CheckBuy -->|否 / No| CheckSell
     
-    FillBuy --> CheckSell{检查卖单<br/>Check Sell Order<br/>order_price <= best_ask?}
+    FillBuy --> CheckSell{"检查卖单<br/>Check Sell Order<br/>order_price <= best_ask?"}
     
     CheckSell -->|是 / Yes| FillSell[成交卖单 / Fill Sell Order<br/>position -= quantity<br/>更新持仓 / Update Position]
     CheckSell --> CalcPnL[计算已实现盈亏 / Calculate Realized PnL<br/>当持仓减少时计算<br/>Calculate when position decreases]
@@ -172,9 +172,9 @@ flowchart TD
     UpdateStats --> LoopEnd{i++}
     LoopEnd --> LoopStart
     
-    LoopStart -->|i > 500| CalcMetrics[计算最终指标 / Calculate Final Metrics<br/>- Realized PnL<br/>- Win Rate = winning_trades / total_trades<br/>- Sharpe Ratio = mean(returns) / std(returns)]
+    LoopStart -->|i > 500| CalcMetrics["计算最终指标 / Calculate Final Metrics<br/>- Realized PnL<br/>- Win Rate = winning_trades / total_trades<br/>- Sharpe Ratio = mean(returns) / std(returns)"]
     
-    CalcMetrics --> End([返回模拟结果 / Return Simulation Result])
+    CalcMetrics --> End(["返回模拟结果 / Return Simulation Result"])
     
     style Start fill:#e1f5ff
     style End fill:#d4edda
@@ -331,7 +331,7 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    Start([开始评估 / Start Evaluation]) --> LLMCall[并行/串行调用 LLM / Call LLMs<br/>Gemini, OpenAI, Claude]
+    Start(["开始评估 / Start Evaluation"]) --> LLMCall["并行/串行调用 LLM / Call LLMs<br/>Gemini, OpenAI, Claude"]
     
     LLMCall --> LLM1[Gemini: 返回参数<br/>spread=0.01, qty=0.1, lev=1.0]
     LLMCall --> LLM2[OpenAI: 返回参数<br/>spread=0.015, qty=0.2, lev=1.5]
@@ -349,7 +349,7 @@ flowchart TD
     Result2 --> Score
     Result3 --> Score
     
-    Score --> End([返回排名结果 / Return Ranked Results])
+    Score --> End(["返回排名结果 / Return Ranked Results"])
     
     style Start fill:#e1f5ff
     style End fill:#d4edda

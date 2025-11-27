@@ -12,6 +12,8 @@ from unittest.mock import MagicMock, patch
 import pytest
 from fastapi.testclient import TestClient
 
+from alphaloop.portfolio.manager import StrategyStatus
+
 # ============================================================================
 # Epic 1: Portfolio Overview Tests
 # ============================================================================
@@ -953,3 +955,74 @@ def mock_bot_with_available_balance(monkeypatch):
 
     monkeypatch.setattr(server, "portfolio_manager", mock_pm)
     monkeypatch.setattr(server, "bot_engine", mock_bot)
+
+
+# ============================================================================
+# Capital Allocation API Tests / 资金分配 API 测试
+# ============================================================================
+
+
+class TestCapitalAllocation:
+    """资金分配相关 API 测试"""
+
+    def test_get_allocation_success(self, client):
+        """
+        测试获取资金分配信息
+        """
+        response = client.get("/api/portfolio/allocation")
+        assert response.status_code == 200
+        data = response.json()
+
+        assert "total_capital" in data
+        assert "min_allocation" in data
+        assert "max_allocation" in data
+        assert "auto_rebalance" in data
+        assert "strategies" in data
+        assert isinstance(data["strategies"], list)
+
+    def test_rebalance_equal(self, client):
+        """
+        测试等权重再平衡
+        """
+        response = client.post(
+            "/api/portfolio/rebalance",
+            json={"method": "equal"},
+        )
+        assert response.status_code == 200
+        data = response.json()
+
+        assert "method" in data
+        assert data["method"] == "equal"
+        assert "new_allocations" in data
+        assert "total_capital" in data
+
+    def test_update_allocation_limits(self, client):
+        """
+        测试更新分配限制
+        """
+        response = client.put(
+            "/api/portfolio/allocation/limits",
+            json={"min_allocation": 0.15, "max_allocation": 0.65},
+        )
+        assert response.status_code == 200
+        data = response.json()
+
+        assert "min_allocation" in data
+        assert "max_allocation" in data
+        assert data["min_allocation"] == 0.15
+        assert data["max_allocation"] == 0.65
+
+    def test_update_strategy_allocation(self, client):
+        """
+        测试更新单个策略的分配
+        """
+        response = client.put(
+            "/api/portfolio/strategy/fixed_spread/allocation",
+            json={"allocation": 0.7},
+        )
+        assert response.status_code == 200
+        data = response.json()
+
+        assert "strategy_id" in data
+        assert data["strategy_id"] == "fixed_spread"
+        assert "new_allocation" in data

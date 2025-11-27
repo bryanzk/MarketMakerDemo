@@ -443,12 +443,21 @@ class BinanceClient:
         """
         Places a batch of orders.
         orders: list of dicts {'side': 'buy'/'sell', 'price': float, 'quantity': float}
+        
+        Returns:
+            list: Successfully placed orders
+        Note:
+            Errors are recorded in self.last_order_error (last error encountered).
+            Each order is processed independently - if one fails, others continue.
         """
         created_orders = []
         limits = self.get_symbol_limits()
         min_qty = limits["minQty"]
         min_notional = limits["minNotional"]
         step_size = limits["stepSize"]
+        
+        # Clear previous error at start
+        self.last_order_error = None
 
         for order in orders:
             try:
@@ -519,12 +528,21 @@ class BinanceClient:
                     f"Insufficient balance to place {order['side']} order: {str(e)}"
                 )
                 logger.error(error_msg)
+                # Record error but continue with other orders
                 self.last_order_error = {
                     "type": "insufficient_funds",
                     "message": error_msg,
                     "symbol": self.symbol,
                     "order": order,
+                    "details": {
+                        "side": order.get("side"),
+                        "price": order.get("price"),
+                        "quantity": order.get("quantity"),
+                        "raw_error": str(e),
+                    },
                 }
+                # Continue to next order - don't stop the batch
+                continue
             except InvalidOrder as e:
                 error_msg = f"Invalid order rejected by Binance: {str(e)}"
                 logger.error(error_msg)

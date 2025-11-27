@@ -1,10 +1,13 @@
+import logging
 import os
 import threading
 import time
 from datetime import datetime, timezone
 
 import uvicorn
-from fastapi import FastAPI, Request
+
+logger = logging.getLogger(__name__)
+from fastapi import FastAPI, Query, Request
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -148,9 +151,25 @@ class PairUpdate(BaseModel):
 
 class SessionStartUpdate(BaseModel):
     """Model for updating session start time"""
-
     timestamp_ms: int = None  # Timestamp in milliseconds
     reset_to_9am: bool = False  # If True, reset to today's 9:00 AM
+
+
+class RebalanceRequest(BaseModel):
+    """Model for rebalancing request"""
+    method: str = "composite"  # equal, sharpe, health, roi, composite, risk_adjusted
+    weights: dict = None  # For composite method: {"sharpe": 0.4, "roi": 0.3, "health": 0.3}
+
+
+class AllocationLimitsUpdate(BaseModel):
+    """Model for updating allocation limits"""
+    min_allocation: float = None
+    max_allocation: float = None
+
+
+class StrategyAllocationUpdate(BaseModel):
+    """Model for updating single strategy allocation"""
+    allocation: float  # 0-1
 
 
 def run_bot_loop():
@@ -221,6 +240,54 @@ async def get_status():
     skew = getattr(bot_engine.strategy, "skew_factor", None)
     if isinstance(skew, (int, float)):
         status["skew_factor"] = skew
+
+    # Fetch Binance Exchange Limits for current trading pair
+    if hasattr(bot_engine, "exchange") and bot_engine.exchange is not None:
+        try:
+            limits = bot_engine.exchange.get_symbol_limits()
+            status["limits"] = limits
+        except Exception as e:
+            # If limits fetch fails, set empty limits to avoid breaking UI
+            status["limits"] = {
+                "minQty": None,
+                "maxQty": None,
+                "stepSize": None,
+                "minNotional": None,
+            }
+            print(f"Error fetching symbol limits: {e}")
+    else:
+        # No exchange connection, set empty limits
+        status["limits"] = {
+            "minQty": None,
+            "maxQty": None,
+            "stepSize": None,
+            "minNotional": None,
+        }
+
+    # Add strategy instance running states (regardless of exchange connection)
+    if hasattr(bot_engine, "strategy_instances"):
+        status["strategy_instances_running"] = {
+            strategy_id: instance.running 
+            for strategy_id, instance in bot_engine.strategy_instances.items()
+        }
+        # Map strategy names to instance IDs for UI
+        status["strategy_instance_status"] = {}
+        
+        # Initialize both strategy types to False
+        status["strategy_instance_status"]["fixed_spread"] = False
+        status["strategy_instance_status"]["funding_rate"] = False
+        
+        # Map instances to their strategy types
+        # If multiple instances of the same type exist, use OR logic (if any is running, mark as running)
+        for strategy_id, instance in bot_engine.strategy_instances.items():
+            if instance.strategy_type == "fixed_spread":
+                # If any fixed_spread instance is running, mark fixed_spread as running
+                if instance.running:
+                    status["strategy_instance_status"]["fixed_spread"] = True
+            elif instance.strategy_type == "funding_rate":
+                # If any funding_rate instance is running, mark funding_rate as running
+                if instance.running:
+                    status["strategy_instance_status"]["funding_rate"] = True
 
     return status
 
@@ -319,22 +386,54 @@ async def update_config(config: ConfigUpdate):
 
     # 2. Apply if approved
 
-    # Check if strategy type changed
-    current_strategy_type = (
-        "funding_rate"
-        if isinstance(bot_engine.strategy, FundingRateStrategy)
-        else "fixed_spread"
-    )
-    if config.strategy_type != current_strategy_type:
-        success = bot_engine.set_strategy(config.strategy_type)
-        if not success:
-            return {"error": f"Failed to switch strategy to {config.strategy_type}"}
+    # Find or create the appropriate strategy instance for this strategy type
+    target_instance = None
+    
+    # First, try to find an existing instance with matching strategy type
+    for instance_id, instance in bot_engine.strategy_instances.items():
+        if instance.strategy_type == config.strategy_type:
+            target_instance = instance
+            break
+    
+    # If no instance found, create a new one
+    if not target_instance:
+        # Use strategy_type as instance ID (e.g., "fixed_spread" or "funding_rate")
+        instance_id = config.strategy_type
+        success = bot_engine.add_strategy_instance(instance_id, config.strategy_type)
+        if success:
+            target_instance = bot_engine.strategy_instances.get(instance_id)
+            # Copy parameters from default instance if it exists
+            default_instance = bot_engine.strategy_instances.get("default")
+            if default_instance:
+                target_instance.strategy.spread = default_instance.strategy.spread
+                target_instance.strategy.quantity = default_instance.strategy.quantity
+                target_instance.strategy.leverage = default_instance.strategy.leverage
+        else:
+            # Instance already exists, use it
+            target_instance = bot_engine.strategy_instances.get(instance_id)
+    
+    if not target_instance:
+        return {"error": f"Failed to get or create strategy instance for {config.strategy_type}"}
 
-    # Update parameters
-    bot_engine.strategy.spread = new_spread
-    bot_engine.strategy.quantity = config.quantity
+    # Update parameters on the target instance's strategy
+    target_instance.strategy.spread = new_spread
+    target_instance.strategy.quantity = config.quantity
 
     # Update skew factor if applicable
+    if hasattr(target_instance.strategy, "skew_factor"):
+        target_instance.strategy.skew_factor = config.skew_factor
+    
+    # Also update default instance and legacy reference for backward compatibility
+    default_instance = bot_engine.strategy_instances.get("default")
+    if default_instance and default_instance.strategy_type == config.strategy_type:
+        # Only update default if it matches the strategy type
+        default_instance.strategy.spread = new_spread
+        default_instance.strategy.quantity = config.quantity
+        if hasattr(default_instance.strategy, "skew_factor"):
+            default_instance.strategy.skew_factor = config.skew_factor
+    
+    bot_engine.strategy.spread = new_spread
+    bot_engine.strategy.quantity = config.quantity
     if hasattr(bot_engine.strategy, "skew_factor"):
         bot_engine.strategy.skew_factor = config.skew_factor
 
@@ -849,6 +948,128 @@ async def get_risk_indicators():
     return indicators
 
 
+@app.post("/api/strategy/{strategy_id}/control")
+async def control_strategy_instance(strategy_id: str, action: str = Query(..., description="start 或 stop", alias="action")):
+    """
+    控制指定策略实例的启动/停止
+    
+    对应用户故事: 策略实例隔离运行
+    
+    Args:
+        strategy_id: 策略实例 ID (如 "fixed_spread", "funding_rate", "default")
+        action: "start" 或 "stop" (通过 query parameter 传递，例如: ?action=start)
+    """
+    # Map strategy_id to instance ID and strategy type
+    strategy_type_map = {
+        "fixed_spread": "fixed_spread",
+        "funding_rate": "funding_rate",
+    }
+    
+    # Determine the strategy type for this strategy_id
+    target_strategy_type = strategy_type_map.get(strategy_id)
+    
+    # Find or create the appropriate instance
+    instance = None
+    instance_id = None
+    
+    if strategy_id == "default":
+        # Use default instance
+        instance = bot_engine.strategy_instances.get("default")
+        if instance:
+            instance_id = "default"
+    elif target_strategy_type:
+        # Look for an instance with matching strategy type
+        # First, try to find an existing instance with this type
+        for sid, inst in bot_engine.strategy_instances.items():
+            if inst.strategy_type == target_strategy_type:
+                instance = inst
+                instance_id = sid
+                break
+        
+        # If no instance found, create a new one with strategy_id as the instance ID
+        if not instance:
+            # Create new instance for this strategy type
+            instance_id = strategy_id
+            success = bot_engine.add_strategy_instance(instance_id, target_strategy_type)
+            if not success:
+                # If instance already exists with different type, use it
+                instance = bot_engine.strategy_instances.get(instance_id)
+            else:
+                instance = bot_engine.strategy_instances.get(instance_id)
+                # Copy parameters from default instance if it exists
+                default_instance = bot_engine.strategy_instances.get("default")
+                if default_instance:
+                    instance.strategy.spread = default_instance.strategy.spread
+                    instance.strategy.quantity = default_instance.strategy.quantity
+                    instance.strategy.leverage = default_instance.strategy.leverage
+    elif strategy_id in bot_engine.strategy_instances:
+        instance_id = strategy_id
+        instance = bot_engine.strategy_instances[instance_id]
+    else:
+        return {"error": f"Strategy instance '{strategy_id}' not found"}
+    
+    if not instance:
+        return {"error": f"Failed to get or create strategy instance for '{strategy_id}'"}
+    
+    if action == "start":
+        # Validate config before starting
+        current_spread = instance.strategy.spread
+        approved, reason = bot_engine.risk.validate_proposal({"spread": current_spread})
+        
+        if not approved:
+            return {
+                "error": f"Risk Rejection: {reason}",
+                "suggestion": "Please adjust strategy parameters before starting"
+            }
+        
+        # Start the strategy instance
+        instance.running = True
+        instance.alert = None
+        
+        # Ensure bot loop is running (if not already)
+        global is_running, bot_thread
+        if not is_running:
+            is_running = True
+            bot_thread = threading.Thread(target=run_bot_loop)
+            bot_thread.daemon = True
+            bot_thread.start()
+        
+        # Update portfolio manager status
+        portfolio_manager.resume_strategy(strategy_id)
+        
+        return {"status": "started", "strategy_id": strategy_id}
+    
+    elif action == "stop":
+        # Stop the strategy instance
+        instance.running = False
+        instance.alert = None
+        
+        # Cancel orders for this strategy instance using its own exchange connection
+        if instance.use_real_exchange and instance.exchange is not None:
+            try:
+                # Cancel only orders tracked by this strategy instance
+                if instance.tracked_order_ids:
+                    current_orders = instance.exchange.fetch_open_orders()
+                    orders_to_cancel = [
+                        o for o in current_orders 
+                        if o.get("id") in instance.tracked_order_ids
+                    ]
+                    for order in orders_to_cancel:
+                        try:
+                            instance.exchange.cancel_order(order["id"], order.get("symbol"))
+                        except Exception as e:
+                            logger.error(f"Error canceling order {order['id']} for strategy {strategy_id}: {e}")
+            except Exception as e:
+                logger.error(f"Error canceling orders for strategy {strategy_id}: {e}")
+        
+        # Update portfolio manager status
+        portfolio_manager.pause_strategy(strategy_id)
+        
+        return {"status": "stopped", "strategy_id": strategy_id}
+    
+    return {"error": "Invalid action. Use 'start' or 'stop'"}
+
+
 @app.post("/api/strategy/{strategy_id}/pause")
 async def pause_strategy(strategy_id: str):
     """
@@ -856,21 +1077,11 @@ async def pause_strategy(strategy_id: str):
 
     对应用户故事: US-2.6
     """
-    success = portfolio_manager.pause_strategy(strategy_id)
-    if not success:
-        return {"error": f"Strategy '{strategy_id}' not found"}
-
-    # If this is the active strategy, stop the bot
-    if is_running:
-        current_strategy = type(bot_engine.strategy).__name__
-        if (
-            strategy_id == "fixed_spread" and current_strategy == "FixedSpreadStrategy"
-        ) or (
-            strategy_id == "funding_rate" and current_strategy == "FundingRateStrategy"
-        ):
-            # Optionally stop the bot when its strategy is paused
-            pass  # For now, just update status without stopping
-
+    # Also stop the strategy instance
+    result = await control_strategy_instance(strategy_id, "stop")
+    if "error" in result:
+        return result
+    
     return {"status": "paused", "strategy_id": strategy_id}
 
 
@@ -881,11 +1092,218 @@ async def resume_strategy(strategy_id: str):
 
     对应用户故事: US-2.6
     """
-    success = portfolio_manager.resume_strategy(strategy_id)
-    if not success:
-        return {"error": f"Strategy '{strategy_id}' not found"}
-
+    # Also start the strategy instance
+    result = await control_strategy_instance(strategy_id, "start")
+    if "error" in result:
+        return result
+    
     return {"status": "live", "strategy_id": strategy_id}
+
+
+@app.get("/api/portfolio/allocation")
+async def get_allocation():
+    """
+    获取所有策略的资金分配情况
+
+    Returns:
+        {
+            "total_capital": float,
+            "min_allocation": float,
+            "max_allocation": float,
+            "auto_rebalance": bool,
+            "strategies": [
+                {
+                    "strategy_id": str,
+                    "name": str,
+                    "allocation": float,  # 0-1
+                    "allocated_capital": float,  # USDT
+                    "status": str
+                }
+            ]
+        }
+    """
+    _sync_portfolio_with_bot()
+    
+    strategies_data = []
+    for strategy_id, strategy in portfolio_manager.strategies.items():
+        allocated_capital = portfolio_manager.total_capital * strategy.allocation
+        strategies_data.append({
+            "strategy_id": strategy_id,
+            "name": strategy.name,
+            "allocation": round(strategy.allocation, 4),
+            "allocated_capital": round(allocated_capital, 2),
+            "status": strategy.status.value,
+        })
+    
+    return {
+        "total_capital": round(portfolio_manager.total_capital, 2),
+        "min_allocation": portfolio_manager.min_allocation,
+        "max_allocation": portfolio_manager.max_allocation,
+        "auto_rebalance": portfolio_manager.auto_rebalance,
+        "strategies": strategies_data,
+    }
+
+
+@app.post("/api/portfolio/rebalance")
+async def rebalance_portfolio(request: RebalanceRequest):
+    """
+    手动触发资金再平衡
+
+    支持的方法:
+    - "equal": 等权重分配
+    - "sharpe": 基于夏普比率加权
+    - "health": 基于健康度加权
+    - "roi": 基于 ROI 加权
+    - "composite": 综合评分 (Sharpe + ROI + Health)
+    - "risk_adjusted": 风险调整分配 (基于最大回撤)
+
+    Args:
+        request: RebalanceRequest with method and optional weights
+
+    Returns:
+        {
+            "method": str,
+            "new_allocations": {
+                "strategy_id": float
+            },
+            "total_capital": float
+        }
+    """
+    _sync_portfolio_with_bot()
+    
+    # Update metrics before rebalancing (ensure we have latest data)
+    # This is done in _sync_portfolio_with_bot, but we call it again to be safe
+    _sync_portfolio_with_bot()
+    
+    # Perform rebalancing
+    new_allocations = portfolio_manager.rebalance_allocations(
+        method=request.method,
+        weights=request.weights,
+    )
+    
+    return {
+        "method": request.method,
+        "new_allocations": {
+            sid: round(alloc, 4) for sid, alloc in new_allocations.items()
+        },
+        "total_capital": round(portfolio_manager.total_capital, 2),
+    }
+
+
+@app.put("/api/portfolio/allocation/limits")
+async def update_allocation_limits(request: AllocationLimitsUpdate):
+    """
+    更新资金分配限制
+
+    Args:
+        request: AllocationLimitsUpdate with min_allocation and/or max_allocation
+
+    Returns:
+        {
+            "min_allocation": float,
+            "max_allocation": float,
+            "message": str
+        }
+    """
+    portfolio_manager.set_allocation_limits(
+        min_allocation=request.min_allocation,
+        max_allocation=request.max_allocation,
+    )
+    
+    return {
+        "min_allocation": portfolio_manager.min_allocation,
+        "max_allocation": portfolio_manager.max_allocation,
+        "message": "Allocation limits updated successfully",
+    }
+
+
+@app.put("/api/portfolio/strategy/{strategy_id}/allocation")
+async def update_strategy_allocation(strategy_id: str, request: StrategyAllocationUpdate):
+    """
+    手动设置单个策略的资金分配
+
+    注意: 设置后会自动归一化所有策略的分配，确保总和为 100%
+
+    Args:
+        strategy_id: 策略标识
+        request: StrategyAllocationUpdate with allocation (0-1)
+
+    Returns:
+        {
+            "strategy_id": str,
+            "old_allocation": float,
+            "new_allocation": float,
+            "allocated_capital": float,
+            "all_strategies": {
+                "strategy_id": float
+            }
+        }
+    """
+    if strategy_id not in portfolio_manager.strategies:
+        return {"error": f"Strategy '{strategy_id}' not found"}
+    
+    # Validate allocation
+    if request.allocation < 0 or request.allocation > 1:
+        return {"error": "Allocation must be between 0 and 1"}
+    
+    # Get old allocation
+    old_allocation = portfolio_manager.strategies[strategy_id].allocation
+    
+    # Update allocation
+    portfolio_manager.strategies[strategy_id].allocation = request.allocation
+    
+    # Normalize all allocations
+    portfolio_manager._normalize_allocations()
+    
+    # Get new allocation after normalization
+    new_allocation = portfolio_manager.strategies[strategy_id].allocation
+    allocated_capital = portfolio_manager.total_capital * new_allocation
+    
+    # Get all allocations
+    all_allocations = {
+        sid: round(s.allocation, 4)
+        for sid, s in portfolio_manager.strategies.items()
+    }
+    
+    return {
+        "strategy_id": strategy_id,
+        "old_allocation": round(old_allocation, 4),
+        "new_allocation": round(new_allocation, 4),
+        "allocated_capital": round(allocated_capital, 2),
+        "all_strategies": all_allocations,
+    }
+
+
+@app.get("/api/portfolio/strategy/{strategy_id}/allocation")
+async def get_strategy_allocation(strategy_id: str):
+    """
+    获取单个策略的资金分配
+
+    Args:
+        strategy_id: 策略标识
+
+    Returns:
+        {
+            "strategy_id": str,
+            "name": str,
+            "allocation": float,
+            "allocated_capital": float,
+            "total_capital": float
+        }
+    """
+    if strategy_id not in portfolio_manager.strategies:
+        return {"error": f"Strategy '{strategy_id}' not found"}
+    
+    strategy = portfolio_manager.strategies[strategy_id]
+    allocated_capital = portfolio_manager.total_capital * strategy.allocation
+    
+    return {
+        "strategy_id": strategy_id,
+        "name": strategy.name,
+        "allocation": round(strategy.allocation, 4),
+        "allocated_capital": round(allocated_capital, 2),
+        "total_capital": round(portfolio_manager.total_capital, 2),
+    }
 
 
 def _sync_portfolio_with_bot():

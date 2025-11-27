@@ -99,6 +99,14 @@ This project has comprehensive documentation. **If you are new to the system**, 
    - 基于模拟的策略验证
 
 12. **[Risk Indicators Guide](docs/user_guide/risk_indicators.md)** 🆕
+
+13. **[Error Handling Guide](docs/user_guide/error_handling.md)** 🆕
+   - Comprehensive error handling and recovery
+   - Multi-strategy error isolation
+   - Troubleshooting common issues
+   - 全面的错误处理和恢复机制
+   - 多策略错误隔离
+   - 常见问题故障排除
    - Liquidation Buffer, Inventory Drift, Max Drawdown
    - Real-time risk monitoring
    - 强平缓冲、库存偏移、最大回撤

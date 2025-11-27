@@ -78,18 +78,31 @@ class PortfolioManager:
     - 策略间的对比分析
     - 风险等级评估
     - 策略状态管理
+    - 动态资金分配
     """
 
-    def __init__(self, total_capital: float = 10000.0):
+    def __init__(
+        self,
+        total_capital: float = 10000.0,
+        min_allocation: float = 0.1,
+        max_allocation: float = 0.7,
+        auto_rebalance: bool = False,
+    ):
         """
         初始化组合管理器
 
         Args:
             total_capital: 总资金 (USDT)
+            min_allocation: 最小分配比例 (0-1)
+            max_allocation: 最大分配比例 (0-1)
+            auto_rebalance: 是否自动再平衡（更新指标时自动调整分配）
         """
         self.total_capital = total_capital
         self.strategies: Dict[str, StrategyInfo] = {}
         self.pnl_history: List[float] = []  # 用于计算组合 Sharpe
+        self.min_allocation = min_allocation
+        self.max_allocation = max_allocation
+        self.auto_rebalance = auto_rebalance
 
     def register_strategy(
         self,
@@ -181,6 +194,10 @@ class PortfolioManager:
         allocated_capital = self.total_capital * strategy.allocation
         if allocated_capital > 0:
             strategy.roi = strategy.pnl / allocated_capital
+
+        # Auto-rebalance if enabled
+        if self.auto_rebalance:
+            self.rebalance_allocations(method="composite")
 
     def set_strategy_status(self, strategy_id: str, status: StrategyStatus) -> bool:
         """
@@ -307,3 +324,225 @@ class PortfolioManager:
         # 只保留最近 1000 个数据点
         if len(self.pnl_history) > 1000:
             self.pnl_history = self.pnl_history[-1000:]
+
+    def set_allocation_limits(
+        self, min_allocation: float = None, max_allocation: float = None
+    ) -> None:
+        """
+        设置资金分配限制
+
+        Args:
+            min_allocation: 最小分配比例 (0-1)
+            max_allocation: 最大分配比例 (0-1)
+        """
+        if min_allocation is not None:
+            self.min_allocation = max(0.0, min(1.0, min_allocation))
+        if max_allocation is not None:
+            self.max_allocation = max(0.0, min(1.0, max_allocation))
+
+    def get_allocation_for_strategy(self, strategy_id: str) -> float:
+        """
+        获取策略的当前资金分配
+
+        Args:
+            strategy_id: 策略标识
+
+        Returns:
+            float: 分配比例 (0-1)，策略不存在时返回 0.0
+        """
+        if strategy_id not in self.strategies:
+            return 0.0
+        return self.strategies[strategy_id].allocation
+
+    def rebalance_allocations(
+        self,
+        method: str = "equal",
+        weights: Optional[Dict[str, float]] = None,
+    ) -> Dict[str, float]:
+        """
+        重新平衡资金分配
+
+        支持多种分配策略：
+        - "equal": 等权重分配
+        - "sharpe": 基于夏普比率加权
+        - "health": 基于健康度加权
+        - "roi": 基于 ROI 加权
+        - "composite": 综合评分（Sharpe + ROI + Health）
+        - "risk_adjusted": 风险调整分配（基于最大回撤）
+
+        Args:
+            method: 分配方法
+            weights: 综合评分时的权重（仅用于 composite 方法）
+                    格式: {"sharpe": 0.4, "roi": 0.3, "health": 0.3}
+
+        Returns:
+            Dict[str, float]: 新的分配比例字典
+        """
+        if not self.strategies:
+            return {}
+
+        # Filter active strategies only
+        active_strategies = {
+            sid: s
+            for sid, s in self.strategies.items()
+            if s.status == StrategyStatus.LIVE
+        }
+
+        if not active_strategies:
+            # If no active strategies, use all strategies
+            active_strategies = self.strategies
+
+        if method == "equal":
+            # Equal allocation
+            allocation = 1.0 / len(active_strategies)
+            new_allocations = {sid: allocation for sid in active_strategies.keys()}
+
+        elif method == "sharpe":
+            # Sharpe ratio weighted
+            sharpe_values = {
+                sid: max(0.0, s.sharpe or 0.0) for sid, s in active_strategies.items()
+            }
+            total_sharpe = sum(sharpe_values.values())
+            if total_sharpe > 0:
+                new_allocations = {
+                    sid: sharpe / total_sharpe
+                    for sid, sharpe in sharpe_values.items()
+                }
+            else:
+                # Fallback to equal if no Sharpe data
+                allocation = 1.0 / len(active_strategies)
+                new_allocations = {sid: allocation for sid in active_strategies.keys()}
+
+        elif method == "health":
+            # Health score weighted
+            health_values = {
+                sid: max(0.0, s.health) for sid, s in active_strategies.items()
+            }
+            total_health = sum(health_values.values())
+            if total_health > 0:
+                new_allocations = {
+                    sid: health / total_health
+                    for sid, health in health_values.items()
+                }
+            else:
+                # Fallback to equal
+                allocation = 1.0 / len(active_strategies)
+                new_allocations = {sid: allocation for sid in active_strategies.keys()}
+
+        elif method == "roi":
+            # ROI weighted (normalize to positive values first)
+            roi_values = {
+                sid: max(0.0, s.roi + 1.0)  # Shift to positive
+                for sid, s in active_strategies.items()
+            }
+            total_roi = sum(roi_values.values())
+            if total_roi > 0:
+                new_allocations = {
+                    sid: roi / total_roi for sid, roi in roi_values.items()
+                }
+            else:
+                # Fallback to equal
+                allocation = 1.0 / len(active_strategies)
+                new_allocations = {sid: allocation for sid in active_strategies.keys()}
+
+        elif method == "composite":
+            # Composite score: weighted combination of Sharpe, ROI, Health
+            default_weights = {"sharpe": 0.4, "roi": 0.3, "health": 0.3}
+            if weights is None:
+                weights = default_weights
+
+            # Normalize inputs
+            sharpe_values = [
+                max(0.0, s.sharpe or 0.0) for s in active_strategies.values()
+            ]
+            roi_values = [max(0.0, s.roi + 1.0) for s in active_strategies.values()]
+            health_values = [max(0.0, s.health) for s in active_strategies.values()]
+
+            # Normalize to 0-1 range
+            def normalize(values):
+                if not values or max(values) == min(values):
+                    return [1.0 / len(values)] * len(values)
+                max_val = max(values)
+                min_val = min(values)
+                if max_val == min_val:
+                    return [1.0 / len(values)] * len(values)
+                return [(v - min_val) / (max_val - min_val) for v in values]
+
+            norm_sharpe = normalize(sharpe_values)
+            norm_roi = normalize(roi_values)
+            norm_health = normalize(health_values)
+
+            # Calculate composite scores
+            composite_scores = {}
+            for i, (sid, strategy) in enumerate(active_strategies.items()):
+                score = (
+                    weights.get("sharpe", 0.4) * norm_sharpe[i]
+                    + weights.get("roi", 0.3) * norm_roi[i]
+                    + weights.get("health", 0.3) * norm_health[i]
+                )
+                composite_scores[sid] = max(0.0, score)
+
+            total_score = sum(composite_scores.values())
+            if total_score > 0:
+                new_allocations = {
+                    sid: score / total_score
+                    for sid, score in composite_scores.items()
+                }
+            else:
+                # Fallback to equal
+                allocation = 1.0 / len(active_strategies)
+                new_allocations = {sid: allocation for sid in active_strategies.keys()}
+
+        elif method == "risk_adjusted":
+            # Inverse risk weighted (lower risk → more allocation)
+            risk_scores = {}
+            for sid, strategy in active_strategies.items():
+                # Risk = max_drawdown + normalized position risk
+                risk = max(0.01, strategy.max_drawdown)  # Avoid division by zero
+                risk_scores[sid] = risk
+
+            # Inverse risk (lower risk → higher allocation)
+            inverse_risk = {sid: 1.0 / risk for sid, risk in risk_scores.items()}
+            total_inverse = sum(inverse_risk.values())
+            if total_inverse > 0:
+                new_allocations = {
+                    sid: inv_risk / total_inverse
+                    for sid, inv_risk in inverse_risk.items()
+                }
+            else:
+                # Fallback to equal
+                allocation = 1.0 / len(active_strategies)
+                new_allocations = {sid: allocation for sid in active_strategies.keys()}
+
+        else:
+            # Unknown method, fallback to equal
+            allocation = 1.0 / len(active_strategies)
+            new_allocations = {sid: allocation for sid in active_strategies.keys()}
+
+        # Apply min/max constraints
+        constrained_allocations = {}
+        for sid, alloc in new_allocations.items():
+            constrained_alloc = max(
+                self.min_allocation, min(self.max_allocation, alloc)
+            )
+            constrained_allocations[sid] = constrained_alloc
+
+        # Renormalize to ensure sum = 1.0
+        total_constrained = sum(constrained_allocations.values())
+        if total_constrained > 0:
+            for sid in constrained_allocations:
+                constrained_allocations[sid] /= total_constrained
+
+        # Update allocations
+        for sid, new_alloc in constrained_allocations.items():
+            if sid in self.strategies:
+                self.strategies[sid].allocation = new_alloc
+
+        # Update inactive strategies to 0 (or keep their current allocation)
+        for sid, strategy in self.strategies.items():
+            if sid not in constrained_allocations:
+                # Optionally set inactive strategies to 0
+                # strategy.allocation = 0.0
+                pass
+
+        return constrained_allocations

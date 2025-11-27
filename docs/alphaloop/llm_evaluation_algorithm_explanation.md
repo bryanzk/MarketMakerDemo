@@ -98,7 +98,306 @@ leverage=parameter_stats.leverage_median,
 
 ---
 
-## 3. Simulation Process / 模拟过程
+## 3. LLM Proposal Generation / LLM 建议生成
+
+### How LLM Recommendations Are Generated / LLM 建议如何生成
+
+**Location**: `alphaloop/evaluation/evaluator.py::_evaluate_single()` and `alphaloop/evaluation/prompts.py`
+
+LLM 建议的生成是一个多步骤过程，从市场数据收集到最终策略参数建议。
+
+### Generation Flow Diagram / 生成流程图
+
+```mermaid
+flowchart TD
+    Start(["开始评估 / Start Evaluation"]) --> CollectData["收集市场数据 / Collect Market Data<br/>MarketContext: price, volatility, funding rate, position, etc."]
+    
+    CollectData --> BuildPrompt["构建 Prompt / Build Prompt<br/>StrategyAdvisorPrompt.generate(context)"]
+    
+    BuildPrompt --> LLMCall["调用 LLM / Call LLM<br/>provider.generate(prompt)<br/>Gemini / OpenAI / Claude"]
+    
+    LLMCall --> LLMResponse["LLM 响应 / LLM Response<br/>JSON format with strategy parameters"]
+    
+    LLMResponse --> ParseJSON["解析 JSON / Parse JSON<br/>Extract: spread, quantity, leverage, confidence"]
+    
+    ParseJSON --> Proposal["策略建议 / Strategy Proposal<br/>StrategyProposal object<br/>with all parameters"]
+    
+    Proposal --> Simulate["运行模拟 / Run Simulation<br/>Test proposal with 500 steps"]
+    
+    Simulate --> End(["返回结果 / Return Result"])
+    
+    style Start fill:#e1f5ff
+    style End fill:#d4edda
+    style CollectData fill:#fff4e6
+    style LLMCall fill:#e8f5e9
+    style ParseJSON fill:#f3e5f5
+    style Simulate fill:#c8e6c9
+```
+
+### Step-by-Step Process / 逐步过程
+
+#### Step 1: Market Data Collection / 市场数据收集
+
+系统收集当前市场上下文数据，包括：
+
+**Location**: `alphaloop/evaluation/schemas.py::MarketContext`
+
+**数据字段 / Data Fields**:
+- **价格数据 / Price Data**:
+  - `symbol`: 交易对符号（如 "ETHUSDT"）
+  - `mid_price`: 中间价
+  - `best_bid`: 最佳买价
+  - `best_ask`: 最佳卖价
+  - `spread_bps`: 市场价差（基点）
+
+- **波动性 / Volatility**:
+  - `volatility_24h`: 24小时波动率
+  - `volatility_1h`: 1小时波动率
+
+- **资金费率 / Funding Rate**:
+  - `funding_rate`: 当前资金费率
+  - `funding_rate_trend`: 费率趋势（"rising" | "falling" | "stable"）
+
+- **持仓信息 / Position Info**:
+  - `current_position`: 当前持仓
+  - `position_side`: 持仓方向（"long" | "short" | "neutral"）
+  - `unrealized_pnl`: 未实现盈亏
+
+- **账户信息 / Account Info**:
+  - `available_balance`: 可用余额
+  - `current_leverage`: 当前杠杆倍数
+
+- **历史绩效 / Historical Performance**:
+  - `win_rate`: 胜率
+  - `sharpe_ratio`: 夏普比率
+  - `recent_pnl`: 近期盈亏
+
+#### Step 2: Prompt Generation / Prompt 生成
+
+**Location**: `alphaloop/evaluation/prompts.py::StrategyAdvisorPrompt`
+
+系统使用模板生成结构化的 prompt：
+
+**Prompt 结构 / Prompt Structure**:
+1. **角色定义 / Role Definition**:
+   - "You are an expert quantitative trading analyst specializing in cryptocurrency perpetual futures market making."
+   - 定义 LLM 为量化交易分析师角色
+
+2. **任务说明 / Task Description**:
+   - 要求 LLM 分析市场数据并推荐最优策略参数
+   - 明确说明仅支持 FixedSpread 策略
+
+3. **市场数据 / Market Data**:
+   - 通过 `{market_context}` 占位符插入格式化的市场数据
+   - 使用 `MarketContext.to_prompt_string()` 方法格式化
+
+4. **输出格式要求 / Output Format Requirements**:
+   - 要求返回纯 JSON 对象（无 markdown）
+   - 指定 JSON 结构：
+     ```json
+     {
+         "recommended_strategy": "FixedSpread",
+         "spread": 0.01,
+         "skew_factor": 100,
+         "quantity": 0.1,
+         "leverage": 1.0,
+         "reasoning": "Your reasoning here",
+         "confidence": 0.85,
+         "risk_level": "low" | "medium" | "high",
+         "expected_return": 0.05
+     }
+     ```
+
+5. **参数指导 / Parameter Guidelines**:
+   - `spread`: 0.005 to 0.03 (0.5% to 3%)
+   - `quantity`: 0.05 to 0.5
+   - `leverage`: 1 to 5
+   - `confidence`: 0.0 to 1.0
+
+**示例 Prompt 输出 / Example Prompt Output**:
+```
+You are an expert quantitative trading analyst specializing in cryptocurrency perpetual futures market making.
+
+Analyze the following market data and recommend optimal trading strategy parameters.
+
+【市场数据 / Market Data】
+- 交易对 Symbol: ETHUSDT
+- 中间价 Mid Price: $2,500.00
+- 最佳买价 Best Bid: $2,499.50
+- 最佳卖价 Best Ask: $2,500.50
+- 市场价差 Market Spread: 4.00 bps
+
+【波动率 / Volatility】
+- 24小时波动率: 3.50%
+- 1小时波动率: 1.20%
+
+【资金费率 / Funding Rate】
+- 当前费率: 0.0100%
+- 费率趋势: rising
+
+【当前持仓 / Current Position】
+- 仓位: 0.0 (neutral)
+- 未实现盈亏: $0.00
+- 杠杆倍数: 1.0x
+
+【账户状态 / Account Status】
+- 可用余额: $10,000.00
+
+【历史绩效 / Historical Performance】
+- 胜率: 52.0%
+- 夏普比率: 1.20
+- 近期盈亏: $0.00
+
+【策略 / Strategy】
+FixedSpread - 固定价差做市策略，适合低波动市场
+Note: Only FixedSpread strategy is supported in simulation.
+
+【你的任务 / Your Task】
+Based on the market conditions, recommend optimal parameters for FixedSpread strategy:
+1. Optimal spread (价差)
+2. Optimal quantity (数量)
+3. Optimal leverage (杠杆)
+4. Your confidence level in this recommendation (置信度)
+
+【输出格式要求 / Output Format】
+Return ONLY a valid JSON object with the following structure (no markdown, no explanation outside JSON):
+...
+```
+
+#### Step 3: LLM Invocation / LLM 调用
+
+**Location**: `alphaloop/evaluation/evaluator.py::_evaluate_single()`
+
+系统将 prompt 发送给 LLM Provider：
+
+**调用过程 / Invocation Process**:
+1. **选择 LLM Provider**:
+   - 可以是 Gemini、OpenAI、Claude 等
+   - 每个 Provider 独立调用
+
+2. **发送请求 / Send Request**:
+   ```python
+   raw_response = provider.generate(prompt)
+   ```
+
+3. **测量延迟 / Measure Latency**:
+   ```python
+   start_time = time.time()
+   raw_response = provider.generate(prompt)
+   latency_ms = (time.time() - start_time) * 1000
+   ```
+
+4. **错误处理 / Error Handling**:
+   - 如果 LLM 调用失败，返回错误结果
+   - 使用默认参数继续流程
+
+**并行调用 / Parallel Invocation**:
+- 默认情况下，多个 LLM 并行调用（`parallel=True`）
+- 使用 `ThreadPoolExecutor` 实现并行
+- 每个 LLM 独立处理，互不影响
+
+#### Step 4: Response Parsing / 响应解析
+
+**Location**: `alphaloop/evaluation/evaluator.py::_parse_response()`
+
+系统解析 LLM 返回的 JSON 响应：
+
+**解析过程 / Parsing Process**:
+
+1. **清理响应 / Clean Response**:
+   ```python
+   clean_response = raw_response.strip()
+   ```
+
+2. **移除 Markdown 代码块 / Remove Markdown Code Blocks**:
+   - 检查是否包含 ` ``` ` 标记
+   - 如果包含，提取代码块内的 JSON
+   - 处理 LLM 可能返回的 markdown 格式
+
+3. **解析 JSON / Parse JSON**:
+   ```python
+   data = json.loads(clean_response)
+   ```
+
+4. **提取参数 / Extract Parameters**:
+   ```python
+   StrategyProposal(
+       recommended_strategy=data.get("recommended_strategy", "FixedSpread"),
+       spread=float(data.get("spread", 0.01)),
+       quantity=float(data.get("quantity", 0.1)),
+       leverage=float(data.get("leverage", 1.0)),
+       reasoning=data.get("reasoning", ""),
+       confidence=float(data.get("confidence", 0.5)),
+       risk_level=data.get("risk_level", "medium"),
+       expected_return=float(data.get("expected_return", 0.0)),
+   )
+   ```
+
+5. **错误处理 / Error Handling**:
+   - 如果 JSON 解析失败，使用默认值
+   - 设置 `parse_success=False`
+   - 记录解析错误信息
+
+**解析后的数据结构 / Parsed Data Structure**:
+- `StrategyProposal` 对象包含：
+  - 策略参数：`spread`, `quantity`, `leverage`
+  - 分析信息：`reasoning`, `confidence`, `risk_level`
+  - 元数据：`provider_name`, `raw_response`, `parse_success`
+
+### LLM Analysis Process / LLM 分析过程
+
+**LLM 如何分析市场数据 / How LLM Analyzes Market Data**:
+
+1. **市场状态识别 / Market State Identification**:
+   - LLM 分析波动率、价差、资金费率等指标
+   - 识别市场状态（低波动、高波动、趋势等）
+
+2. **参数优化推理 / Parameter Optimization Reasoning**:
+   - **价差 (Spread)**: 
+     - 低波动市场 → 较小价差（更频繁成交）
+     - 高波动市场 → 较大价差（降低风险）
+   - **数量 (Quantity)**:
+     - 根据可用余额和风险承受能力
+     - 考虑当前持仓和杠杆
+   - **杠杆 (Leverage)**:
+     - 保守策略 → 低杠杆（1-2x）
+     - 激进策略 → 高杠杆（3-5x）
+
+3. **置信度评估 / Confidence Assessment**:
+   - LLM 评估市场数据的清晰度
+   - 高置信度：市场信号明确
+   - 低置信度：市场信号模糊或矛盾
+
+4. **风险分析 / Risk Analysis**:
+   - 评估策略的风险等级
+   - 考虑波动率、杠杆、持仓等因素
+
+### Key Points / 关键要点
+
+1. **数据驱动 / Data-Driven**:
+   - LLM 建议完全基于提供的市场数据
+   - 不依赖外部信息或历史模式
+
+2. **结构化输出 / Structured Output**:
+   - 强制 JSON 格式，便于解析
+   - 包含参数、推理、置信度等完整信息
+
+3. **多 LLM 比较 / Multi-LLM Comparison**:
+   - 不同 LLM 可能给出不同建议
+   - 系统通过模拟比较不同建议的表现
+
+4. **容错处理 / Error Handling**:
+   - 解析失败时使用默认值
+   - 确保系统稳定运行
+
+5. **可追溯性 / Traceability**:
+   - 保存原始响应（`raw_response`）
+   - 记录推理过程（`reasoning`）
+   - 便于后续分析和调试
+
+---
+
+## 4. Simulation Process / 模拟过程
 
 ### How Simulation Works / 模拟如何工作
 
@@ -643,7 +942,7 @@ avg_entry_price = Σ (price_i × quantity_i) / Σ quantity_i
 
 ---
 
-## Summary / 总结
+## 5. Summary / 总结
 
 1. **Score Algorithm**: Weighted composite (PnL 40%, Sharpe 30%, WinRate 20%, Confidence 10%)
    - Confidence is LLM's self-reported certainty (0-1)

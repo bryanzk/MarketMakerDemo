@@ -41,9 +41,13 @@ class DummyBotEngine:
             "orders": [],
             "logs": [],
             "error": None,
+            "strategy_instances": {},
+            "strategy_count": 0,
         }
         self.order_history = orders
         self.error_history = errors or []
+        # Add strategy_instances attribute for new architecture compatibility
+        self.strategy_instances = {}
 
     def get_status(self) -> Dict[str, Any]:
         # Return shallow copy so handlers can mutate
@@ -98,6 +102,7 @@ def client_fixed_strategy(monkeypatch):
 
     monkeypatch.setattr(server, "bot_engine", dummy_bot)
     monkeypatch.setattr(server, "is_running", False)
+    monkeypatch.setattr(server, "get_default_exchange", lambda: None)
 
     return TestClient(server.app)
 
@@ -115,6 +120,7 @@ def client_funding_strategy(monkeypatch):
 
     monkeypatch.setattr(server, "bot_engine", dummy_bot)
     monkeypatch.setattr(server, "is_running", True)
+    monkeypatch.setattr(server, "get_default_exchange", lambda: None)
 
     return TestClient(server.app)
 

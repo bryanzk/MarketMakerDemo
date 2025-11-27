@@ -80,6 +80,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Color coding for health visualization
   - Comprehensive unit test coverage
 
+- **Per-Instance Exchange Architecture** (`alphaloop/market/strategy_instance.py`)
+  - Each `StrategyInstance` now has its own isolated exchange connection
+  - Independent data refresh (`refresh_data()`) per strategy instance
+  - Per-instance symbol management (`set_symbol()`)
+  - Complete isolation between strategies for fault tolerance
+  - New documentation: `docs/architecture_changes_per_instance_exchange.md`
+
 - **New Dependencies**
   - `openai` - OpenAI API client
   - `anthropic` - Anthropic Claude API client
@@ -89,11 +96,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Portfolio API tests and isort formatting issues
 - Health score calculation: Fixed negative Sharpe ratio handling to ensure 0-100 range
 - Test patch paths for LLM providers (OpenAI, Claude)
+- Server tests: Updated all tests to use `get_default_exchange()` helper for new architecture
+- Integration tests: Fixed `refresh_data` tests to work with `StrategyInstance`
+- Funding rates tests: Updated to use new exchange access pattern
 
 ### Changed
 - Trading fee calculation and display improvements
 - Health score calculation: Added final range clamping to guarantee 0-100 output
 - Documentation: Updated all user guides to bilingual format (English/Chinese)
+- Server: Migrated from `bot_engine.exchange` to `get_default_exchange()` helper
+- `refresh_data()` moved from `AlphaLoop` to `StrategyInstance` for per-instance isolation
 
 ### Planned for Phase 3
 - Inventory skew (position-based spread adjustment)

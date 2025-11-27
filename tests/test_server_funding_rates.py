@@ -9,21 +9,17 @@ from fastapi.testclient import TestClient
 
 
 @pytest.fixture
-def mock_bot_engine():
-    """Create a mocked bot_engine for server testing"""
-    mock_engine = Mock()
+def mock_exchange():
+    """Create a mocked exchange for server testing"""
     mock_exchange = Mock()
-    mock_engine.exchange = mock_exchange
-    return mock_engine, mock_exchange
+    return mock_exchange
 
 
 class TestFundingRatesEndpoint:
     """Tests for /api/funding-rates endpoint"""
 
-    def test_funding_rates_success(self, mock_bot_engine):
+    def test_funding_rates_success(self, mock_exchange):
         """Test successful funding rates retrieval"""
-        mock_engine, mock_exchange = mock_bot_engine
-
         # Mock bulk funding rates response
         mock_exchange.fetch_bulk_funding_rates.return_value = {
             "BTC/USDT:USDT": 0.0001,
@@ -32,7 +28,7 @@ class TestFundingRatesEndpoint:
             "DOGE/USDT:USDT": 0.00005,
         }
 
-        with patch("server.bot_engine", mock_engine):
+        with patch("server.get_default_exchange", return_value=mock_exchange):
             from server import app
 
             client = TestClient(app)
@@ -56,17 +52,15 @@ class TestFundingRatesEndpoint:
         assert eth_item["funding_rate"] == -0.00015
         assert eth_item["direction"] == "long_favored"
 
-    def test_funding_rates_sorting(self, mock_bot_engine):
+    def test_funding_rates_sorting(self, mock_exchange):
         """Test that funding rates are sorted by absolute value"""
-        mock_engine, mock_exchange = mock_bot_engine
-
         mock_exchange.fetch_bulk_funding_rates.return_value = {
             "BTC/USDT:USDT": 0.00005,  # Low
             "ETH/USDT:USDT": -0.0003,  # High (negative)
             "SOL/USDT:USDT": 0.00025,  # Medium
         }
 
-        with patch("server.bot_engine", mock_engine):
+        with patch("server.get_default_exchange", return_value=mock_exchange):
             from server import app
 
             client = TestClient(app)
@@ -79,17 +73,15 @@ class TestFundingRatesEndpoint:
         assert data[1]["symbol"] == "SOL/USDT:USDT"
         assert data[2]["symbol"] == "BTC/USDT:USDT"
 
-    def test_funding_rates_direction_labels(self, mock_bot_engine):
+    def test_funding_rates_direction_labels(self, mock_exchange):
         """Test direction labeling for different funding rates"""
-        mock_engine, mock_exchange = mock_bot_engine
-
         mock_exchange.fetch_bulk_funding_rates.return_value = {
             "BTC/USDT:USDT": 0.0002,  # Positive > 0.01%
             "ETH/USDT:USDT": -0.0003,  # Negative < -0.01%
             "SOL/USDT:USDT": 0.00005,  # Near zero
         }
 
-        with patch("server.bot_engine", mock_engine):
+        with patch("server.get_default_exchange", return_value=mock_exchange):
             from server import app
 
             client = TestClient(app)
@@ -107,10 +99,7 @@ class TestFundingRatesEndpoint:
 
     def test_funding_rates_no_exchange(self):
         """Test error handling when exchange is not available"""
-        mock_engine = Mock()
-        mock_engine.exchange = None
-
-        with patch("server.bot_engine", mock_engine):
+        with patch("server.get_default_exchange", return_value=None):
             from server import app
 
             client = TestClient(app)
@@ -121,14 +110,13 @@ class TestFundingRatesEndpoint:
         assert "error" in data
         assert data["error"] == "Exchange not available"
 
-    def test_funding_rates_api_error(self, mock_bot_engine):
+    def test_funding_rates_api_error(self, mock_exchange):
         """Test error handling when API call fails"""
-        mock_engine, mock_exchange = mock_bot_engine
         mock_exchange.fetch_bulk_funding_rates.side_effect = Exception(
             "API connection failed"
         )
 
-        with patch("server.bot_engine", mock_engine):
+        with patch("server.get_default_exchange", return_value=mock_exchange):
             from server import app
 
             client = TestClient(app)
@@ -139,15 +127,13 @@ class TestFundingRatesEndpoint:
         assert "error" in data
         assert "API connection failed" in data["error"]
 
-    def test_funding_rates_daily_yield_calculation(self, mock_bot_engine):
+    def test_funding_rates_daily_yield_calculation(self, mock_exchange):
         """Test that daily yield is correctly calculated as 3x funding rate"""
-        mock_engine, mock_exchange = mock_bot_engine
-
         mock_exchange.fetch_bulk_funding_rates.return_value = {
             "BTC/USDT:USDT": 0.0001,
         }
 
-        with patch("server.bot_engine", mock_engine):
+        with patch("server.get_default_exchange", return_value=mock_exchange):
             from server import app
 
             client = TestClient(app)
@@ -156,13 +142,11 @@ class TestFundingRatesEndpoint:
         data = response.json()
         assert data[0]["daily_yield"] == pytest.approx(0.0003, rel=1e-9)  # 0.0001 * 3
 
-    def test_funding_rates_all_supported_symbols(self, mock_bot_engine):
+    def test_funding_rates_all_supported_symbols(self, mock_exchange):
         """Test that all expected symbols are queried"""
-        mock_engine, mock_exchange = mock_bot_engine
-
         mock_exchange.fetch_bulk_funding_rates.return_value = {}
 
-        with patch("server.bot_engine", mock_engine):
+        with patch("server.get_default_exchange", return_value=mock_exchange):
             from server import app
 
             client = TestClient(app)

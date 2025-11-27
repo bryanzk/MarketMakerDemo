@@ -4,6 +4,7 @@ from unittest.mock import MagicMock, Mock, patch
 import pytest
 
 from alphaloop.main import AlphaLoop
+from alphaloop.market.strategy_instance import StrategyInstance
 from alphaloop.strategies.funding import FundingRateStrategy
 
 
@@ -22,6 +23,10 @@ class TestBusinessLogicIntegration:
             "timestamp": time.time() * 1000,  # Current time in ms
         }
         exchange.fetch_funding_rate.return_value = 0.0001
+        exchange.fetch_account_data.return_value = {
+            "position_amt": 0.1,
+            "entry_price": 1000.0,
+        }
         exchange.fetch_open_orders.return_value = []
         exchange.cancel_orders.return_value = []
         exchange.place_orders.return_value = []
@@ -30,8 +35,12 @@ class TestBusinessLogicIntegration:
 
     def test_strategy_switch_clears_orders(self, mock_exchange):
         """Verify old orders are treated as needing reset when strategy changes"""
-        with patch("alphaloop.main.BinanceClient", return_value=mock_exchange):
+        with patch(
+            "alphaloop.market.strategy_instance.BinanceClient",
+            return_value=mock_exchange,
+        ):
             bot = AlphaLoop()
+            default_instance = bot.strategy_instances["default"]
 
             # Simulate active orders
             mock_exchange.fetch_open_orders.return_value = [
@@ -42,8 +51,11 @@ class TestBusinessLogicIntegration:
             # Switch strategy
             result = bot.set_strategy("funding_rate")
             assert result is True
-            assert bot.strategy_switched is True
-            assert isinstance(bot.strategy, FundingRateStrategy)
+            
+            # After set_strategy, need to get the updated instance
+            default_instance = bot.strategy_instances["default"]
+            assert default_instance.strategy_switched is True
+            assert isinstance(default_instance.strategy, FundingRateStrategy)
 
             # Run a cycle - should force full reset
             mock_exchange.place_orders.return_value = [
@@ -53,14 +65,18 @@ class TestBusinessLogicIntegration:
 
             bot.run_cycle()
 
-            # Verify flag was cleared and orders were synced
-            assert bot.strategy_switched is False
+            # Verify flag was cleared after run_cycle
+            default_instance = bot.strategy_instances["default"]
+            assert default_instance.strategy_switched is False
             # Should have called place_orders with new orders
             assert mock_exchange.place_orders.called
 
     def test_order_sync_minimizes_changes(self, mock_exchange):
         """Verify OrderManager correctly identifies what needs to change"""
-        with patch("alphaloop.main.BinanceClient", return_value=mock_exchange):
+        with patch(
+            "alphaloop.market.strategy_instance.BinanceClient",
+            return_value=mock_exchange,
+        ):
             bot = AlphaLoop()
 
             # Current orders at good prices
@@ -83,7 +99,10 @@ class TestBusinessLogicIntegration:
 
     def test_order_sync_detects_price_change(self, mock_exchange):
         """Verify OrderManager detects when price moves beyond tolerance"""
-        with patch("alphaloop.main.BinanceClient", return_value=mock_exchange):
+        with patch(
+            "alphaloop.market.strategy_instance.BinanceClient",
+            return_value=mock_exchange,
+        ):
             bot = AlphaLoop()
 
             # Current orders
@@ -106,8 +125,12 @@ class TestBusinessLogicIntegration:
 
     def test_stale_data_protection(self, mock_exchange):
         """Verify refresh_data still updates cache with stale data but logs warning"""
-        with patch("alphaloop.main.BinanceClient", return_value=mock_exchange):
+        with patch(
+            "alphaloop.market.strategy_instance.BinanceClient",
+            return_value=mock_exchange,
+        ):
             bot = AlphaLoop()
+            default_instance = bot.strategy_instances["default"]
 
             # Return stale data (10 seconds old)
             stale_time = (time.time() - 10) * 1000
@@ -121,13 +144,16 @@ class TestBusinessLogicIntegration:
             # Run cycle - refresh_data should still update cache
             bot.run_cycle()
 
-            # Cache should be updated even with stale data
-            assert bot.latest_market_data is not None
-            assert bot.latest_market_data["mid_price"] == 1001.0
+            # Cache should be updated even with stale data (now on StrategyInstance)
+            assert default_instance.latest_market_data is not None
+            assert default_instance.latest_market_data["mid_price"] == 1001.0
 
     def test_fresh_data_accepted(self, mock_exchange):
         """Verify cycle proceeds with fresh data"""
-        with patch("alphaloop.main.BinanceClient", return_value=mock_exchange):
+        with patch(
+            "alphaloop.market.strategy_instance.BinanceClient",
+            return_value=mock_exchange,
+        ):
             bot = AlphaLoop()
 
             # Return fresh data
@@ -151,31 +177,42 @@ class TestBusinessLogicIntegration:
 
     def test_strategy_switch_preserves_params(self, mock_exchange):
         """Verify strategy switch preserves spread, quantity, leverage"""
-        with patch("alphaloop.main.BinanceClient", return_value=mock_exchange):
+        with patch(
+            "alphaloop.market.strategy_instance.BinanceClient",
+            return_value=mock_exchange,
+        ):
             bot = AlphaLoop()
 
-            # Set custom params
-            bot.strategy.spread = 0.005
-            bot.strategy.quantity = 0.1
-            bot.strategy.leverage = 10
+            # Set custom params on default strategy
+            default_instance = bot.strategy_instances["default"]
+            default_instance.strategy.spread = 0.005
+            default_instance.strategy.quantity = 0.1
+            default_instance.strategy.leverage = 10
 
             # Switch strategy
             bot.set_strategy("funding_rate")
 
+            # Get updated instance
+            default_instance = bot.strategy_instances["default"]
+
             # Verify params preserved
-            assert bot.strategy.spread == 0.005
-            assert bot.strategy.quantity == 0.1
-            assert bot.strategy.leverage == 10
+            assert default_instance.strategy.spread == 0.005
+            assert default_instance.strategy.quantity == 0.1
+            assert default_instance.strategy.leverage == 10
 
     def test_get_status_includes_strategy_config(self, mock_exchange):
         """Status should expose core strategy config for UI"""
-        with patch("alphaloop.main.BinanceClient", return_value=mock_exchange):
+        with patch(
+            "alphaloop.market.strategy_instance.BinanceClient",
+            return_value=mock_exchange,
+        ):
             bot = AlphaLoop()
 
-            # Custom config
-            bot.strategy.spread = 0.003
-            bot.strategy.quantity = 0.2
-            bot.strategy.leverage = 5
+            # Custom config on default strategy
+            default_instance = bot.strategy_instances["default"]
+            default_instance.strategy.spread = 0.003
+            default_instance.strategy.quantity = 0.2
+            default_instance.strategy.leverage = 5
 
             status = bot.get_status()
 
@@ -186,7 +223,10 @@ class TestBusinessLogicIntegration:
 
     def test_order_history_includes_strategy_type(self, mock_exchange):
         """Order history entries should include strategy_type for filtering"""
-        with patch("alphaloop.main.BinanceClient", return_value=mock_exchange):
+        with patch(
+            "alphaloop.market.strategy_instance.BinanceClient",
+            return_value=mock_exchange,
+        ):
             bot = AlphaLoop()
 
             # Ensure we are running funding strategy
@@ -210,14 +250,25 @@ class TestBusinessLogicIntegration:
             last_order = bot.order_history[-1]
             assert last_order.get("strategy_type") == "funding_rate"
 
-    def test_run_cycle_sets_idle_on_refresh_failure(self, mock_exchange):
-        """If refresh_data fails, stage should return to Idle with an alert."""
-        with patch("alphaloop.main.BinanceClient", return_value=mock_exchange):
-            bot = AlphaLoop()
+    def test_run_cycle_handles_refresh_failure_gracefully(self, mock_exchange):
+        """If refresh_data fails, cycle should not place orders for that instance."""
+        # Make fetch_market_data return None to simulate refresh failure
+        mock_exchange.fetch_market_data.return_value = None
 
-        with patch.object(AlphaLoop, "refresh_data", return_value=False):
+        with patch(
+            "alphaloop.market.strategy_instance.BinanceClient",
+            return_value=mock_exchange,
+        ):
+            bot = AlphaLoop()
+            default_instance = bot.strategy_instances["default"]
+
+            # Clear any orders
+            default_instance.active_orders = []
+
             bot.run_cycle()
 
-        assert bot.current_stage.startswith("Idle")
-        assert bot.alert is not None
-        assert bot.alert["type"] == "error"
+            # No orders should have been placed since refresh_data failed
+            # The place_orders should not have been called for this instance
+            assert mock_exchange.place_orders.call_count == 0
+            # Instance should have no active orders
+            assert len(default_instance.active_orders) == 0

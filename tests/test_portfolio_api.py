@@ -864,12 +864,13 @@ def mock_bot_with_commission(monkeypatch):
         "commission": 5.0,
         "net_pnl": 95.0,
     }
+    mock_exchange.fetch_account_data.return_value = {"balance": 10000.0}
 
     mock_bot = MagicMock()
-    mock_bot.exchange = mock_exchange
 
     monkeypatch.setattr(server, "portfolio_manager", mock_pm)
     monkeypatch.setattr(server, "bot_engine", mock_bot)
+    monkeypatch.setattr(server, "get_default_exchange", lambda: mock_exchange)
 
 
 @pytest.fixture
@@ -901,12 +902,13 @@ def mock_bot_commission_error(monkeypatch):
     # Mock exchange to raise exception
     mock_exchange = MagicMock()
     mock_exchange.fetch_pnl_and_fees.side_effect = Exception("API Error")
+    mock_exchange.fetch_account_data.side_effect = Exception("API Error")
 
     mock_bot = MagicMock()
-    mock_bot.exchange = mock_exchange
 
     monkeypatch.setattr(server, "portfolio_manager", mock_pm)
     monkeypatch.setattr(server, "bot_engine", mock_bot)
+    monkeypatch.setattr(server, "get_default_exchange", lambda: mock_exchange)
 
 
 @pytest.fixture
@@ -951,6 +953,8 @@ def mock_bot_with_available_balance(monkeypatch):
     }
 
     mock_bot = MagicMock()
+    
+    monkeypatch.setattr(server, "get_default_exchange", lambda: mock_exchange)
     mock_bot.exchange = mock_exchange
 
     monkeypatch.setattr(server, "portfolio_manager", mock_pm)

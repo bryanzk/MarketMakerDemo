@@ -38,6 +38,17 @@ bot_engine = AlphaLoop()
 bot_thread = None
 is_running = False
 
+
+def get_default_exchange():
+    """
+    Get exchange from default strategy instance.
+    Returns None if not available.
+    """
+    default_instance = bot_engine.strategy_instances.get("default")
+    if default_instance and default_instance.use_real_exchange:
+        return default_instance.exchange
+    return None
+
 # Portfolio Manager for multi-strategy management
 # Initial capital will be fetched from Binance on startup
 portfolio_manager = PortfolioManager(total_capital=10000.0)  # Default fallback
@@ -100,9 +111,10 @@ def init_portfolio_capital():
     global initial_capital
 
     try:
-        # Fetch actual balance from Binance
-        if hasattr(bot_engine, "exchange") and bot_engine.exchange is not None:
-            account_data = bot_engine.exchange.fetch_account_data()
+        # Fetch actual balance from Binance using default strategy instance's exchange
+        exchange = get_default_exchange()
+        if exchange is not None:
+            account_data = exchange.fetch_account_data()
             if account_data and "balance" in account_data:
                 actual_balance = account_data["balance"]
                 if actual_balance > 0:
@@ -184,10 +196,9 @@ async def read_root(request: Request):
     # Clear any stale alerts on page load
     bot_engine.alert = None
     # 页面刷新时也重置即时错误提示，避免过期错误面板一直显示
-    if hasattr(bot_engine, "exchange") and hasattr(
-        bot_engine.exchange, "last_order_error"
-    ):
-        bot_engine.exchange.last_order_error = None
+    exchange = get_default_exchange()
+    if exchange and hasattr(exchange, "last_order_error"):
+        exchange.last_order_error = None
     return templates.TemplateResponse("index.html", {"request": request})
 
 
@@ -200,10 +211,11 @@ async def debug_balance():
         "error": None,
     }
 
-    if hasattr(bot_engine, "exchange") and bot_engine.exchange is not None:
+    exchange = get_default_exchange()
+    if exchange is not None:
         result["exchange_connected"] = True
         try:
-            account_data = bot_engine.exchange.fetch_account_data()
+            account_data = exchange.fetch_account_data()
             result["raw_account_data"] = account_data
         except Exception as e:
             result["error"] = str(e)
@@ -242,9 +254,10 @@ async def get_status():
         status["skew_factor"] = skew
 
     # Fetch Binance Exchange Limits for current trading pair
-    if hasattr(bot_engine, "exchange") and bot_engine.exchange is not None:
+    exchange = get_default_exchange()
+    if exchange is not None:
         try:
-            limits = bot_engine.exchange.get_symbol_limits()
+            limits = exchange.get_symbol_limits()
             status["limits"] = limits
         except Exception as e:
             # If limits fetch fails, set empty limits to avoid breaking UI
@@ -349,10 +362,9 @@ async def control_bot(action: str):
             # Risk check passed - clear any previous alerts / order errors and start bot
             bot_engine.alert = None
             # 清理最近一次下单错误，让前端错误提示在重新启动后立即消失
-            if hasattr(bot_engine, "exchange") and hasattr(
-                bot_engine.exchange, "last_order_error"
-            ):
-                bot_engine.exchange.last_order_error = None
+            exchange = get_default_exchange()
+            if exchange and hasattr(exchange, "last_order_error"):
+                exchange.last_order_error = None
             is_running = True
             bot_thread = threading.Thread(target=run_bot_loop)
             bot_thread.daemon = True
@@ -439,10 +451,9 @@ async def update_config(config: ConfigUpdate):
 
     # Clear any existing alerts / order errors since we fixed the config
     bot_engine.alert = None
-    if hasattr(bot_engine, "exchange") and hasattr(
-        bot_engine.exchange, "last_order_error"
-    ):
-        bot_engine.exchange.last_order_error = None
+    exchange = get_default_exchange()
+    if exchange and hasattr(exchange, "last_order_error"):
+        exchange.last_order_error = None
 
     return {"status": "updated", "config": config}
 
@@ -452,7 +463,11 @@ async def update_leverage(leverage: int):
     if leverage < 1 or leverage > 125:
         return {"error": "Leverage must be between 1 and 125"}
 
-    success = bot_engine.exchange.set_leverage(leverage)
+    exchange = get_default_exchange()
+    if not exchange:
+        return {"error": "Exchange not available"}
+    
+    success = exchange.set_leverage(leverage)
     if success:
         return {"status": "updated", "leverage": leverage}
     else:
@@ -464,7 +479,10 @@ async def update_pair(pair: PairUpdate):
     success = bot_engine.set_symbol(pair.symbol)
     if success:
         # Immediately refresh data so UI gets updated even if bot is stopped
-        bot_engine.refresh_data()
+        # refresh_data is now on StrategyInstance
+        default_instance = bot_engine.strategy_instances.get("default")
+        if default_instance:
+            default_instance.refresh_data()
         return {"status": "updated", "symbol": pair.symbol}
     else:
         return {
@@ -633,10 +651,11 @@ async def get_performance():
     # Fetch commission/fees from exchange starting from session start time
     commission = 0.0
     net_pnl = realized_pnl
-    if hasattr(bot_engine, "exchange") and bot_engine.exchange is not None:
+    exchange = get_default_exchange()
+    if exchange is not None:
         try:
             # Pass start_time to fetch data from session start
-            pnl_data = bot_engine.exchange.fetch_pnl_and_fees(start_time=start_time_ms)
+            pnl_data = exchange.fetch_pnl_and_fees(start_time=start_time_ms)
             commission = pnl_data.get("commission", 0.0)
             # Use exchange's realized PnL if available, otherwise use local calculation
             if pnl_data.get("realized_pnl", 0) != 0:
@@ -758,11 +777,12 @@ async def get_funding_rates():
 
     try:
         # Check if exchange is available
-        if not hasattr(bot_engine, "exchange") or bot_engine.exchange is None:
+        exchange = get_default_exchange()
+        if exchange is None:
             return {"error": "Exchange not available"}
 
         # Fetch bulk funding rates
-        funding_rates = bot_engine.exchange.fetch_bulk_funding_rates(symbols)
+        funding_rates = exchange.fetch_bulk_funding_rates(symbols)
 
         # Build response with metadata
         result = []
@@ -854,17 +874,18 @@ async def get_portfolio():
     wallet_balance = data.get("total_capital", 0.0)
     available_balance = wallet_balance
 
-    if hasattr(bot_engine, "exchange") and bot_engine.exchange is not None:
+    exchange = get_default_exchange()
+    if exchange is not None:
         try:
             # Fetch PnL and commission from session start time
-            pnl_data = bot_engine.exchange.fetch_pnl_and_fees(start_time=start_time_ms)
+            pnl_data = exchange.fetch_pnl_and_fees(start_time=start_time_ms)
             commission = pnl_data.get("commission", 0.0)
             realized_pnl = pnl_data.get("realized_pnl", 0.0)
         except Exception:
             pass
 
         try:
-            account_data = bot_engine.exchange.fetch_account_data()
+            account_data = exchange.fetch_account_data()
             if account_data:
                 # Get real-time balances from exchange
                 wallet_balance = account_data.get("balance", wallet_balance)
@@ -909,15 +930,16 @@ async def get_risk_indicators():
     liquidation_price = 0.0
     max_position = 1.0  # Default max position
 
-    if hasattr(bot_engine, "exchange") and bot_engine.exchange is not None:
+    exchange = get_default_exchange()
+    if exchange is not None:
         try:
             # Fetch market data for current price
-            market_data = bot_engine.exchange.fetch_market_data()
+            market_data = exchange.fetch_market_data()
             if market_data:
                 current_price = market_data.get("mid_price", 0.0)
 
             # Fetch account data for position and liquidation price
-            account_data = bot_engine.exchange.fetch_account_data()
+            account_data = exchange.fetch_account_data()
             if account_data:
                 position_amt = account_data.get("position_amt", 0.0)
                 # Get liquidation price from position info
@@ -1316,8 +1338,9 @@ def _sync_portfolio_with_bot():
 
     # Update capital from current balance if available
     try:
-        if hasattr(bot_engine, "exchange") and bot_engine.exchange is not None:
-            account_data = bot_engine.exchange.fetch_account_data()
+        exchange = get_default_exchange()
+        if exchange is not None:
+            account_data = exchange.fetch_account_data()
             if account_data and "balance" in account_data:
                 current_balance = account_data["balance"]
                 if current_balance > 0:

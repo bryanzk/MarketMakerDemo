@@ -70,6 +70,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Overall Risk Level assessment (US-R4)
   - `GET /api/risk-indicators` API endpoint (US-R5)
 
+- **Portfolio Health Score Module** (`alphaloop/portfolio/health.py`)
+  - Strategy health score calculation (0-100) based on:
+    - Profitability (40% weight)
+    - Risk-adjusted return (30% weight)
+    - Execution quality (20% weight)
+    - Stability (10% weight)
+  - Health status classification (excellent/good/fair/poor)
+  - Color coding for health visualization
+  - Comprehensive unit test coverage
+
 - **New Dependencies**
   - `openai` - OpenAI API client
   - `anthropic` - Anthropic Claude API client
@@ -77,9 +87,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - Portfolio Overview balance display
 - Portfolio API tests and isort formatting issues
+- Health score calculation: Fixed negative Sharpe ratio handling to ensure 0-100 range
+- Test patch paths for LLM providers (OpenAI, Claude)
 
 ### Changed
 - Trading fee calculation and display improvements
+- Health score calculation: Added final range clamping to guarantee 0-100 output
+- Documentation: Updated all user guides to bilingual format (English/Chinese)
 
 ### Planned for Phase 3
 - Inventory skew (position-based spread adjustment)

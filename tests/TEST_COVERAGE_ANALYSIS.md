@@ -5,7 +5,7 @@
 This document tracks test coverage for all modules and identifies missing tests.
 本文档跟踪所有模块的测试覆盖率并识别缺失的测试。
 
-**Last Updated / 最后更新**: 2025-11-26 (Updated with portfolio health tests)
+**Last Updated / 最后更新**: 2025-11-26 (Updated with portfolio health tests and negative Sharpe handling)
 
 ---
 

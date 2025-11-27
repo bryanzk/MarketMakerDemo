@@ -2,6 +2,7 @@
 StrategyInstance: Encapsulates a single strategy instance with isolated state.
 策略实例：封装单个策略实例，确保状态隔离。
 """
+
 import time
 from collections import deque
 
@@ -19,12 +20,14 @@ class StrategyInstance:
     """
     Encapsulates a single strategy instance with isolated state.
     封装单个策略实例，包含独立的状态管理。
-    
+
     Each instance has its own exchange connection, ensuring complete isolation.
     每个实例都有自己的交易所连接，确保完全隔离。
     """
 
-    def __init__(self, strategy_id: str, strategy_type: str = "fixed_spread", symbol: str = None):
+    def __init__(
+        self, strategy_id: str, strategy_type: str = "fixed_spread", symbol: str = None
+    ):
         """
         Initialize a strategy instance with its own exchange connection.
 
@@ -55,9 +58,13 @@ class StrategyInstance:
             if self.symbol != SYMBOL:
                 self.exchange.set_symbol(self.symbol)
             self.use_real_exchange = True
-            logger.info(f"Strategy instance '{strategy_id}' exchange connected successfully (symbol: {self.symbol})")
+            logger.info(
+                f"Strategy instance '{strategy_id}' exchange connected successfully (symbol: {self.symbol})"
+            )
         except Exception as e:
-            logger.error(f"Strategy instance '{strategy_id}' failed to connect to exchange: {e}. Using simulation mode.")
+            logger.error(
+                f"Strategy instance '{strategy_id}' failed to connect to exchange: {e}. Using simulation mode."
+            )
             self.exchange = None
             self.use_real_exchange = False
 
@@ -71,7 +78,7 @@ class StrategyInstance:
         self.tracked_order_ids = set()  # Set of order IDs belonging to this strategy
         # Running state for this strategy instance
         self.running = False  # Whether this strategy instance is actively running
-        
+
         # Data cache for this strategy instance
         self.latest_market_data = None
         self.latest_funding_rate = 0.0
@@ -105,7 +112,9 @@ class StrategyInstance:
         if hasattr(self.strategy.calculate_target_orders, "__code__") and (
             "funding_rate" in self.strategy.calculate_target_orders.__code__.co_varnames
         ):
-            return self.strategy.calculate_target_orders(market_data, funding_rate=funding_rate)
+            return self.strategy.calculate_target_orders(
+                market_data, funding_rate=funding_rate
+            )
         else:
             return self.strategy.calculate_target_orders(market_data)
 
@@ -141,7 +150,7 @@ class StrategyInstance:
     def refresh_data(self):
         """
         Fetch fresh data from exchange and update cache for this strategy instance.
-        
+
         Returns:
             bool: True if data refreshed successfully, False otherwise
         """
@@ -152,7 +161,9 @@ class StrategyInstance:
             # Fetch current market data
             market_data = self.exchange.fetch_market_data()
             if not market_data or not market_data.get("mid_price"):
-                logger.error(f"Strategy '{self.strategy_id}': Failed to fetch market data")
+                logger.error(
+                    f"Strategy '{self.strategy_id}': Failed to fetch market data"
+                )
                 return False
 
             # Validate data freshness
@@ -161,7 +172,9 @@ class StrategyInstance:
             data_age_seconds = (current_time_ms - data_timestamp) / 1000
 
             if data_age_seconds > 5.0:
-                logger.warning(f"Strategy '{self.strategy_id}': Market data is stale ({data_age_seconds:.1f}s old)")
+                logger.warning(
+                    f"Strategy '{self.strategy_id}': Market data is stale ({data_age_seconds:.1f}s old)"
+                )
 
             # Fetch funding rate
             funding_rate = self.exchange.fetch_funding_rate()
@@ -181,10 +194,10 @@ class StrategyInstance:
     def set_symbol(self, symbol: str):
         """
         Update the trading symbol for this strategy instance.
-        
+
         Args:
             symbol: New trading symbol
-            
+
         Returns:
             bool: True if symbol updated successfully
         """
@@ -196,10 +209,14 @@ class StrategyInstance:
                 self.latest_market_data = None
                 self.latest_funding_rate = 0.0
                 self.latest_account_data = None
-                logger.info(f"Strategy '{self.strategy_id}': Symbol updated to {symbol}")
+                logger.info(
+                    f"Strategy '{self.strategy_id}': Symbol updated to {symbol}"
+                )
                 return True
             else:
-                logger.error(f"Strategy '{self.strategy_id}': Failed to update symbol to {symbol}")
+                logger.error(
+                    f"Strategy '{self.strategy_id}': Failed to update symbol to {symbol}"
+                )
                 return False
         return False
 
@@ -217,8 +234,13 @@ class StrategyInstance:
             funding_rate = self.latest_funding_rate
             if self.latest_account_data:
                 position = self.latest_account_data.get("position_amt", 0.0)
-                if position != 0 and self.latest_account_data.get("entry_price", 0) != 0:
-                    pnl = (mid_price - self.latest_account_data["entry_price"]) * position
+                if (
+                    position != 0
+                    and self.latest_account_data.get("entry_price", 0) != 0
+                ):
+                    pnl = (
+                        mid_price - self.latest_account_data["entry_price"]
+                    ) * position
 
         return {
             "strategy_id": self.strategy_id,
@@ -237,4 +259,3 @@ class StrategyInstance:
             "order_count": len(self.active_orders),
             "use_real_exchange": self.use_real_exchange,
         }
-

@@ -405,8 +405,7 @@ class PortfolioManager:
             total_sharpe = sum(sharpe_values.values())
             if total_sharpe > 0:
                 new_allocations = {
-                    sid: sharpe / total_sharpe
-                    for sid, sharpe in sharpe_values.items()
+                    sid: sharpe / total_sharpe for sid, sharpe in sharpe_values.items()
                 }
             else:
                 # Fallback to equal if no Sharpe data
@@ -421,8 +420,7 @@ class PortfolioManager:
             total_health = sum(health_values.values())
             if total_health > 0:
                 new_allocations = {
-                    sid: health / total_health
-                    for sid, health in health_values.items()
+                    sid: health / total_health for sid, health in health_values.items()
                 }
             else:
                 # Fallback to equal
@@ -485,8 +483,7 @@ class PortfolioManager:
             total_score = sum(composite_scores.values())
             if total_score > 0:
                 new_allocations = {
-                    sid: score / total_score
-                    for sid, score in composite_scores.items()
+                    sid: score / total_score for sid, score in composite_scores.items()
                 }
             else:
                 # Fallback to equal

@@ -21,7 +21,7 @@ class AlphaLoop:
     def __init__(self):
         # Multi-strategy support: list of StrategyInstance objects
         self.strategy_instances = {}  # Dict[strategy_id: str, StrategyInstance]
-        
+
         # Backward compatibility: create default strategy instance
         default_strategy_id = "default"
         if STRATEGY_TYPE == "funding_rate":
@@ -31,28 +31,34 @@ class AlphaLoop:
             default_instance = StrategyInstance(default_strategy_id, "fixed_spread")
             logger.info("Using Strategy: Fixed Spread")
         self.strategy_instances[default_strategy_id] = default_instance
-        
+
         # Legacy single strategy reference for backward compatibility
         self.strategy = default_instance.strategy
-        
+
         # Shared agents and resources
         self.quant = QuantAgent()
         self.risk = RiskAgent()
         self.data = DataAgent()
-        self.om = OrderManager()  # Legacy order manager (kept for backward compatibility)
-        self.alert = None  # Global alert (can be overridden by strategy-specific alerts)
+        self.om = (
+            OrderManager()
+        )  # Legacy order manager (kept for backward compatibility)
+        self.alert = (
+            None  # Global alert (can be overridden by strategy-specific alerts)
+        )
         self.current_stage = "Idle"
         self.active_orders = []  # Legacy: aggregated orders from all strategies
         self.system_logs = deque(maxlen=50)
         self.order_history = deque(maxlen=200)  # Legacy: aggregated order history
         self.error_history = deque(maxlen=200)  # Legacy: aggregated error history
-        
+
         # Note: Each strategy instance now has its own exchange connection
         # No shared exchange at AlphaLoop level
         # 注意：每个策略实例现在都有自己的交易所连接
         # AlphaLoop 级别不再有共享的交易所
 
-    def add_strategy_instance(self, strategy_id: str, strategy_type: str = "fixed_spread"):
+    def add_strategy_instance(
+        self, strategy_id: str, strategy_type: str = "fixed_spread"
+    ):
         """
         Add a new strategy instance.
 
@@ -87,14 +93,22 @@ class AlphaLoop:
             return False
 
         instance = self.strategy_instances[strategy_id]
-        
+
         # Cancel all tracked orders for this strategy using its own exchange
-        if instance.use_real_exchange and instance.exchange and instance.tracked_order_ids:
+        if (
+            instance.use_real_exchange
+            and instance.exchange
+            and instance.tracked_order_ids
+        ):
             try:
                 instance.exchange.cancel_orders(list(instance.tracked_order_ids))
-                logger.info(f"Cancelled {len(instance.tracked_order_ids)} orders for strategy '{strategy_id}'")
+                logger.info(
+                    f"Cancelled {len(instance.tracked_order_ids)} orders for strategy '{strategy_id}'"
+                )
             except Exception as e:
-                logger.error(f"Error cancelling orders for strategy '{strategy_id}': {e}")
+                logger.error(
+                    f"Error cancelling orders for strategy '{strategy_id}': {e}"
+                )
 
         del self.strategy_instances[strategy_id]
         logger.info(f"Removed strategy instance '{strategy_id}'")
@@ -134,25 +148,27 @@ class AlphaLoop:
             self.strategy_instances[default_id] = new_instance
             self.strategy = new_instance.strategy  # Update legacy reference
             new_instance.strategy_switched = True
-            logger.info(f"Switched default strategy to: {strategy_type} (running={current_running})")
-        
+            logger.info(
+                f"Switched default strategy to: {strategy_type} (running={current_running})"
+            )
+
         return True
 
     def set_symbol(self, symbol, strategy_id: str = "default"):
         """
         Update the trading symbol for a specific strategy instance.
-        
+
         Args:
             symbol: Trading symbol to set
             strategy_id: Strategy instance ID (defaults to "default")
-            
+
         Returns:
             bool: True if symbol updated successfully
         """
         if strategy_id not in self.strategy_instances:
             logger.error(f"Strategy instance '{strategy_id}' not found")
             return False
-        
+
         instance = self.strategy_instances[strategy_id]
         return instance.set_symbol(symbol)
 
@@ -201,9 +217,21 @@ class AlphaLoop:
             "position": position,  # From default instance
             "pnl": pnl,  # From default instance
             "strategy_type": default_strategy_type,  # Legacy field
-            "spread": getattr(default_instance.strategy, "spread", None) if default_instance else None,  # Legacy
-            "quantity": getattr(default_instance.strategy, "quantity", None) if default_instance else None,  # Legacy
-            "leverage": getattr(default_instance.strategy, "leverage", None) if default_instance else None,  # Legacy
+            "spread": (
+                getattr(default_instance.strategy, "spread", None)
+                if default_instance
+                else None
+            ),  # Legacy
+            "quantity": (
+                getattr(default_instance.strategy, "quantity", None)
+                if default_instance
+                else None
+            ),  # Legacy
+            "leverage": (
+                getattr(default_instance.strategy, "leverage", None)
+                if default_instance
+                else None
+            ),  # Legacy
             "alert": self.alert,  # Global alert
             "orders": self.active_orders,  # Aggregated orders
             "logs": list(self.system_logs),
@@ -214,15 +242,14 @@ class AlphaLoop:
             "strategy_count": len(self.strategy_instances),
         }
 
-
     def _get_error_suggestion(self, error_type: str, error_details: dict) -> str:
         """
         Get user-friendly suggestion based on error type.
-        
+
         Args:
             error_type: Type of error (e.g., "insufficient_funds", "invalid_order")
             error_details: Error details dict
-            
+
         Returns:
             Suggestion string
         """
@@ -243,7 +270,9 @@ class AlphaLoop:
                 "If it persists, check Binance API status."
             ),
         }
-        return suggestions.get(error_type, "Please check your strategy settings and try again.")
+        return suggestions.get(
+            error_type, "Please check your strategy settings and try again."
+        )
 
     def _run_strategy_instance_cycle(self, instance: StrategyInstance):
         """
@@ -270,7 +299,9 @@ class AlphaLoop:
 
             # Get current orders for this strategy (filtered by tracked IDs)
             if instance.strategy_switched:
-                logger.info(f"Strategy '{instance.strategy_id}' was switched - forcing full order reset")
+                logger.info(
+                    f"Strategy '{instance.strategy_id}' was switched - forcing full order reset"
+                )
                 current_orders = []
                 instance.clear_tracked_orders()
                 instance.strategy_switched = False
@@ -282,7 +313,9 @@ class AlphaLoop:
                 ]
 
             # Sync orders for this strategy instance
-            to_cancel_ids, to_place = instance.sync_orders(current_orders, target_orders)
+            to_cancel_ids, to_place = instance.sync_orders(
+                current_orders, target_orders
+            )
 
             # Cancel orders that need updating
             if to_cancel_ids:
@@ -301,7 +334,7 @@ class AlphaLoop:
                     order_id = order.get("id")
                     if order_id:
                         instance.add_tracked_order(order_id)
-                    
+
                     # Record in strategy-specific history
                     instance.order_history.append(
                         {
@@ -316,7 +349,7 @@ class AlphaLoop:
                             "strategy_type": instance.strategy_type,
                         }
                     )
-                    
+
                     # Also add to global history for backward compatibility
                     self.order_history.append(
                         {
@@ -339,7 +372,7 @@ class AlphaLoop:
                     err = instance.exchange.last_order_error
                     error_type = err.get("type", "unknown")
                     error_message = err.get("message", "")
-                    
+
                     # Record error in history
                     error_record = {
                         "timestamp": time.time(),
@@ -352,11 +385,19 @@ class AlphaLoop:
                     }
                     instance.error_history.append(error_record)
                     self.error_history.append(error_record)
-                    
+
                     # Set alert for critical errors (insufficient funds, invalid orders, etc.)
-                    if error_type in ["insufficient_funds", "invalid_order", "exchange_error"]:
+                    if error_type in [
+                        "insufficient_funds",
+                        "invalid_order",
+                        "exchange_error",
+                    ]:
                         instance.alert = {
-                            "type": "error" if error_type == "insufficient_funds" else "warning",
+                            "type": (
+                                "error"
+                                if error_type == "insufficient_funds"
+                                else "warning"
+                            ),
                             "message": error_message,
                             "suggestion": self._get_error_suggestion(error_type, err),
                         }
@@ -376,11 +417,15 @@ class AlphaLoop:
                 instance.active_orders = []
 
         except Exception as e:
-            logger.error(f"Error in strategy instance '{instance.strategy_id}' cycle: {e}")
+            logger.error(
+                f"Error in strategy instance '{instance.strategy_id}' cycle: {e}"
+            )
             instance.error_history.append(
                 {
                     "timestamp": time.time(),
-                    "symbol": instance.exchange.symbol if instance.exchange else "unknown",
+                    "symbol": (
+                        instance.exchange.symbol if instance.exchange else "unknown"
+                    ),
                     "type": "cycle_error",
                     "message": str(e),
                     "details": None,
@@ -395,7 +440,9 @@ class AlphaLoop:
             }
 
     def run_cycle(self):
-        logger.info(f"Starting AlphaLoop Cycle with {len(self.strategy_instances)} strategy instance(s)")
+        logger.info(
+            f"Starting AlphaLoop Cycle with {len(self.strategy_instances)} strategy instance(s)"
+        )
 
         # Check if any strategy instance uses real exchange
         has_real_exchange = any(
@@ -409,10 +456,14 @@ class AlphaLoop:
                 # Each instance refreshes its own data using its own exchange
                 for strategy_id, instance in self.strategy_instances.items():
                     if instance.use_real_exchange:
-                        logger.info(f"Executing strategy instance: {strategy_id} (symbol: {instance.symbol})")
+                        logger.info(
+                            f"Executing strategy instance: {strategy_id} (symbol: {instance.symbol})"
+                        )
                         self._run_strategy_instance_cycle(instance)
                     else:
-                        logger.debug(f"Strategy instance '{strategy_id}' is in simulation mode, skipping")
+                        logger.debug(
+                            f"Strategy instance '{strategy_id}' is in simulation mode, skipping"
+                        )
 
                 # Aggregate active orders from all strategies (for backward compatibility)
                 self.active_orders = []
@@ -451,7 +502,9 @@ class AlphaLoop:
                 sim = MarketSimulator(default_instance.strategy)
                 stats = sim.run(steps=500)
                 mock_market = sim.generate_market_data()
-                self.active_orders = default_instance.calculate_target_orders(mock_market)
+                self.active_orders = default_instance.calculate_target_orders(
+                    mock_market
+                )
                 for i, o in enumerate(self.active_orders):
                     o["id"] = f"ord_{int(time.time())}_{i}"
                     o["amount"] = o.get("quantity", 0)
@@ -473,24 +526,34 @@ class AlphaLoop:
         # Quant Analysis & Proposal for each strategy instance independently
         for strategy_id, instance in self.strategy_instances.items():
             current_config = {"spread": instance.strategy.spread}
-            proposal = self.quant.analyze_and_propose(current_config, {**stats, **metrics})
+            proposal = self.quant.analyze_and_propose(
+                current_config, {**stats, **metrics}
+            )
 
             if not proposal:
-                logger.info(f"No changes proposed for strategy '{strategy_id}'. Skipping.")
+                logger.info(
+                    f"No changes proposed for strategy '{strategy_id}'. Skipping."
+                )
                 continue
 
-            logger.info(f"Quant proposing spread {proposal['spread']:.2%} for strategy '{strategy_id}'")
+            logger.info(
+                f"Quant proposing spread {proposal['spread']:.2%} for strategy '{strategy_id}'"
+            )
 
             # Risk Validation
             approved, reason = self.risk.validate_proposal(proposal)
 
             if approved:
-                logger.info(f"Applying new config for strategy '{strategy_id}'", 
-                          extra={"extra_data": {"proposal": proposal}})
+                logger.info(
+                    f"Applying new config for strategy '{strategy_id}'",
+                    extra={"extra_data": {"proposal": proposal}},
+                )
                 instance.strategy.spread = proposal["spread"]
                 instance.alert = None
             else:
-                logger.warning(f"Proposal rejected for strategy '{strategy_id}': {reason}")
+                logger.warning(
+                    f"Proposal rejected for strategy '{strategy_id}': {reason}"
+                )
 
                 # Auto-fallback to safe defaults
                 safe_defaults = instance.reset_to_safe_defaults()

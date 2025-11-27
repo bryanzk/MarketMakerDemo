@@ -443,7 +443,7 @@ class BinanceClient:
         """
         Places a batch of orders.
         orders: list of dicts {'side': 'buy'/'sell', 'price': float, 'quantity': float}
-        
+
         Returns:
             list: Successfully placed orders
         Note:
@@ -455,7 +455,7 @@ class BinanceClient:
         min_qty = limits["minQty"]
         min_notional = limits["minNotional"]
         step_size = limits["stepSize"]
-        
+
         # Clear previous error at start
         self.last_order_error = None
 

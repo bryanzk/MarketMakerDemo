@@ -31,6 +31,8 @@ class AlphaLoop:
             default_instance = StrategyInstance(default_strategy_id, "fixed_spread")
             logger.info("Using Strategy: Fixed Spread")
         self.strategy_instances[default_strategy_id] = default_instance
+        # Ensure the legacy default strategy keeps running unless explicitly stopped
+        default_instance.running = True
 
         # Legacy single strategy reference for backward compatibility
         self.strategy = default_instance.strategy
@@ -57,7 +59,10 @@ class AlphaLoop:
         # AlphaLoop 级别不再有共享的交易所
 
     def add_strategy_instance(
-        self, strategy_id: str, strategy_type: str = "fixed_spread"
+        self,
+        strategy_id: str,
+        strategy_type: str = "fixed_spread",
+        symbol: str | None = None,
     ):
         """
         Add a new strategy instance.
@@ -65,6 +70,7 @@ class AlphaLoop:
         Args:
             strategy_id: Unique identifier for the strategy instance
             strategy_type: "fixed_spread" or "funding_rate"
+            symbol: Optional trading symbol override
 
         Returns:
             bool: True if added successfully, False if strategy_id already exists
@@ -73,7 +79,7 @@ class AlphaLoop:
             logger.error(f"Strategy instance '{strategy_id}' already exists")
             return False
 
-        instance = StrategyInstance(strategy_id, strategy_type)
+        instance = StrategyInstance(strategy_id, strategy_type, symbol=symbol)
         self.strategy_instances[strategy_id] = instance
         logger.info(f"Added strategy instance '{strategy_id}' ({strategy_type})")
         return True
@@ -444,35 +450,37 @@ class AlphaLoop:
             f"Starting AlphaLoop Cycle with {len(self.strategy_instances)} strategy instance(s)"
         )
 
-        # Check if any strategy instance uses real exchange
+        active_instances = [
+            (strategy_id, instance)
+            for strategy_id, instance in self.strategy_instances.items()
+            if instance.use_real_exchange and instance.running
+        ]
         has_real_exchange = any(
             inst.use_real_exchange for inst in self.strategy_instances.values()
         )
 
-        if has_real_exchange:
+        if has_real_exchange and not active_instances:
+            self.set_stage("Idle (no active strategies)")
+            self.active_orders = []
+            stats = {"realized_pnl": 0.0, "win_rate": 0.0}
+        elif active_instances:
             self.set_stage("Execution")
             try:
-                # Execute each strategy instance independently
-                # Each instance refreshes its own data using its own exchange
-                for strategy_id, instance in self.strategy_instances.items():
-                    if instance.use_real_exchange:
-                        logger.info(
-                            f"Executing strategy instance: {strategy_id} (symbol: {instance.symbol})"
-                        )
-                        self._run_strategy_instance_cycle(instance)
-                    else:
-                        logger.debug(
-                            f"Strategy instance '{strategy_id}' is in simulation mode, skipping"
-                        )
+                # Execute each running strategy instance independently
+                for strategy_id, instance in active_instances:
+                    logger.info(
+                        f"Executing strategy instance: {strategy_id} (symbol: {instance.symbol})"
+                    )
+                    self._run_strategy_instance_cycle(instance)
 
-                # Aggregate active orders from all strategies (for backward compatibility)
+                # Aggregate active orders from running strategies (legacy compatibility)
                 self.active_orders = []
-                for instance in self.strategy_instances.values():
+                for _, instance in active_instances:
                     self.active_orders.extend(instance.active_orders)
 
-                # Use aggregated stats from all strategies
+                # Use aggregated stats from all strategies (placeholder until fills tracked)
                 stats = {
-                    "realized_pnl": 0.0,  # Would need to track fills
+                    "realized_pnl": 0.0,
                     "win_rate": 0.0,
                 }
             except Exception as e:
@@ -525,9 +533,21 @@ class AlphaLoop:
 
         # Quant Analysis & Proposal for each strategy instance independently
         for strategy_id, instance in self.strategy_instances.items():
+            if not instance.running:
+                continue
+
             current_config = {"spread": instance.strategy.spread}
+            strategy_status = instance.get_status()
+            strategy_metrics = {
+                "strategy_id": strategy_id,
+                "strategy_type": instance.strategy_type,
+                "mid_price": strategy_status.get("mid_price"),
+                "position": strategy_status.get("position"),
+                "strategy_pnl": strategy_status.get("pnl"),
+                "funding_rate": strategy_status.get("funding_rate"),
+            }
             proposal = self.quant.analyze_and_propose(
-                current_config, {**stats, **metrics}
+                current_config, {**stats, **metrics, **strategy_metrics}
             )
 
             if not proposal:

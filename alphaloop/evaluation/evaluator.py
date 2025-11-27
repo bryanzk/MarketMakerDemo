@@ -16,9 +16,12 @@ from alphaloop.core.llm import LLMProvider
 from alphaloop.core.logger import setup_logger
 from alphaloop.evaluation.prompts import StrategyAdvisorPrompt
 from alphaloop.evaluation.schemas import (
+    AggregatedResult,
     EvaluationResult,
     MarketContext,
+    ParameterStatistics,
     SimulationResult,
+    StrategyConsensus,
     StrategyProposal,
 )
 from alphaloop.market.performance import PerformanceTracker
@@ -427,6 +430,419 @@ class MultiLLMEvaluator:
             排名第一的结果
         """
         return min(results, key=lambda r: r.rank)
+
+    @staticmethod
+    def get_strategy_consensus(results: List[EvaluationResult]) -> StrategyConsensus:
+        """
+        分析策略共识
+
+        Analyze strategy consensus across all models.
+        统计所有模型的策略投票，确定共识策略。
+
+        Args:
+            results: 评估结果列表
+
+        Returns:
+            StrategyConsensus 对象
+        """
+        # Filter successful results / 过滤成功的结果
+        valid_results = [r for r in results if r.proposal.parse_success]
+        total_models = len(valid_results)
+
+        if total_models == 0:
+            return StrategyConsensus(
+                consensus_strategy="",
+                consensus_count=0,
+                total_models=0,
+                consensus_level="none",
+                consensus_ratio=0.0,
+            )
+
+        # Count votes for each strategy / 统计每个策略的投票
+        strategy_votes: dict = {}
+        providers_by_strategy: dict = {}
+
+        for result in valid_results:
+            strategy = result.proposal.recommended_strategy
+            strategy_votes[strategy] = strategy_votes.get(strategy, 0) + 1
+
+            if strategy not in providers_by_strategy:
+                providers_by_strategy[strategy] = []
+            providers_by_strategy[strategy].append(result.provider_name)
+
+        # Calculate percentages / 计算百分比
+        strategy_percentages = {
+            s: count / total_models for s, count in strategy_votes.items()
+        }
+
+        # Find consensus strategy (most voted) / 找到共识策略（票数最多）
+        consensus_strategy = max(strategy_votes, key=strategy_votes.get)
+        consensus_count = strategy_votes[consensus_strategy]
+        consensus_ratio = consensus_count / total_models
+
+        # Determine consensus level / 确定共识程度
+        if consensus_ratio == 1.0:
+            consensus_level = "full"
+        elif consensus_ratio > 0.5:
+            consensus_level = "majority"
+        elif consensus_ratio > 0.0:
+            consensus_level = "split"
+        else:
+            consensus_level = "none"
+
+        return StrategyConsensus(
+            consensus_strategy=consensus_strategy,
+            consensus_count=consensus_count,
+            total_models=total_models,
+            strategy_votes=strategy_votes,
+            strategy_percentages=strategy_percentages,
+            consensus_level=consensus_level,
+            consensus_ratio=consensus_ratio,
+            providers_by_strategy=providers_by_strategy,
+        )
+
+    @staticmethod
+    def get_parameter_statistics(results: List[EvaluationResult]) -> ParameterStatistics:
+        """
+        计算参数统计
+
+        Calculate parameter statistics across all models.
+        计算所有模型参数的统计数据（均值、中位数、范围等）。
+
+        Args:
+            results: 评估结果列表
+
+        Returns:
+            ParameterStatistics 对象
+        """
+        # Filter successful results / 过滤成功的结果
+        valid_results = [r for r in results if r.proposal.parse_success]
+
+        if not valid_results:
+            return ParameterStatistics()
+
+        # Extract parameters / 提取参数
+        spreads = [r.proposal.spread for r in valid_results]
+        skews = [r.proposal.skew_factor for r in valid_results]
+        quantities = [r.proposal.quantity for r in valid_results]
+        leverages = [r.proposal.leverage for r in valid_results]
+        confidences = [r.proposal.confidence for r in valid_results]
+
+        # Calculate statistics / 计算统计数据
+        return ParameterStatistics(
+            # Spread
+            spread_mean=float(np.mean(spreads)),
+            spread_median=float(np.median(spreads)),
+            spread_min=float(np.min(spreads)),
+            spread_max=float(np.max(spreads)),
+            spread_std=float(np.std(spreads)) if len(spreads) > 1 else 0.0,
+            # Skew
+            skew_mean=float(np.mean(skews)),
+            skew_median=float(np.median(skews)),
+            # Quantity
+            quantity_mean=float(np.mean(quantities)),
+            quantity_median=float(np.median(quantities)),
+            # Leverage
+            leverage_mean=float(np.mean(leverages)),
+            leverage_median=float(np.median(leverages)),
+            # Confidence
+            confidence_mean=float(np.mean(confidences)),
+            confidence_min=float(np.min(confidences)),
+            confidence_max=float(np.max(confidences)),
+        )
+
+    @staticmethod
+    def calculate_consensus_confidence(
+        results: List[EvaluationResult],
+        strategy_consensus: StrategyConsensus,
+    ) -> tuple:
+        """
+        计算共识置信度
+
+        Calculate consensus confidence based on model agreement and individual confidences.
+        基于模型共识程度和个体置信度计算综合共识置信度。
+
+        Formula / 公式:
+        consensus_confidence = agreement_factor * weighted_confidence
+
+        - agreement_factor: Based on how many models agree (1.0 if all, 0.8 if majority, 0.5 if split)
+        - weighted_confidence: Average of confidences from agreeing models, weighted by simulation score
+
+        Args:
+            results: 评估结果列表
+            strategy_consensus: 策略共识分析结果
+
+        Returns:
+            (consensus_confidence, confidence_breakdown) 元组
+        """
+        valid_results = [r for r in results if r.proposal.parse_success]
+
+        if not valid_results or not strategy_consensus.consensus_strategy:
+            return 0.0, {}
+
+        # Calculate agreement factor / 计算共识因子
+        if strategy_consensus.consensus_level == "full":
+            agreement_factor = 1.0
+        elif strategy_consensus.consensus_level == "majority":
+            agreement_factor = 0.8
+        elif strategy_consensus.consensus_level == "split":
+            agreement_factor = 0.5
+        else:
+            agreement_factor = 0.0
+
+        # Get agreeing models / 获取同意的模型
+        agreeing_providers = strategy_consensus.providers_by_strategy.get(
+            strategy_consensus.consensus_strategy, []
+        )
+        agreeing_results = [
+            r for r in valid_results if r.provider_name in agreeing_providers
+        ]
+
+        if not agreeing_results:
+            return 0.0, {"agreement_factor": agreement_factor}
+
+        # Calculate weighted confidence / 计算加权置信度
+        # Weight by simulation score
+        total_weight = sum(max(r.score, 1) for r in agreeing_results)
+        if total_weight == 0:
+            weighted_confidence = np.mean([r.proposal.confidence for r in agreeing_results])
+        else:
+            weighted_confidence = sum(
+                r.proposal.confidence * max(r.score, 1) for r in agreeing_results
+            ) / total_weight
+
+        # Calculate consensus confidence / 计算共识置信度
+        consensus_confidence = float(agreement_factor * weighted_confidence)
+
+        # Build breakdown / 构建分解
+        breakdown = {
+            "agreement_factor": agreement_factor,
+            "weighted_confidence": float(weighted_confidence),
+            "agreeing_models": len(agreeing_results),
+            "total_models": len(valid_results),
+            "individual_confidences": {
+                r.provider_name: r.proposal.confidence for r in valid_results
+            },
+        }
+
+        return consensus_confidence, breakdown
+
+    def aggregate_results(self, results: List[EvaluationResult]) -> AggregatedResult:
+        """
+        聚合所有评估结果
+
+        Aggregate all evaluation results into a comprehensive summary.
+        将所有评估结果聚合为综合摘要，包括共识分析、参数统计和共识建议。
+
+        Args:
+            results: 评估结果列表
+
+        Returns:
+            AggregatedResult 对象
+        """
+        if not results:
+            return AggregatedResult()
+
+        # Get consensus analysis / 获取共识分析
+        strategy_consensus = self.get_strategy_consensus(results)
+        parameter_stats = self.get_parameter_statistics(results)
+
+        # Calculate consensus confidence / 计算共识置信度
+        consensus_confidence, confidence_breakdown = self.calculate_consensus_confidence(
+            results, strategy_consensus
+        )
+
+        # Count successful/failed evaluations / 统计成功/失败数量
+        successful = [r for r in results if r.proposal.parse_success]
+        failed = [r for r in results if not r.proposal.parse_success]
+
+        # Calculate performance averages / 计算性能平均值
+        if successful:
+            avg_pnl = float(np.mean([r.simulation.realized_pnl for r in successful]))
+            avg_sharpe = float(np.mean([r.simulation.sharpe_ratio for r in successful]))
+            avg_win_rate = float(np.mean([r.simulation.win_rate for r in successful]))
+            avg_latency = float(np.mean([r.latency_ms for r in successful]))
+        else:
+            avg_pnl = avg_sharpe = avg_win_rate = avg_latency = 0.0
+
+        # Generate consensus proposal / 生成共识建议
+        consensus_proposal = self._generate_consensus_proposal(
+            results, strategy_consensus, parameter_stats, consensus_confidence
+        )
+
+        return AggregatedResult(
+            strategy_consensus=strategy_consensus,
+            parameter_stats=parameter_stats,
+            consensus_confidence=consensus_confidence,
+            confidence_breakdown=confidence_breakdown,
+            consensus_proposal=consensus_proposal,
+            individual_results=results,
+            successful_evaluations=len(successful),
+            failed_evaluations=len(failed),
+            avg_pnl=avg_pnl,
+            avg_sharpe=avg_sharpe,
+            avg_win_rate=avg_win_rate,
+            avg_latency_ms=avg_latency,
+        )
+
+    def _generate_consensus_proposal(
+        self,
+        results: List[EvaluationResult],
+        strategy_consensus: StrategyConsensus,
+        parameter_stats: ParameterStatistics,
+        consensus_confidence: float,
+    ) -> StrategyProposal:
+        """
+        生成共识策略建议
+
+        Generate a consensus-based strategy proposal using median parameters.
+        使用中位数参数生成基于共识的策略建议。
+
+        Args:
+            results: 评估结果列表
+            strategy_consensus: 策略共识
+            parameter_stats: 参数统计
+            consensus_confidence: 共识置信度
+
+        Returns:
+            StrategyProposal 共识建议
+        """
+        if not strategy_consensus.consensus_strategy:
+            return StrategyProposal(
+                recommended_strategy="FixedSpread",
+                spread=0.01,
+                provider_name="Consensus",
+                parse_success=False,
+                parse_error="No valid results to generate consensus",
+            )
+
+        # Get agreeing results for reasoning / 获取同意的结果用于生成理由
+        agreeing_providers = strategy_consensus.providers_by_strategy.get(
+            strategy_consensus.consensus_strategy, []
+        )
+        valid_results = [r for r in results if r.proposal.parse_success]
+        agreeing_results = [
+            r for r in valid_results if r.provider_name in agreeing_providers
+        ]
+
+        # Combine reasoning from agreeing models / 合并同意模型的理由
+        combined_reasoning = f"Consensus from {len(agreeing_results)}/{len(valid_results)} models. "
+        if agreeing_results:
+            reasons = [r.proposal.reasoning for r in agreeing_results if r.proposal.reasoning]
+            if reasons:
+                combined_reasoning += " | ".join(reasons[:3])  # Limit to first 3
+
+        # Determine risk level by majority / 多数决定风险等级
+        risk_levels = [r.proposal.risk_level for r in agreeing_results]
+        if risk_levels:
+            risk_counts = {}
+            for rl in risk_levels:
+                risk_counts[rl] = risk_counts.get(rl, 0) + 1
+            consensus_risk = max(risk_counts, key=risk_counts.get)
+        else:
+            consensus_risk = "medium"
+
+        # Calculate expected return (average of agreeing models) / 计算预期收益
+        expected_returns = [r.proposal.expected_return for r in agreeing_results]
+        avg_expected_return = float(np.mean(expected_returns)) if expected_returns else 0.0
+
+        return StrategyProposal(
+            recommended_strategy=strategy_consensus.consensus_strategy,
+            spread=parameter_stats.spread_median,
+            skew_factor=parameter_stats.skew_median,
+            quantity=parameter_stats.quantity_median,
+            leverage=parameter_stats.leverage_median,
+            reasoning=combined_reasoning,
+            confidence=consensus_confidence,
+            risk_level=consensus_risk,
+            expected_return=avg_expected_return,
+            provider_name="Consensus",
+            raw_response="",
+            parse_success=True,
+        )
+
+    @staticmethod
+    def generate_consensus_summary(aggregated: AggregatedResult) -> str:
+        """
+        生成共识摘要报告
+
+        Generate a formatted summary of the aggregated results.
+        生成聚合结果的格式化摘要报告。
+
+        Args:
+            aggregated: 聚合结果
+
+        Returns:
+            格式化的摘要字符串
+        """
+        lines = []
+        separator = "=" * 80
+
+        lines.append(separator)
+        lines.append("MULTI-LLM CONSENSUS REPORT / 多 LLM 共识报告")
+        lines.append(separator)
+        lines.append("")
+
+        # Consensus Summary / 共识摘要
+        sc = aggregated.strategy_consensus
+        lines.append("【Strategy Consensus / 策略共识】")
+        lines.append(f"  Consensus Strategy / 共识策略: {sc.consensus_strategy}")
+        lines.append(f"  Consensus Level / 共识程度: {sc.consensus_level.upper()}")
+        lines.append(f"  Agreement Ratio / 共识比例: {sc.consensus_ratio:.1%}")
+        lines.append(f"  Models Agreeing / 同意模型数: {sc.consensus_count}/{sc.total_models}")
+        lines.append("")
+
+        # Vote Distribution / 投票分布
+        lines.append("【Vote Distribution / 投票分布】")
+        for strategy, votes in sc.strategy_votes.items():
+            pct = sc.strategy_percentages.get(strategy, 0)
+            providers = sc.providers_by_strategy.get(strategy, [])
+            lines.append(f"  {strategy}: {votes} votes ({pct:.0%}) - {', '.join(providers)}")
+        lines.append("")
+
+        # Consensus Confidence / 共识置信度
+        lines.append("【Consensus Confidence / 共识置信度】")
+        lines.append(f"  Overall Confidence / 综合置信度: {aggregated.consensus_confidence:.1%}")
+        lines.append(f"  Recommendation Strength / 推荐强度: {aggregated.get_recommendation_strength().upper()}")
+        lines.append("")
+
+        # Parameter Statistics / 参数统计
+        ps = aggregated.parameter_stats
+        lines.append("【Parameter Statistics / 参数统计】")
+        lines.append(f"  Spread / 价差:")
+        lines.append(f"    Mean: {ps.spread_mean:.4f}, Median: {ps.spread_median:.4f}")
+        lines.append(f"    Range: [{ps.spread_min:.4f}, {ps.spread_max:.4f}]")
+        lines.append(f"  Skew Factor / 倾斜因子: Mean {ps.skew_mean:.1f}, Median {ps.skew_median:.1f}")
+        lines.append(f"  Confidence / 置信度: {ps.confidence_mean:.1%} (min: {ps.confidence_min:.1%}, max: {ps.confidence_max:.1%})")
+        lines.append("")
+
+        # Performance Summary / 性能摘要
+        lines.append("【Performance Summary / 性能摘要】")
+        lines.append(f"  Avg PnL / 平均盈亏: ${aggregated.avg_pnl:,.2f}")
+        lines.append(f"  Avg Sharpe / 平均夏普: {aggregated.avg_sharpe:.2f}")
+        lines.append(f"  Avg Win Rate / 平均胜率: {aggregated.avg_win_rate:.1%}")
+        lines.append(f"  Avg Latency / 平均延迟: {aggregated.avg_latency_ms:.0f}ms")
+        lines.append("")
+
+        # Consensus Proposal / 共识建议
+        if aggregated.consensus_proposal:
+            cp = aggregated.consensus_proposal
+            lines.append("【Consensus Proposal / 共识建议】")
+            lines.append(f"  Strategy / 策略: {cp.recommended_strategy}")
+            lines.append(f"  Spread / 价差: {cp.spread:.4f}")
+            lines.append(f"  Skew Factor / 倾斜因子: {cp.skew_factor:.1f}")
+            lines.append(f"  Quantity / 数量: {cp.quantity:.3f}")
+            lines.append(f"  Leverage / 杠杆: {cp.leverage:.1f}x")
+            lines.append(f"  Risk Level / 风险等级: {cp.risk_level}")
+            lines.append(f"  Expected Return / 预期收益: {cp.expected_return:.2%}")
+            lines.append("")
+            if cp.reasoning:
+                lines.append(f"  Reasoning / 理由: {cp.reasoning[:200]}...")
+
+        lines.append("")
+        lines.append(separator)
+
+        return "\n".join(lines)
 
 
 class StrategySimulator:

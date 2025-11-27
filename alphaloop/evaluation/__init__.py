@@ -3,9 +3,12 @@
 
 from alphaloop.evaluation.evaluator import MultiLLMEvaluator
 from alphaloop.evaluation.schemas import (
+    AggregatedResult,
     EvaluationResult,
     MarketContext,
+    ParameterStatistics,
     SimulationResult,
+    StrategyConsensus,
     StrategyProposal,
 )
 
@@ -15,4 +18,7 @@ __all__ = [
     "StrategyProposal",
     "SimulationResult",
     "EvaluationResult",
+    "AggregatedResult",
+    "StrategyConsensus",
+    "ParameterStatistics",
 ]

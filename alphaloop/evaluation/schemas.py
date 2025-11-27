@@ -5,7 +5,7 @@ Data schemas for Multi-LLM Strategy Evaluation
 
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Optional
+from typing import Dict, List, Optional
 
 
 @dataclass
@@ -170,3 +170,127 @@ class EvaluationResult:
             "rank": self.rank,
             "latency_ms": f"{self.latency_ms:.0f}",
         }
+
+
+@dataclass
+class ParameterStatistics:
+    """
+    Parameter statistics across models
+    多模型参数统计
+    """
+
+    # Spread statistics / 价差统计
+    spread_mean: float = 0.0
+    spread_median: float = 0.0
+    spread_min: float = 0.0
+    spread_max: float = 0.0
+    spread_std: float = 0.0
+
+    # Skew factor statistics / 倾斜因子统计
+    skew_mean: float = 0.0
+    skew_median: float = 0.0
+
+    # Quantity statistics / 数量统计
+    quantity_mean: float = 0.0
+    quantity_median: float = 0.0
+
+    # Leverage statistics / 杠杆统计
+    leverage_mean: float = 0.0
+    leverage_median: float = 0.0
+
+    # Confidence statistics / 置信度统计
+    confidence_mean: float = 0.0
+    confidence_min: float = 0.0
+    confidence_max: float = 0.0
+
+
+@dataclass
+class StrategyConsensus:
+    """
+    Strategy consensus analysis
+    策略共识分析
+    """
+
+    # Consensus strategy / 共识策略
+    consensus_strategy: str = ""  # Most voted strategy
+    consensus_count: int = 0  # Number of models agreeing
+    total_models: int = 0  # Total number of models
+
+    # Vote distribution / 投票分布
+    strategy_votes: Dict[str, int] = field(default_factory=dict)
+    strategy_percentages: Dict[str, float] = field(default_factory=dict)
+
+    # Consensus level / 共识程度
+    consensus_level: str = "none"  # "full", "majority", "split", "none"
+    consensus_ratio: float = 0.0  # Ratio of agreeing models
+
+    # Providers by strategy / 按策略分组的 Provider
+    providers_by_strategy: Dict[str, List[str]] = field(default_factory=dict)
+
+    def is_unanimous(self) -> bool:
+        """Check if all models agree / 检查是否全体一致"""
+        return self.consensus_count == self.total_models and self.total_models > 0
+
+    def has_majority(self) -> bool:
+        """Check if majority agrees / 检查是否有多数共识"""
+        return self.consensus_ratio > 0.5
+
+
+@dataclass
+class AggregatedResult:
+    """
+    Aggregated evaluation result from all models
+    所有模型的聚合评估结果
+    """
+
+    # Consensus analysis / 共识分析
+    strategy_consensus: StrategyConsensus = field(default_factory=StrategyConsensus)
+    parameter_stats: ParameterStatistics = field(default_factory=ParameterStatistics)
+
+    # Consensus confidence / 共识置信度
+    consensus_confidence: float = 0.0  # 0-1, weighted by model agreement
+    confidence_breakdown: Dict[str, float] = field(default_factory=dict)
+
+    # Recommended proposal (consensus-based) / 共识建议
+    consensus_proposal: Optional[StrategyProposal] = None
+
+    # Individual results reference / 个体结果引用
+    individual_results: List[EvaluationResult] = field(default_factory=list)
+    successful_evaluations: int = 0
+    failed_evaluations: int = 0
+
+    # Performance summary / 性能摘要
+    avg_pnl: float = 0.0
+    avg_sharpe: float = 0.0
+    avg_win_rate: float = 0.0
+    avg_latency_ms: float = 0.0
+
+    # Timestamp / 时间戳
+    timestamp: datetime = field(default_factory=datetime.now)
+
+    def to_summary(self) -> dict:
+        """Return a summary dict for the aggregated result"""
+        return {
+            "consensus_strategy": self.strategy_consensus.consensus_strategy,
+            "consensus_level": self.strategy_consensus.consensus_level,
+            "consensus_ratio": f"{self.strategy_consensus.consensus_ratio:.1%}",
+            "consensus_confidence": f"{self.consensus_confidence:.1%}",
+            "successful_models": self.successful_evaluations,
+            "failed_models": self.failed_evaluations,
+            "avg_pnl": f"${self.avg_pnl:,.2f}",
+            "avg_sharpe": f"{self.avg_sharpe:.2f}",
+            "avg_win_rate": f"{self.avg_win_rate:.1%}",
+            "parameter_spread_range": f"{self.parameter_stats.spread_min:.4f}-{self.parameter_stats.spread_max:.4f}",
+        }
+
+    def get_recommendation_strength(self) -> str:
+        """
+        Get recommendation strength based on consensus
+        获取基于共识的推荐强度
+        """
+        if self.strategy_consensus.is_unanimous():
+            return "strong"  # All models agree
+        elif self.strategy_consensus.has_majority():
+            return "moderate"  # Majority agrees
+        else:
+            return "weak"  # No clear consensus

@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import os
 import threading
@@ -28,6 +29,8 @@ app = FastAPI()
 async def startup_event():
     """Initialize portfolio capital from Binance on server startup."""
     init_portfolio_capital()
+    await update_suggestion_cache(force=True)
+    asyncio.create_task(suggestion_refresh_worker())
 
 
 # Setup Templates
@@ -38,6 +41,22 @@ templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "templates"))
 bot_engine = AlphaLoop()
 bot_thread = None
 is_running = False
+
+DEFAULT_SUGGESTION = {
+    "spread": 1.0,
+    "leverage": 5,
+    "condition": "Initializing",
+    "reason": "Collecting market data...",
+}
+SUGGESTION_CACHE_TTL = 5  # seconds
+SUGGESTION_REFRESH_INTERVAL = 5  # seconds
+
+suggestion_cache = {
+    "data": DEFAULT_SUGGESTION.copy(),
+    "timestamp": 0.0,
+    "updating": False,
+}
+suggestion_cache_lock = asyncio.Lock()
 
 
 def get_default_exchange():
@@ -186,6 +205,115 @@ class StrategyAllocationUpdate(BaseModel):
     """Model for updating single strategy allocation"""
     allocation: float  # 0-1
 
+
+def _generate_suggestion():
+    """
+    Heavy-weight suggestion generation logic.
+    Runs in a worker thread to avoid blocking the event loop.
+    """
+    sharpe = 0
+    volatility = 0
+    
+    try:
+        if hasattr(bot_engine, "data") and bot_engine.data is not None:
+            if hasattr(bot_engine.data, "price_history") and len(bot_engine.data.price_history) > 1:
+                try:
+                    import numpy as np
+                    prices = np.array(bot_engine.data.price_history[-50:])
+                    if len(prices) > 1:
+                        returns = np.diff(prices) / prices[:-1]
+                        volatility = float(np.std(returns)) if len(returns) > 0 else 0
+                except Exception as e:
+                    logger.debug(f"Error calculating volatility: {e}")
+                    volatility = 0
+            
+            try:
+                if hasattr(bot_engine.data, "trade_history") and len(bot_engine.data.trade_history) > 10:
+                    import numpy as np
+                    recent_trades = bot_engine.data.trade_history[-20:]
+                    pnls = [t.get("pnl", 0) for t in recent_trades if t.get("pnl") is not None]
+                    if len(pnls) > 5:
+                        pnl_array = np.array(pnls)
+                        if np.std(pnl_array) > 0:
+                            sharpe = float(
+                                np.mean(pnl_array) / np.std(pnl_array) * np.sqrt(365 * 24 * 60)
+                            )
+            except Exception as e:
+                logger.debug(f"Error calculating quick sharpe: {e}")
+                sharpe = 0
+    except Exception as e:
+        logger.warning(f"Error calculating metrics for suggestions: {e}")
+        sharpe = 0
+        volatility = 0
+    
+    current_spread = 1.0
+    current_leverage = 5
+    
+    try:
+        if hasattr(bot_engine, "strategy") and bot_engine.strategy is not None:
+            current_spread = bot_engine.strategy.spread * 100
+            current_leverage = bot_engine.strategy.leverage
+    except Exception as e:
+        logger.warning(f"Error getting strategy config for suggestions: {e}")
+    
+    suggestion = {
+        "spread": current_spread,
+        "leverage": current_leverage,
+        "condition": "Stable",
+        "reason": "Current settings are stable.",
+    }
+    
+    if volatility > 0.005:
+        suggestion["spread"] = round(current_spread * 1.2, 2)
+        suggestion["leverage"] = max(1, current_leverage - 2)
+        suggestion["condition"] = "High Volatility"
+        suggestion["reason"] = (
+            "Market is volatile. Widening spread and reducing leverage to mitigate risk."
+        )
+    elif sharpe < 1.0 and volatility < 0.005:
+        suggestion["spread"] = round(current_spread * 1.1, 2)
+        suggestion["leverage"] = max(1, current_leverage - 1)
+        suggestion["condition"] = "Low Sharpe Ratio"
+        suggestion["reason"] = (
+            "Performance is low. Adjusting spread and leverage to improve risk-adjusted returns."
+        )
+    elif sharpe > 2.0 and volatility < 0.002:
+        suggestion["spread"] = round(current_spread * 0.9, 2)
+        suggestion["leverage"] = current_leverage + 1
+        suggestion["condition"] = "Excellent Performance"
+        suggestion["reason"] = "Strong performance with low risk. Optimizing for higher returns."
+    
+    suggestion["spread"] = max(0.01, min(1.0, suggestion["spread"]))
+    suggestion["leverage"] = max(1, min(10, suggestion["leverage"]))
+    return suggestion
+
+
+async def update_suggestion_cache(force=False):
+    async with suggestion_cache_lock:
+        if suggestion_cache["updating"]:
+            return suggestion_cache["data"]
+        suggestion_cache["updating"] = True
+    
+    try:
+        suggestion = await asyncio.to_thread(_generate_suggestion)
+    except Exception as e:
+        logger.error(f"Error generating suggestion: {e}")
+        suggestion = DEFAULT_SUGGESTION.copy()
+    finally:
+        async with suggestion_cache_lock:
+            suggestion_cache["data"] = suggestion
+            suggestion_cache["timestamp"] = time.time()
+            suggestion_cache["updating"] = False
+            return suggestion_cache["data"]
+
+
+async def suggestion_refresh_worker():
+    while True:
+        try:
+            await update_suggestion_cache(force=True)
+        except Exception as e:
+            logger.error(f"Suggestion refresh failed: {e}")
+        await asyncio.sleep(SUGGESTION_REFRESH_INTERVAL)
 
 def _get_or_create_strategy_instance(
     desired_id: Optional[str], strategy_type: str
@@ -502,62 +630,24 @@ async def update_pair(pair: PairUpdate):
 
 @app.get("/api/suggestions")
 async def get_suggestions():
-    # Get metrics from DataAgent
-    metrics = bot_engine.data.calculate_metrics()
-    sharpe = metrics.get("sharpe_ratio", 0)
-
-    # Get current config
-    current_spread = (
-        bot_engine.strategy.spread * 100
-    )  # Convert back to percentage for display
-    current_leverage = bot_engine.strategy.leverage  # Assuming strategy has leverage
-
-    # Risk-aware suggestions
-    suggestion = {
-        "spread": current_spread,
-        "leverage": current_leverage,
-        "condition": "Stable",
-        "reason": "Current settings are stable.",
-    }
-
-    # Check for high volatility
-    volatility = metrics.get("volatility", 0)
-    if volatility > 0.005:  # Example threshold for high volatility
-        suggestion["spread"] = round(current_spread * 1.2, 2)  # Widen spread by 20%
-        suggestion["leverage"] = max(1, current_leverage - 2)  # Reduce leverage
-        suggestion["condition"] = "High Volatility"
-        suggestion["reason"] = (
-            "Market is volatile. Widening spread and reducing leverage to mitigate risk."
-        )
-
-    # Check for low Sharpe Ratio
-    if (
-        sharpe < 1.0 and volatility < 0.005
-    ):  # Only suggest if not already adjusting for volatility
-        suggestion["spread"] = round(current_spread * 1.1, 2)  # Slightly widen spread
-        suggestion["leverage"] = max(
-            1, current_leverage - 1
-        )  # Slightly reduce leverage
-        suggestion["condition"] = "Low Sharpe Ratio"
-        suggestion["reason"] = (
-            "Performance is low. Adjusting spread and leverage to improve risk-adjusted returns."
-        )
-
-    # Check for high PnL and low risk
-    if sharpe > 2.0 and volatility < 0.002:  # Example for good performance
-        suggestion["spread"] = round(current_spread * 0.9, 2)  # Tighten spread
-        suggestion["leverage"] = current_leverage + 1  # Increase leverage
-        suggestion["condition"] = "Excellent Performance"
-        suggestion["reason"] = (
-            "Strong performance with low risk. Optimizing for higher returns."
-        )
-
-    # Ensure spread is within reasonable bounds (e.g., 0.01% to 1%)
-    suggestion["spread"] = max(0.01, min(1.0, suggestion["spread"]))
-    # Ensure leverage is within reasonable bounds (e.g., 1 to 10)
-    suggestion["leverage"] = max(1, min(10, suggestion["leverage"]))
-
-    return suggestion
+    """
+    Return cached strategy suggestions with a guaranteed fast response (< 5 seconds).
+    Background tasks keep the cache fresh.
+    """
+    now = time.time()
+    async with suggestion_cache_lock:
+        cache_timestamp = suggestion_cache["timestamp"]
+        cache_data = suggestion_cache["data"]
+        updating = suggestion_cache["updating"]
+    
+    if cache_timestamp == 0:
+        asyncio.create_task(update_suggestion_cache(force=True))
+        return DEFAULT_SUGGESTION
+    
+    if now - cache_timestamp > SUGGESTION_CACHE_TTL and not updating:
+        asyncio.create_task(update_suggestion_cache(force=True))
+    
+    return cache_data
 
 
 @app.get("/api/order-history")

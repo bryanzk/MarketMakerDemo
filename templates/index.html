@@ -2300,28 +2300,23 @@
                 // Update order history symbol filter to current pair
                 updateOrderHistorySymbolFilter(symbol);
                 
-                // Refresh all data related to the trading pair
-                // 1. Status (includes market data, position, limits, etc.)
-                await fetchStatus();
+                // Refresh all data related to the trading pair (run in parallel for faster UX)
+                const coreFetches = [
+                    fetchStatus(),
+                    fetchOrderHistory(),
+                    fetchSuggestions(),
+                    fetchPortfolio()
+                ];
                 
-                // 2. Order history (filtered by current symbol)
-                await fetchOrderHistory();
-                
-                // 3. Strategy suggestions (for new pair)
-                await fetchSuggestions();
-                
-                // 4. Portfolio data (may include pair-specific data)
-                fetchPortfolio();
-                
-                // 5. Performance data
                 if (isTabVisible('dashboardTab') || isTabVisible('tradeTab')) {
-                    fetchPerformance();
+                    coreFetches.push(fetchPerformance());
                 }
                 
-                // 6. Risk indicators
                 if (isTabVisible('dashboardTab')) {
-                    fetchRiskIndicators();
+                    coreFetches.push(fetchRiskIndicators());
                 }
+                
+                await Promise.allSettled(coreFetches);
             }
         }
 
@@ -2349,23 +2344,27 @@
                 // Update order history symbol filter to current pair
                 updateOrderHistorySymbolFilter(symbol);
                 
-                // Refresh all data related to the trading pair
-                // Note: This will update data for ALL tabs since exchange is shared
-                await fetchStatus();
-                await fetchOrderHistory();
-                await fetchSuggestions();
-                fetchPortfolio();
+                // Refresh all data related to the trading pair (parallel to reduce wait)
+                const sharedFetches = [
+                    fetchStatus(),
+                    fetchOrderHistory(),
+                    fetchSuggestions(),
+                    fetchPortfolio()
+                ];
                 
-                // Refresh funding-specific data
-                await fetchFundingOrderHistory();
+                const fundingFetches = [
+                    fetchFundingOrderHistory()
+                ];
                 
                 if (isTabVisible('dashboardTab') || isTabVisible('fundingTab')) {
-                    fetchPerformance();
+                    fundingFetches.push(fetchPerformance());
                 }
                 
                 if (isTabVisible('dashboardTab')) {
-                    fetchRiskIndicators();
+                    fundingFetches.push(fetchRiskIndicators());
                 }
+                
+                await Promise.allSettled([...sharedFetches, ...fundingFetches]);
             }
         }
 
@@ -2386,10 +2385,15 @@
             suggestionsFetching = true;
             try {
                 const controller = new AbortController();
-                const timeoutId = setTimeout(() => controller.abort(), 10000); // 10s timeout
+                const timeoutId = setTimeout(() => controller.abort(), 20000); // 20s timeout (increased due to slow API response)
                 
                 const res = await fetch('/api/suggestions', { signal: controller.signal });
                 clearTimeout(timeoutId);
+                
+                // Check if response is ok
+                if (!res.ok) {
+                    throw new Error(`HTTP error! status: ${res.status}`);
+                }
                 
                 const data = await res.json();
 

@@ -1333,10 +1333,14 @@ def _sync_portfolio_with_bot():
     同步 PortfolioManager 与当前 bot 状态
 
     将 bot_engine 的实时数据同步到 portfolio_manager
+    支持多策略实例架构：为每个策略实例单独同步数据
     """
     global is_running, initial_capital
 
-    # Update capital from current balance if available
+    # Get session start time for PnL calculation
+    start_time_ms = get_session_start_time_ms()
+
+    # Update capital from current balance if available (use default exchange)
     try:
         exchange = get_default_exchange()
         if exchange is not None:
@@ -1350,56 +1354,167 @@ def _sync_portfolio_with_bot():
     except Exception:
         pass  # Keep existing capital if fetch fails
 
-    # Determine current active strategy
-    current_strategy_type = type(bot_engine.strategy).__name__
-    current_strategy_id = (
-        "funding_rate"
-        if current_strategy_type == "FundingRateStrategy"
-        else "fixed_spread"
-    )
+    # Map strategy_type to strategy_id for portfolio_manager
+    strategy_type_to_id = {
+        "fixed_spread": "fixed_spread",
+        "funding_rate": "funding_rate",
+    }
 
-    # Update strategy statuses based on bot running state
-    for strategy_id, strategy in portfolio_manager.strategies.items():
-        if is_running and strategy_id == current_strategy_id:
-            if strategy.status != StrategyStatus.PAUSED:
-                strategy.status = StrategyStatus.LIVE
-        elif strategy.status == StrategyStatus.LIVE:
-            strategy.status = StrategyStatus.STOPPED
+    # Sync each strategy instance separately
+    if hasattr(bot_engine, "strategy_instances") and bot_engine.strategy_instances:
+        for instance_id, instance in bot_engine.strategy_instances.items():
+            # Map instance to portfolio strategy_id
+            # Use strategy_type to find the corresponding portfolio strategy
+            portfolio_strategy_id = strategy_type_to_id.get(instance.strategy_type)
+            
+            # Skip if this instance type doesn't have a corresponding portfolio strategy
+            if not portfolio_strategy_id or portfolio_strategy_id not in portfolio_manager.strategies:
+                continue
 
-    # Get performance data
-    trades = bot_engine.data.trade_history
-    realized_pnl = sum(t["pnl"] for t in trades)
+            # Update strategy status based on instance running state
+            strategy = portfolio_manager.strategies[portfolio_strategy_id]
+            if instance.running:
+                if strategy.status != StrategyStatus.PAUSED:
+                    strategy.status = StrategyStatus.LIVE
+            elif strategy.status == StrategyStatus.LIVE:
+                # Only change to STOPPED if explicitly stopped, not if just not running
+                # (PAUSED status is set via API, so we preserve it)
+                if not instance.running:
+                    strategy.status = StrategyStatus.STOPPED
 
-    # Get metrics
-    metrics = bot_engine.data.calculate_metrics()
-    sharpe = metrics.get("sharpe_ratio", 0)
-    fill_rate = metrics.get("fill_rate", 0.85)
-    slippage = metrics.get("slippage_bps", 0)
+            # Get performance data for this strategy instance
+            realized_pnl = 0.0
+            sharpe = None
+            fill_rate = 0.85
+            slippage = 0.0
+            max_drawdown = 0.0
+            total_trades = 0
 
-    # Calculate max drawdown from PnL history
-    max_drawdown = 0.0
-    if trades:
-        cumulative = 0
-        peak = 0
-        for t in trades:
-            cumulative += t["pnl"]
-            if cumulative > peak:
-                peak = cumulative
-            if peak > 0:
-                dd = (peak - cumulative) / peak
-                if dd > max_drawdown:
-                    max_drawdown = dd
+            # Try to get data from instance's exchange
+            if instance.use_real_exchange and instance.exchange is not None:
+                try:
+                    # Fetch PnL and commission from session start time
+                    pnl_data = instance.exchange.fetch_pnl_and_fees(start_time=start_time_ms)
+                    realized_pnl = pnl_data.get("realized_pnl", 0.0)
+                except Exception as e:
+                    logger.debug(f"Error fetching PnL for {instance_id}: {e}")
 
-    # Update the currently active strategy's metrics
-    portfolio_manager.update_strategy_metrics(
-        strategy_id=current_strategy_id,
-        pnl=realized_pnl,
-        sharpe=sharpe if sharpe else None,
-        fill_rate=fill_rate if fill_rate else 0.85,
-        slippage=slippage if slippage else 0,
-        max_drawdown=max_drawdown,
-        total_trades=len(trades),
-    )
+                # Try to get metrics from instance's order history
+                # Calculate basic metrics from order history
+                if instance.order_history:
+                    # Count total orders as trades (simplified)
+                    total_trades = len([o for o in instance.order_history if o.get("status") == "filled"])
+                    
+                    # Calculate fill rate (orders filled / orders placed)
+                    placed_orders = len([o for o in instance.order_history if o.get("status") in ["placed", "filled"]])
+                    filled_orders = len([o for o in instance.order_history if o.get("status") == "filled"])
+                    if placed_orders > 0:
+                        fill_rate = filled_orders / placed_orders
+
+            # Fallback: Use shared data agent if instance doesn't have its own data
+            # This maintains backward compatibility
+            if realized_pnl == 0.0 and hasattr(bot_engine, "data"):
+                try:
+                    # Filter trades by strategy_id if available
+                    trades = [
+                        t for t in bot_engine.data.trade_history
+                        if t.get("strategy_id") == instance_id or t.get("strategy_type") == instance.strategy_type
+                    ]
+                    if not trades:
+                        # If no strategy-specific trades, use all trades (backward compatibility)
+                        trades = bot_engine.data.trade_history
+                    
+                    realized_pnl = sum(t.get("pnl", 0.0) for t in trades)
+                    total_trades = len(trades)
+
+                    # Get metrics from shared data agent
+                    if trades:
+                        metrics = bot_engine.data.calculate_metrics()
+                        sharpe = metrics.get("sharpe_ratio", 0) if metrics.get("sharpe_ratio") else None
+                        fill_rate = metrics.get("fill_rate", 0.85)
+                        slippage = metrics.get("slippage_bps", 0.0)
+
+                        # Calculate max drawdown from PnL history
+                        cumulative = 0
+                        peak = 0
+                        for t in trades:
+                            cumulative += t.get("pnl", 0.0)
+                            if cumulative > peak:
+                                peak = cumulative
+                            if peak > 0:
+                                dd = (peak - cumulative) / peak
+                                if dd > max_drawdown:
+                                    max_drawdown = dd
+                except Exception as e:
+                    logger.debug(f"Error getting metrics from data agent for {instance_id}: {e}")
+
+            # Update this strategy's metrics in portfolio_manager
+            portfolio_manager.update_strategy_metrics(
+                strategy_id=portfolio_strategy_id,
+                pnl=realized_pnl,
+                sharpe=sharpe,
+                fill_rate=fill_rate,
+                slippage=slippage,
+                max_drawdown=max_drawdown,
+                total_trades=total_trades,
+            )
+
+    else:
+        # Fallback: Legacy single-strategy mode (backward compatibility)
+        # Determine current active strategy
+        current_strategy_type = type(bot_engine.strategy).__name__
+        current_strategy_id = (
+            "funding_rate"
+            if current_strategy_type == "FundingRateStrategy"
+            else "fixed_spread"
+        )
+
+        # Update strategy statuses based on bot running state
+        for strategy_id, strategy in portfolio_manager.strategies.items():
+            if is_running and strategy_id == current_strategy_id:
+                if strategy.status != StrategyStatus.PAUSED:
+                    strategy.status = StrategyStatus.LIVE
+            elif strategy.status == StrategyStatus.LIVE:
+                strategy.status = StrategyStatus.STOPPED
+
+        # Get performance data
+        trades = bot_engine.data.trade_history if hasattr(bot_engine, "data") else []
+        realized_pnl = sum(t.get("pnl", 0.0) for t in trades)
+
+        # Get metrics
+        sharpe = None
+        fill_rate = 0.85
+        slippage = 0.0
+        if hasattr(bot_engine, "data"):
+            metrics = bot_engine.data.calculate_metrics()
+            sharpe = metrics.get("sharpe_ratio", 0) if metrics.get("sharpe_ratio") else None
+            fill_rate = metrics.get("fill_rate", 0.85)
+            slippage = metrics.get("slippage_bps", 0.0)
+
+        # Calculate max drawdown from PnL history
+        max_drawdown = 0.0
+        if trades:
+            cumulative = 0
+            peak = 0
+            for t in trades:
+                cumulative += t.get("pnl", 0.0)
+                if cumulative > peak:
+                    peak = cumulative
+                if peak > 0:
+                    dd = (peak - cumulative) / peak
+                    if dd > max_drawdown:
+                        max_drawdown = dd
+
+        # Update the currently active strategy's metrics
+        portfolio_manager.update_strategy_metrics(
+            strategy_id=current_strategy_id,
+            pnl=realized_pnl,
+            sharpe=sharpe,
+            fill_rate=fill_rate,
+            slippage=slippage,
+            max_drawdown=max_drawdown,
+            total_trades=len(trades),
+        )
 
     # Record PnL snapshot for portfolio Sharpe calculation
     portfolio_manager.record_pnl_snapshot()

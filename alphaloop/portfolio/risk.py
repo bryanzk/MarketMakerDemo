@@ -327,3 +327,5 @@ class RiskIndicators:
             "max_drawdown_status": max_dd_status,
             "overall_risk_level": overall_risk,
         }
+
+

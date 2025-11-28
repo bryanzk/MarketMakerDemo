@@ -412,12 +412,108 @@ def calculate_risk_score(
 
 ---
 
+## Issue Discovery and Resolution / 问题发现与解决
+
+### When You Discover an Issue / 发现问题时
+
+During development, you may encounter bugs, performance issues, or code that needs improvement.  
+开发过程中，你可能会遇到 bug、性能问题或需要改进的代码。
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    Issue Discovery Flow / 问题发现流程           │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│   1. Determine if it blocks your current work                   │
+│      判断是否阻塞当前工作                                        │
+│                                                                 │
+│      ├─► YES: Fix immediately, then continue                    │
+│      │        是：立即修复，然后继续                             │
+│      │                                                          │
+│      └─► NO: Report in issue_tracker.md                         │
+│               否：在 issue_tracker.md 中报告                     │
+│                                                                 │
+│   2. Determine ownership (check file_locking_rules.md)          │
+│      确定归属（查看 file_locking_rules.md）                      │
+│                                                                 │
+│      ├─► Your file: Add to your session backlog                 │
+│      │              你的文件：加入会话待办                        │
+│      │                                                          │
+│      └─► Other's file: Report with Owner = that Agent           │
+│                        别人的文件：报告并指定 Owner              │
+│                                                                 │
+│   3. Record in claude_progress.md                               │
+│      在 claude_progress.md 中记录                                │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Issue Commit Message Format / 问题修复提交格式
+
+When fixing an issue, use this commit message format:  
+修复问题时，使用以下提交格式：
+
+```bash
+# For bugs
+fix(module): ISSUE-XXX brief description
+
+# For performance issues
+perf(module): ISSUE-XXX brief description
+
+# For security fixes
+security(module): ISSUE-XXX brief description
+
+# For tech debt
+refactor(module): ISSUE-XXX brief description
+```
+
+### Session Workflow with Issues / 包含问题处理的会话流程
+
+```
+Session Start / 会话开始
+     │
+     ▼
+┌─────────────────────────────────────┐
+│ 1. Check issue_tracker.md           │
+│    检查 issue_tracker.md            │
+│    - P0/P1 issues with Owner = self │
+│      Owner = 自己 的 P0/P1 问题     │
+└─────────────────────────────────────┘
+     │
+     ▼
+┌─────────────────────────────────────┐
+│ 2. Prioritize                       │
+│    优先级排序                        │
+│    P0 issues > P1 issues > Features │
+└─────────────────────────────────────┘
+     │
+     ▼
+┌─────────────────────────────────────┐
+│ 3. Work on highest priority item    │
+│    处理最高优先级项目                │
+└─────────────────────────────────────┘
+     │
+     ▼
+┌─────────────────────────────────────┐
+│ 4. Update issue_tracker.md          │
+│    更新 issue_tracker.md            │
+│    - Set RESOLVED when fixed        │
+│      修复后设为 RESOLVED            │
+└─────────────────────────────────────┘
+     │
+     ▼
+Session End / 会话结束
+```
+
+---
+
 ## Related Documents / 相关文档
 
 - `docs/project/file_locking_rules.md` — File ownership and permissions / 文件归属与权限
 - `docs/project/agent_requests.md` — Cross-agent request protocol / 跨 Agent 请求协议
 - `docs/project/claude_progress.md` — Progress tracking / 进度追踪
 - `docs/project/feature_matrix.json` — Feature status tracker / 功能状态追踪
+- `docs/project/issue_tracker.md` — Bug and issue tracking / 问题追踪
 - `docs/project/init_plan.md` — Initialization blueprint / 初始化蓝图
 - `docs/agents/README.md` — Agent overview / Agent 概览
 

@@ -135,6 +135,25 @@ The plan follows the harness practices described in [Effective harnesses for lon
 
 ---
 
+## 8. Issue Tracker / 问题追踪器 ✅ COMPLETED
+**Deliverable / 交付物**: `docs/project/issue_tracker.md` for tracking bugs, tech debt, and improvements.  
+**Responsible Agent / 责任 Agent**: Agent 5 维护结构，所有 Agent 报告和解决问题。
+
+### Artifact Created / 已创建工件
+- `docs/project/issue_tracker.md` — Issue tracking with types (BUG, TECH_DEBT, PERF, SECURITY, TODO, IMPROVE), priorities (P0-P3), and lifecycle
+
+### Tasks / 任务
+- [x] Define issue types and priority levels.  
+  [x] 定义问题类型和优先级。
+- [x] Create issue lifecycle (OPEN → IN_PROGRESS → RESOLVED → VERIFIED).  
+  [x] 创建问题生命周期（OPEN → IN_PROGRESS → RESOLVED → VERIFIED）。
+- [x] Integrate with feature_matrix.json for blocking issues.  
+  [x] 与 feature_matrix.json 集成处理阻塞性问题。
+- [x] Scan codebase for existing TODOs and create initial issues.  
+  [x] 扫描代码库中的 TODO 并创建初始问题。
+
+---
+
 ## Tracking Notes / 跟踪备注
 - Update this checklist whenever scopes change or new artifacts emerge.  
   当范围调整或新增工件时需同步更新本清单。

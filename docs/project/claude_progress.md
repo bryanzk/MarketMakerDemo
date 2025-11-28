@@ -41,6 +41,7 @@ Reference: [Effective harnesses for long-running agents](https://www.anthropic.c
 |-------------|-------|------------|-------------------------|----------------------|------------------|-------------|
 | 2025-11-28 | Agent 5 | INIT-001 | `docs/project/init_plan.md`, `docs/project/feature_matrix.json`, `docs/project/claude_progress.md`, `scripts/init.sh`, `docs/project/deliverable_plan_framework_and_task.md` | ⏸️ Skipped | None | Initial harness setup: created initialization blueprint, feature tracker, progress log template, and init.sh script / 初始化支撑体系：创建初始化蓝图、功能追踪器、进度日志模板及 init.sh 脚本 |
 | 2025-11-28 | Agent 5 | INIT-002 | `docs/project/file_locking_rules.md`, `docs/project/agent_requests.md`, `docs/contrib_guidelines.md`, `docs/project/deliverable_plan_framework_and_task.md` | ⏸️ Skipped | None | Collaboration framework: created file locking rules (4 permission levels), cross-agent request protocol (lifecycle, types, examples), and incremental commit policy / 协作框架：创建文件锁定规则（4 级权限）、跨 Agent 请求协议（生命周期、类型、示例）及增量提交策略 |
+| 2025-11-28 | Agent 5 | INIT-003 | `docs/project/issue_tracker.md`, `docs/project/deliverable_plan_framework_and_task.md`, `docs/contrib_guidelines.md` | ⏸️ Skipped | None | Issue tracker: created issue tracking system with types (BUG, TECH_DEBT, PERF, SECURITY, TODO, IMPROVE), priorities (P0-P3), lifecycle, and integration with existing workflow. Scanned codebase for TODOs, found 1 issue (ISSUE-001). / 问题追踪器：创建问题追踪系统，含类型、优先级、生命周期，并与现有工作流集成。扫描代码库 TODO，发现 1 个问题（ISSUE-001）。 |
 
 ---
 

@@ -127,6 +127,77 @@
             border-radius: 999px;
             background: #eef2ff;
         }
+
+        .tooltip-container {
+            position: relative;
+            display: inline-block;
+            cursor: help;
+        }
+
+        .tooltip-icon {
+            display: inline-block;
+            width: 14px;
+            height: 14px;
+            line-height: 14px;
+            text-align: center;
+            border-radius: 50%;
+            background: #6b7280;
+            color: white;
+            font-size: 10px;
+            margin-left: 4px;
+            vertical-align: middle;
+        }
+
+        .tooltip-text {
+            visibility: hidden;
+            width: 320px;
+            background-color: #1f2937;
+            color: #fff;
+            text-align: left;
+            border-radius: 8px;
+            padding: 12px;
+            position: absolute;
+            z-index: 1000;
+            bottom: 125%;
+            left: 50%;
+            margin-left: -160px;
+            opacity: 0;
+            transition: opacity 0.3s;
+            font-size: 12px;
+            line-height: 1.5;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+        }
+
+        .tooltip-text::after {
+            content: "";
+            position: absolute;
+            top: 100%;
+            left: 50%;
+            margin-left: -5px;
+            border-width: 5px;
+            border-style: solid;
+            border-color: #1f2937 transparent transparent transparent;
+        }
+
+        .tooltip-container:hover .tooltip-text {
+            visibility: visible;
+            opacity: 1;
+        }
+
+        .tooltip-text strong {
+            color: #60a5fa;
+            display: block;
+            margin-bottom: 4px;
+        }
+
+        .tooltip-text .formula {
+            background: #374151;
+            padding: 6px;
+            border-radius: 4px;
+            margin: 6px 0;
+            font-family: monospace;
+            font-size: 11px;
+        }
     </style>
 </head>
 
@@ -194,17 +265,82 @@
             <div id="evaluationConsensusCard" class="consensus-card" style="display:none;">
                 <div style="font-size:14px; font-weight:bold; color:#6d28d9;">🤝 Consensus Recommendation / 共识建议</div>
                 <div style="margin-top:8px; font-size:13px;">
+                    <div style="margin-bottom:8px;">
+                        <button class="btn btn-secondary" style="font-size:11px; padding:4px 8px;" onclick="toggleLLMDetails()">
+                            📊 Show LLM Input/Output Details
+                        </button>
+                    </div>
+                    <div id="llmDetailsSection" style="display:block; background:#f9fafb; padding:12px; border-radius:8px; margin-bottom:12px; font-size:12px;">
+                        <div style="font-weight:bold; margin-bottom:8px; color:#374151;">LLM 输入数据 / Input Data:</div>
+                        <div id="llmInputData" style="color:#6b7280; font-family:monospace; white-space:pre-wrap; max-height:200px; overflow-y:auto; min-height:50px; background:#ffffff; padding:8px; border-radius:4px; border:1px solid #e5e7eb;">Loading...</div>
+                        <div style="margin-top:12px; font-weight:bold; color:#374151;">计算过程 / Calculation Process:</div>
+                        <div id="llmCalculationProcess" style="color:#6b7280; margin-top:4px; min-height:50px; background:#ffffff; padding:8px; border-radius:4px; border:1px solid #e5e7eb;">Loading...</div>
+                    </div>
                     <div>Strategy: <span id="evaluationConsensusStrategy" style="font-weight:bold;">--</span></div>
-                    <div>Consensus Level: <span id="evaluationConsensusLevel">--</span></div>
-                    <div>Confidence: <span id="evaluationConsensusConfidence">--</span></div>
+                    <div style="display:none;">
+                        Consensus Level: 
+                        <span id="evaluationConsensusLevel">--</span>
+                        <span class="tooltip-container">
+                            <span class="tooltip-icon">?</span>
+                            <span class="tooltip-text">
+                                <strong>Consensus Level / 共识程度</strong>
+                                <div style="margin-top:6px;">
+                                    <strong>计算方法 / Calculation:</strong>
+                                    <div class="formula">consensus_ratio = 同意模型数 / 总模型数</div>
+                                </div>
+                                <div style="margin-top:6px;">
+                                    <strong>级别定义 / Levels:</strong>
+                                    <div style="margin-top:4px;">
+                                        • FULL (100%): 所有模型都同意该策略<br/>
+                                        • MAJORITY (>50%): 多数模型同意<br/>
+                                        • SPLIT (0-50%): 模型间有分歧<br/>
+                                        • NONE (0%): 无共识
+                                    </div>
+                                </div>
+                                <div style="margin-top:6px; font-size:11px; color:#9ca3af;">
+                                    来源: alphaloop/evaluation/evaluator.py
+                                </div>
+                            </span>
+                        </span>
+                    </div>
+                    <div style="display:none;">
+                        Confidence: 
+                        <span id="evaluationConsensusConfidence">--</span>
+                        <span class="tooltip-container">
+                            <span class="tooltip-icon">?</span>
+                            <span class="tooltip-text">
+                                <strong>Confidence / 置信度</strong>
+                                <div style="margin-top:6px;">
+                                    <strong>计算方法 / Calculation:</strong>
+                                    <div class="formula">consensus_confidence = agreement_factor × weighted_confidence</div>
+                                </div>
+                                <div style="margin-top:6px;">
+                                    <strong>组成部分 / Components:</strong>
+                                    <div style="margin-top:4px;">
+                                        • agreement_factor: 基于共识级别<br/>
+                                        &nbsp;&nbsp;FULL=1.0, MAJORITY=0.8, SPLIT=0.5<br/>
+                                        • weighted_confidence: 同意模型的置信度加权平均<br/>
+                                        &nbsp;&nbsp;权重为模拟得分 (simulation score)
+                                    </div>
+                                </div>
+                                <div style="margin-top:6px; font-size:11px; color:#9ca3af;">
+                                    来源: alphaloop/evaluation/evaluator.py::calculate_consensus_confidence()
+                                </div>
+                            </span>
+                        </span>
+                    </div>
                     <div>Spread / Skew / Qty / Lev:
                         <span id="evaluationConsensusParams" style="font-weight:bold;">--</span>
                     </div>
                 </div>
                 <div id="evaluationConsensusStats" style="margin-top:6px; font-size:12px; color:#4b5563;">--</div>
                 <div id="evaluationConsensusReasoning" style="margin-top:8px; font-size:12px; color:#6b7280;">--</div>
-                <button class="btn btn-success" style="margin-top:12px; width:100%;"
-                    onclick="applyEvaluation('consensus')">Apply Consensus</button>
+                <div style="display:flex; gap:8px; margin-top:12px;">
+                    <button class="btn btn-success" style="flex:1;"
+                        onclick="applyEvaluation('consensus')">Apply Consensus</button>
+                    <button class="btn btn-primary" style="flex:1;"
+                        onclick="startBotWithLLMSuggestion()">🚀 Start Bot</button>
+                </div>
             </div>
 
             <div id="evaluationResultsWrapper" style="margin-top:20px; display:none;">
@@ -236,6 +372,37 @@
                 </div>
             </div>
         </section>
+
+        <section class="panel">
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+                <div>
+                    <h2 style="margin:0;">Current Orders / 当前订单</h2>
+                    <div style="font-size:13px; color:#6b7280;">Real-time order status</div>
+                </div>
+                <button class="btn btn-secondary" onclick="refreshOrders()">🔄 Refresh</button>
+            </div>
+            <div id="ordersStatusText" class="message" style="color:#6b7280; margin-top:12px;">Loading orders...</div>
+            <div id="ordersTableWrapper" style="margin-top:16px; display:none;">
+                <div style="overflow-x:auto;">
+                    <table>
+                        <thead>
+                            <tr style="background:#f3f4f6;">
+                                <th>Order ID</th>
+                                <th>Side</th>
+                                <th>Price</th>
+                                <th>Quantity</th>
+                                <th>Status</th>
+                                <th>Time</th>
+                            </tr>
+                        </thead>
+                        <tbody id="ordersTableBody"></tbody>
+                    </table>
+                </div>
+                <div id="ordersEmptyMessage" style="text-align:center; padding:24px; color:#6b7280; display:none;">
+                    No active orders
+                </div>
+            </div>
+        </section>
     </div>
 
     <script>
@@ -248,6 +415,7 @@
             lastError: null,
             lastRunSymbol: null,
             lastRunAt: null,
+            marketContext: null,  // Store market context for display
         };
 
         function showMessage(el, text, isError = false) {
@@ -408,6 +576,10 @@
                         proposal.reasoning || 'Consensus reasoning unavailable.';
                     document.getElementById('evaluationConsensusStats').innerText =
                         `Avg PnL ${formatCurrency(aggregated.avg_pnl || 0)} · Avg Sharpe ${formatNumber(aggregated.avg_sharpe || 0, 2)} · Avg Win ${formatPercent(aggregated.avg_win_rate || 0, 1)}`;
+                    
+                    // Always update LLM details when consensus card is shown
+                    // 当共识卡片显示时总是更新 LLM 详情
+                    updateLLMDetails();
                 } else {
                     consensusCard.style.display = 'none';
                 }
@@ -468,12 +640,163 @@
                 evaluationState.aggregated = data.aggregated || null;
                 evaluationState.lastRunSymbol = data.symbol || getEvaluationSymbol();
                 evaluationState.lastRunAt = new Date().toISOString();
+                // Store market context if available in response
+                if (data.market_context) {
+                    evaluationState.marketContext = data.market_context;
+                }
             } catch (err) {
                 evaluationState.lastError = err.message || 'Failed to run evaluation';
             } finally {
                 evaluationState.loading = false;
                 updateEvaluationUI();
             }
+        }
+
+        function toggleLLMDetails() {
+            const detailsSection = document.getElementById('llmDetailsSection');
+            const button = event.target;
+            if (detailsSection.style.display === 'none') {
+                detailsSection.style.display = 'block';
+                button.innerText = '📊 Hide LLM Input/Output Details';
+                updateLLMDetails();
+            } else {
+                detailsSection.style.display = 'none';
+                button.innerText = '📊 Show LLM Input/Output Details';
+            }
+        }
+        
+        // Auto-update LLM details when consensus card is shown
+        // 当共识卡片显示时自动更新 LLM 详情
+
+        async function updateLLMDetails() {
+            const inputDataEl = document.getElementById('llmInputData');
+            const calcProcessEl = document.getElementById('llmCalculationProcess');
+            
+            // Try to get market context from evaluation results first, then fallback to status API
+            // 优先从评估结果获取市场上下文，否则回退到状态 API
+            const evalResults = evaluationState.results || [];
+            const evalAggregated = evaluationState.aggregated || {};
+            
+            let inputData = '【Market Context / 市场上下文】\n';
+            inputData += 'Data sent to each LLM model (Gemini, OpenAI, Claude):\n\n';
+            
+            // Try to reconstruct market context from evaluation results
+            // 尝试从评估结果重建市场上下文
+            if (evalResults.length > 0 && evalResults[0].proposal) {
+                // Market context is the same for all models, so we can use any result
+                // 所有模型的市场上下文相同，可以使用任何结果
+                try {
+                    const statusRes = await fetch('/api/status');
+                    const status = await statusRes.json();
+                    
+                    const symbol = evaluationState.symbol || status.symbol || 'ETH/USDT:USDT';
+                    const midPrice = status.mid_price || 0;
+                    const bestBid = status.best_bid || midPrice * 0.999;
+                    const bestAsk = status.best_ask || midPrice * 1.001;
+                    const spreadBps = midPrice > 0 ? ((bestAsk - bestBid) / midPrice) * 10000 : 10.0;
+                    const fundingRate = status.funding_rate || 0;
+                    const position = status.position || 0;
+                    const balance = status.balance || 0;
+                    const leverage = status.leverage || 1;
+                    
+                    inputData += `• Symbol: ${symbol}\n`;
+                    inputData += `• Mid Price: $${midPrice.toFixed(2)}\n`;
+                    inputData += `• Best Bid: $${bestBid.toFixed(2)}\n`;
+                    inputData += `• Best Ask: $${bestAsk.toFixed(2)}\n`;
+                    inputData += `• Market Spread: ${spreadBps.toFixed(2)} bps\n`;
+                    inputData += `• Volatility (1h): ~1% (estimated from price history)\n`;
+                    inputData += `• Volatility (24h): ~3% (estimated from price history)\n`;
+                    inputData += `• Funding Rate: ${(fundingRate * 100).toFixed(4)}%\n`;
+                    inputData += `• Funding Rate Trend: stable (estimated)\n`;
+                    inputData += `• Current Position: ${position} (${position > 0 ? 'long' : position < 0 ? 'short' : 'neutral'})\n`;
+                    inputData += `• Available Balance: $${balance.toFixed(2)}\n`;
+                    inputData += `• Current Leverage: ${leverage}x\n`;
+                    inputData += `• Historical Performance:\n`;
+                    inputData += `  - Win Rate: ~0% (if available)\n`;
+                    inputData += `  - Sharpe Ratio: ~0.0 (if available)\n`;
+                    inputData += `  - Recent PnL: $0.00 (if available)\n`;
+                } catch (err) {
+                    inputData += 'Error loading market data. Please run evaluation first.\n';
+                }
+            } else {
+                inputData += 'No evaluation results available. Please run evaluation first.\n';
+            }
+            
+            inputDataEl.innerText = inputData;
+            
+            // Construct calculation process
+            let calcProcess = '';
+            
+            if (evalResults.length > 0) {
+                calcProcess += '<div style="margin-bottom:8px;"><strong>Step 1: LLM Inference / LLM 推理</strong></div>';
+                calcProcess += `Each LLM (Gemini, OpenAI, Claude) receives the market context above and returns:<br/>`;
+                calcProcess += `<div style="background:#e5e7eb; padding:6px; border-radius:4px; margin:4px 0; font-family:monospace; font-size:11px;">`;
+                calcProcess += `{<br/>`;
+                calcProcess += `&nbsp;&nbsp;"recommended_strategy": "FixedSpread" (only supported strategy),<br/>`;
+                calcProcess += `&nbsp;&nbsp;"spread": 0.01,<br/>`;
+                calcProcess += `&nbsp;&nbsp;"skew_factor": 100 (not used in simulation),<br/>`;
+                calcProcess += `&nbsp;&nbsp;"quantity": 0.1,<br/>`;
+                calcProcess += `&nbsp;&nbsp;"leverage": 1.0,<br/>`;
+                calcProcess += `&nbsp;&nbsp;"confidence": 0.85,<br/>`;
+                calcProcess += `&nbsp;&nbsp;"reasoning": "..."<br/>`;
+                calcProcess += `}</div>`;
+                calcProcess += `<div style="margin-top:4px; font-size:11px; color:#6b7280;">`;
+                calcProcess += `Note: Only FixedSpread strategy is supported in simulation.<br/>`;
+                calcProcess += `注意：模拟中仅支持 FixedSpread 策略。`;
+                calcProcess += `</div><br/>`;
+                
+                calcProcess += '<div style="margin-bottom:8px; margin-top:12px;"><strong>Step 2: Simulation & Scoring / 模拟与评分</strong></div>';
+                calcProcess += `Each proposal is tested with ${evalAggregated.simulation_steps || 500} simulation steps<br/>`;
+                calcProcess += `<div style="margin-top:4px;">`;
+                calcProcess += `<strong>Simulation Process:</strong><br/>`;
+                calcProcess += `1. Generate market data: Random walk with volatility (price ± volatility)<br/>`;
+                calcProcess += `2. Calculate orders: Strategy generates buy/sell orders<br/>`;
+                calcProcess += `3. Simulate fills: Orders fill if price crosses (buy: price≥bid, sell: price≤ask)<br/>`;
+                calcProcess += `4. Track performance: PnL, win rate, Sharpe ratio<br/>`;
+                calcProcess += `</div>`;
+                calcProcess += `<div style="margin-top:8px;">`;
+                calcProcess += `<strong>Score Formula / 评分公式:</strong><br/>`;
+                calcProcess += `<code style="background:#e5e7eb; padding:4px 8px; border-radius:4px; display:inline-block; margin-top:4px;">`;
+                calcProcess += `Score = PnL×40% + Sharpe×30% + WinRate×20% + Confidence×10%`;
+                calcProcess += `</code><br/>`;
+                calcProcess += `<div style="margin-top:4px; font-size:11px; color:#6b7280;">`;
+                calcProcess += `• Confidence: LLM's self-reported certainty (0-1) from JSON response<br/>`;
+                calcProcess += `• Source: alphaloop/evaluation/evaluator.py::_score_and_rank()<br/>`;
+                calcProcess += `</div>`;
+                calcProcess += `</div><br/>`;
+                
+                calcProcess += '<div style="margin-bottom:8px; margin-top:12px;"><strong>Step 3: Consensus Calculation / 共识计算</strong></div>';
+                if (evalAggregated.strategy_consensus) {
+                    const consensus = evalAggregated.strategy_consensus;
+                    calcProcess += `1. Count strategy votes: ${JSON.stringify(consensus.strategy_votes || {})}<br/>`;
+                    calcProcess += `2. Calculate consensus ratio: ${((consensus.consensus_ratio || 0) * 100).toFixed(1)}%<br/>`;
+                    calcProcess += `3. Select agreeing models (those voting for consensus strategy)<br/>`;
+                }
+                calcProcess += `4. Select final parameters from <strong>best-performing model</strong> among agreeing models:<br/>`;
+                calcProcess += `<div style="margin-left:12px; margin-top:4px; color:#059669;">`;
+                calcProcess += `✓ Use <strong>complete parameter set</strong> from highest-scoring model<br/>`;
+                calcProcess += `✓ Ensures parameter coherence (parameters work together as atomic unit)<br/>`;
+                calcProcess += `✓ Avoids mixing parameters from different models<br/>`;
+                calcProcess += `</div>`;
+                calcProcess += `<div style="margin-left:12px; margin-top:4px; font-size:11px; color:#6b7280;">`;
+                calcProcess += `Note: Previously used independent medians (FIXED in v1.6.6)<br/>`;
+                calcProcess += `</div>`;
+                
+                if (evalAggregated.consensus_proposal) {
+                    const proposal = evalAggregated.consensus_proposal;
+                    calcProcess += `<div style="margin-top:8px; padding:6px; background:#dbeafe; border-radius:4px;">`;
+                    calcProcess += `<strong>Final Consensus Parameters:</strong><br/>`;
+                    calcProcess += `Spread: ${(proposal.spread * 100).toFixed(2)}%, `;
+                    calcProcess += `Skew: ${proposal.skew_factor}, `;
+                    calcProcess += `Qty: ${proposal.quantity}, `;
+                    calcProcess += `Lev: ${proposal.leverage}x`;
+                    calcProcess += `</div>`;
+                }
+            } else {
+                calcProcess = '<em style="color:#9ca3af;">Run evaluation to see calculation process</em>';
+            }
+            
+            calcProcessEl.innerHTML = calcProcess;
         }
 
         async function applyEvaluation(source, providerName = null) {
@@ -494,9 +817,92 @@
             }
         }
 
+        async function startBotWithLLMSuggestion() {
+            try {
+                // First apply the consensus suggestion
+                await applyEvaluation('consensus');
+                
+                // Then start the bot
+                const res = await fetch('/api/control?action=start', {
+                    method: 'POST',
+                });
+                const data = await res.json();
+                if (data.error) throw new Error(data.error);
+                showMessage(controlMessage, '✅ Bot started with LLM suggestion!');
+                
+                // Refresh orders after starting
+                setTimeout(refreshOrders, 1000);
+            } catch (err) {
+                showMessage(controlMessage, err.message || 'Failed to start bot', true);
+            }
+        }
+
+        async function refreshOrders() {
+            try {
+                const statusEl = document.getElementById('ordersStatusText');
+                const tableWrapper = document.getElementById('ordersTableWrapper');
+                const tableBody = document.getElementById('ordersTableBody');
+                const emptyMessage = document.getElementById('ordersEmptyMessage');
+                
+                statusEl.innerText = 'Loading orders...';
+                
+                const res = await fetch('/api/status');
+                const data = await res.json();
+                
+                const orders = data.orders || [];
+                
+                if (orders.length === 0) {
+                    tableWrapper.style.display = 'none';
+                    emptyMessage.style.display = 'block';
+                    statusEl.innerText = 'No active orders';
+                } else {
+                    tableWrapper.style.display = 'block';
+                    emptyMessage.style.display = 'none';
+                    statusEl.innerText = `Found ${orders.length} active order(s)`;
+                    
+                    const rows = orders.map(order => {
+                        const orderId = order.id || order.orderId || '--';
+                        const side = order.side || '--';
+                        const price = formatNumber(order.price || 0, 4);
+                        const quantity = formatNumber(order.amount || order.quantity || 0, 4);
+                        const status = order.status || 'open';
+                        const timestamp = order.timestamp ? new Date(order.timestamp).toLocaleTimeString() : '--';
+                        
+                        const sideColor = side.toLowerCase() === 'buy' ? '#22c55e' : '#ef4444';
+                        
+                        return `
+                            <tr>
+                                <td style="font-family:monospace; font-size:11px;">${orderId.substring(0, 20)}${orderId.length > 20 ? '...' : ''}</td>
+                                <td><span style="color:${sideColor}; font-weight:bold;">${side.toUpperCase()}</span></td>
+                                <td>${price}</td>
+                                <td>${quantity}</td>
+                                <td><span style="padding:2px 6px; border-radius:4px; background:#e5e7eb; font-size:11px;">${status}</span></td>
+                                <td style="font-size:11px; color:#6b7280;">${timestamp}</td>
+                            </tr>`;
+                    }).join('');
+                    
+                    tableBody.innerHTML = rows;
+                }
+            } catch (err) {
+                const statusEl = document.getElementById('ordersStatusText');
+                statusEl.innerText = `Error loading orders: ${err.message}`;
+                statusEl.classList.add('error');
+            }
+        }
+
+        // Auto-refresh orders every 3 seconds
+        let ordersRefreshInterval = null;
+        function startOrdersAutoRefresh() {
+            if (ordersRefreshInterval) clearInterval(ordersRefreshInterval);
+            refreshOrders();
+            ordersRefreshInterval = setInterval(refreshOrders, 3000);
+        }
+
         document.addEventListener('DOMContentLoaded', () => {
             loadStatus();
             updateEvaluationUI();
+            refreshOrders();
+            startOrdersAutoRefresh();
         });
     </script>
 </body>

@@ -25,7 +25,6 @@ from alphaloop.evaluation.schemas import (
     StrategyProposal,
 )
 from alphaloop.market.performance import PerformanceTracker
-from alphaloop.strategies.funding import FundingRateStrategy
 from alphaloop.strategies.strategy import FixedSpreadStrategy
 
 logger = setup_logger("MultiLLMEvaluator")
@@ -251,6 +250,9 @@ class MultiLLMEvaluator:
         """
         运行模拟交易
 
+        Note: Only FixedSpread strategy is supported in simulation.
+        注意：模拟中仅支持 FixedSpread 策略。
+
         Args:
             proposal: 策略建议
             context: 市场上下文
@@ -258,25 +260,22 @@ class MultiLLMEvaluator:
         Returns:
             模拟结果
         """
-        # 根据建议创建策略
-        if proposal.recommended_strategy == "FundingRate":
-            strategy = FundingRateStrategy()
-        else:
-            strategy = FixedSpreadStrategy()
+        # Only use FixedSpread strategy for simulation
+        # 模拟中仅使用 FixedSpread 策略
+        strategy = FixedSpreadStrategy()
 
         # 应用建议的参数
         strategy.spread = proposal.spread
         strategy.quantity = proposal.quantity
         strategy.leverage = proposal.leverage
-        if hasattr(strategy, "skew_factor"):
-            strategy.skew_factor = proposal.skew_factor
+        # Note: skew_factor is not used for FixedSpread strategy
+        # 注意：FixedSpread 策略不使用 skew_factor
 
         # 运行模拟
         simulator = StrategySimulator(
             strategy=strategy,
             initial_price=context.mid_price,
             volatility=context.volatility_1h,
-            funding_rate=context.funding_rate,
         )
 
         stats = simulator.run(steps=self.simulation_steps)
@@ -700,13 +699,17 @@ class MultiLLMEvaluator:
         """
         生成共识策略建议
 
-        Generate a consensus-based strategy proposal using median parameters.
-        使用中位数参数生成基于共识的策略建议。
+        Generate a consensus-based strategy proposal using complete parameter set
+        from the best-performing model among agreeing models.
+        使用同意模型中最佳模型的完整参数集生成基于共识的策略建议。
+
+        This ensures parameter coherence - parameters work together as an atomic unit.
+        这确保了参数一致性 - 参数作为一个原子单位协同工作。
 
         Args:
             results: 评估结果列表
             strategy_consensus: 策略共识
-            parameter_stats: 参数统计
+            parameter_stats: 参数统计（用于回退情况）
             consensus_confidence: 共识置信度
 
         Returns:
@@ -757,20 +760,54 @@ class MultiLLMEvaluator:
             float(np.mean(expected_returns)) if expected_returns else 0.0
         )
 
-        return StrategyProposal(
-            recommended_strategy=strategy_consensus.consensus_strategy,
-            spread=parameter_stats.spread_median,
-            skew_factor=parameter_stats.skew_median,
-            quantity=parameter_stats.quantity_median,
-            leverage=parameter_stats.leverage_median,
-            reasoning=combined_reasoning,
-            confidence=consensus_confidence,
-            risk_level=consensus_risk,
-            expected_return=avg_expected_return,
-            provider_name="Consensus",
-            raw_response="",
-            parse_success=True,
-        )
+        # FIXED: Use complete parameter set from best-performing model instead of independent medians
+        # 修复：使用最佳模型的完整参数集，而不是独立的中位数
+        # This ensures parameter coherence - parameters work together as an atomic unit
+        # 这确保了参数一致性 - 参数作为一个原子单位协同工作
+        if agreeing_results:
+            # Sort by score (highest first) and take the best model's complete parameter set
+            # 按得分排序（最高优先），使用最佳模型的完整参数集
+            sorted_agreeing = sorted(agreeing_results, key=lambda r: r.score, reverse=True)
+            best_result = sorted_agreeing[0]
+            best_proposal = best_result.proposal
+            
+            logger.info(
+                f"Consensus using complete parameter set from best model: {best_result.provider_name} "
+                f"(score: {best_result.score:.2f})"
+            )
+            
+            return StrategyProposal(
+                recommended_strategy=strategy_consensus.consensus_strategy,
+                spread=best_proposal.spread,
+                skew_factor=best_proposal.skew_factor,
+                quantity=best_proposal.quantity,
+                leverage=best_proposal.leverage,
+                reasoning=combined_reasoning,
+                confidence=consensus_confidence,
+                risk_level=consensus_risk,
+                expected_return=avg_expected_return,
+                provider_name="Consensus",
+                raw_response="",
+                parse_success=True,
+            )
+        else:
+            # Fallback to median if no agreeing results (should not happen)
+            # 如果没有同意的结果，回退到中位数（不应该发生）
+            logger.warning("No agreeing results found, using median parameters as fallback")
+            return StrategyProposal(
+                recommended_strategy=strategy_consensus.consensus_strategy,
+                spread=parameter_stats.spread_median,
+                skew_factor=parameter_stats.skew_median,
+                quantity=parameter_stats.quantity_median,
+                leverage=parameter_stats.leverage_median,
+                reasoning=combined_reasoning,
+                confidence=consensus_confidence,
+                risk_level=consensus_risk,
+                expected_return=avg_expected_return,
+                provider_name="Consensus",
+                raw_response="",
+                parse_success=True,
+            )
 
     @staticmethod
     def generate_consensus_summary(aggregated: AggregatedResult) -> str:
@@ -873,6 +910,9 @@ class StrategySimulator:
     策略模拟器 - 用于测试策略参数
 
     基于 MarketSimulator，但允许自定义参数
+    
+    Note: Only supports FixedSpread strategy in simulation.
+    注意：模拟中仅支持 FixedSpread 策略。
     """
 
     def __init__(
@@ -880,12 +920,10 @@ class StrategySimulator:
         strategy,
         initial_price: float = 2000.0,
         volatility: float = 0.02,
-        funding_rate: float = 0.0001,
     ):
         self.strategy = strategy
         self.current_price = initial_price
         self.volatility = volatility
-        self.funding_rate = funding_rate
         self.performance = PerformanceTracker()
         self.position = 0.0
 
@@ -918,17 +956,10 @@ class StrategySimulator:
             market_data = self.generate_market_data()
 
             # 获取目标订单
+            # Get target orders (FixedSpread strategy only)
+            # 获取目标订单（仅支持 FixedSpread 策略）
             if hasattr(self.strategy, "calculate_target_orders"):
-                # 检查是否需要 funding_rate 参数
-                import inspect
-
-                sig = inspect.signature(self.strategy.calculate_target_orders)
-                if "funding_rate" in sig.parameters:
-                    orders = self.strategy.calculate_target_orders(
-                        market_data, funding_rate=self.funding_rate
-                    )
-                else:
-                    orders = self.strategy.calculate_target_orders(market_data)
+                orders = self.strategy.calculate_target_orders(market_data)
             else:
                 orders = []
 

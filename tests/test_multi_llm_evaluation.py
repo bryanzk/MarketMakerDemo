@@ -6,6 +6,10 @@ Test Cases for Multi-LLM Strategy Evaluation System
 测试用例编号对应用户故事编号 US-ML-XXX
 """
 
+# ============================================================================
+# Simulation Strategy Restriction Tests / 模拟策略限制测试
+# ============================================================================
+
 import pytest
 from unittest.mock import Mock, patch, MagicMock
 from datetime import datetime

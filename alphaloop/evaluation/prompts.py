@@ -15,21 +15,24 @@ Analyze the following market data and recommend optimal trading strategy paramet
 
 {market_context}
 
-【可选策略 / Available Strategies】
-1. FixedSpread - 固定价差做市策略，适合低波动市场
-2. FundingRate - 资金费率倾斜策略，适合捕获资金费率套利
+【策略 / Strategy】
+FixedSpread - 固定价差做市策略，适合低波动市场
+Note: Only FixedSpread strategy is supported in simulation.
+注意：模拟中仅支持 FixedSpread 策略。
 
 【你的任务 / Your Task】
-Based on the market conditions, recommend:
-1. Which strategy to use
-2. Optimal parameters for the strategy
-3. Your confidence level in this recommendation
+Based on the market conditions, recommend optimal parameters for FixedSpread strategy:
+根据市场条件，推荐 FixedSpread 策略的最优参数：
+1. Optimal spread (价差)
+2. Optimal quantity (数量)
+3. Optimal leverage (杠杆)
+4. Your confidence level in this recommendation (置信度)
 
 【输出格式要求 / Output Format】
 Return ONLY a valid JSON object with the following structure (no markdown, no explanation outside JSON):
 
 {{
-    "recommended_strategy": "FixedSpread" or "FundingRate",
+    "recommended_strategy": "FixedSpread",
     "spread": 0.01,
     "skew_factor": 100,
     "quantity": 0.1,
@@ -41,8 +44,9 @@ Return ONLY a valid JSON object with the following structure (no markdown, no ex
 }}
 
 Parameter Guidelines:
-- spread: 0.005 to 0.03 (0.5% to 3%)
-- skew_factor: 50 to 200 (how aggressively to skew based on funding)
+- recommended_strategy: Must be "FixedSpread" (only supported strategy)
+- spread: 0.005 to 0.03 (0.5% to 3%) - the bid-ask spread for market making
+- skew_factor: 100 (default, not used in FixedSpread but required in JSON)
 - quantity: 0.05 to 0.5 (trade size in base currency)
 - leverage: 1 to 5 (conservative to aggressive)
 - confidence: 0.0 to 1.0 (your confidence in this recommendation)

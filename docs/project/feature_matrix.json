@@ -1,0 +1,296 @@
+{
+  "version": "1.0.0",
+  "last_updated": "2025-11-28",
+  "mutation_rules": {
+    "allowed": [
+      "Change 'passes' from false to true after verified testing",
+      "Add new feature entries with 'passes': false"
+    ],
+    "forbidden": [
+      "Delete or modify existing feature descriptions",
+      "Set 'passes': true without test evidence",
+      "Change 'id', 'category', 'description', or 'steps' of existing entries"
+    ]
+  },
+  "features": [
+    {
+      "id": "CORE-001",
+      "category": "core",
+      "description": "Exchange connection and authentication",
+      "description_zh": "交易所连接与认证",
+      "steps": [
+        "Initialize Binance client with API credentials",
+        "Verify connection to testnet/mainnet",
+        "Fetch account balance successfully"
+      ],
+      "passes": false,
+      "owner": "Agent 1"
+    },
+    {
+      "id": "CORE-002",
+      "category": "core",
+      "description": "Order placement and management",
+      "description_zh": "订单下单与管理",
+      "steps": [
+        "Place limit buy order",
+        "Place limit sell order",
+        "Cancel existing order",
+        "Query order status"
+      ],
+      "passes": false,
+      "owner": "Agent 1"
+    },
+    {
+      "id": "CORE-003",
+      "category": "core",
+      "description": "Position tracking and PnL calculation",
+      "description_zh": "仓位追踪与盈亏计算",
+      "steps": [
+        "Fetch current position",
+        "Calculate unrealized PnL",
+        "Track realized PnL history"
+      ],
+      "passes": false,
+      "owner": "Agent 1"
+    },
+    {
+      "id": "STRAT-001",
+      "category": "strategy",
+      "description": "Fixed Spread market-making strategy",
+      "description_zh": "固定价差做市策略",
+      "steps": [
+        "Calculate mid price from order book",
+        "Place bid/ask orders with configured spread",
+        "Manage inventory within limits",
+        "Rebalance orders on price movement"
+      ],
+      "passes": false,
+      "owner": "Agent 1"
+    },
+    {
+      "id": "STRAT-002",
+      "category": "strategy",
+      "description": "Funding Rate arbitrage strategy",
+      "description_zh": "资金费率套利策略",
+      "steps": [
+        "Fetch funding rate for symbol",
+        "Determine position direction based on rate",
+        "Execute entry when rate exceeds threshold",
+        "Close position after funding settlement"
+      ],
+      "passes": false,
+      "owner": "Agent 1"
+    },
+    {
+      "id": "PORT-001",
+      "category": "portfolio",
+      "description": "Multi-strategy capital allocation",
+      "description_zh": "多策略资金分配",
+      "steps": [
+        "Register multiple strategies",
+        "Allocate capital by percentage",
+        "Enforce min/max allocation limits",
+        "Track per-strategy performance"
+      ],
+      "passes": false,
+      "owner": "Agent 2"
+    },
+    {
+      "id": "PORT-002",
+      "category": "portfolio",
+      "description": "Portfolio rebalancing",
+      "description_zh": "组合再平衡",
+      "steps": [
+        "Trigger manual rebalance via API",
+        "Support multiple rebalance methods (equal, sharpe, composite)",
+        "Apply new allocations to strategies"
+      ],
+      "passes": false,
+      "owner": "Agent 2"
+    },
+    {
+      "id": "RISK-001",
+      "category": "risk",
+      "description": "Risk indicators calculation",
+      "description_zh": "风险指标计算",
+      "steps": [
+        "Calculate margin ratio",
+        "Calculate liquidation distance",
+        "Calculate leverage utilization",
+        "Generate health score"
+      ],
+      "passes": false,
+      "owner": "Agent 2"
+    },
+    {
+      "id": "RISK-002",
+      "category": "risk",
+      "description": "Risk alerts and thresholds",
+      "description_zh": "风险告警与阈值",
+      "steps": [
+        "Define warning/critical thresholds",
+        "Generate risk level assessment",
+        "Trigger alerts on threshold breach"
+      ],
+      "passes": false,
+      "owner": "Agent 2"
+    },
+    {
+      "id": "API-001",
+      "category": "api",
+      "description": "Bot control API (start/stop)",
+      "description_zh": "Bot 控制 API（启动/停止）",
+      "steps": [
+        "POST /api/control with action=start",
+        "POST /api/control with action=stop",
+        "GET /api/status returns correct running state"
+      ],
+      "passes": false,
+      "owner": "Agent 3"
+    },
+    {
+      "id": "API-002",
+      "category": "api",
+      "description": "Portfolio API endpoints",
+      "description_zh": "组合管理 API 端点",
+      "steps": [
+        "GET /api/portfolio/allocation returns allocations",
+        "POST /api/portfolio/rebalance triggers rebalance",
+        "PUT /api/portfolio/allocation/limits updates limits"
+      ],
+      "passes": false,
+      "owner": "Agent 3"
+    },
+    {
+      "id": "API-003",
+      "category": "api",
+      "description": "Risk indicators API",
+      "description_zh": "风险指标 API",
+      "steps": [
+        "GET /api/risk-indicators returns current indicators",
+        "Response includes margin_ratio, liq_distance, health_score"
+      ],
+      "passes": false,
+      "owner": "Agent 3"
+    },
+    {
+      "id": "UI-001",
+      "category": "ui",
+      "description": "Dashboard main view",
+      "description_zh": "仪表盘主视图",
+      "steps": [
+        "Display current price and position",
+        "Show account balance",
+        "Display active orders",
+        "Show PnL summary"
+      ],
+      "passes": false,
+      "owner": "Agent 3"
+    },
+    {
+      "id": "UI-002",
+      "category": "ui",
+      "description": "Portfolio overview panel",
+      "description_zh": "组合概览面板",
+      "steps": [
+        "Display strategy allocations",
+        "Show per-strategy performance",
+        "Visualize allocation distribution"
+      ],
+      "passes": false,
+      "owner": "Agent 3"
+    },
+    {
+      "id": "UI-003",
+      "category": "ui",
+      "description": "Risk indicators visualization",
+      "description_zh": "风险指标可视化",
+      "steps": [
+        "Display risk gauges/meters",
+        "Show health score with color coding",
+        "Alert indicators for high-risk states"
+      ],
+      "passes": false,
+      "owner": "Agent 3"
+    },
+    {
+      "id": "LLM-001",
+      "category": "llm",
+      "description": "Multi-LLM evaluation framework",
+      "description_zh": "多 LLM 评估框架",
+      "steps": [
+        "Initialize multiple LLM providers",
+        "Generate strategy proposals from each LLM",
+        "Aggregate and compare proposals"
+      ],
+      "passes": false,
+      "owner": "Agent 4"
+    },
+    {
+      "id": "LLM-002",
+      "category": "llm",
+      "description": "LLM-based market analysis",
+      "description_zh": "LLM 市场分析",
+      "steps": [
+        "Provide market context to LLM",
+        "Receive analysis and recommendations",
+        "Display analysis in UI"
+      ],
+      "passes": false,
+      "owner": "Agent 4"
+    },
+    {
+      "id": "LLM-003",
+      "category": "llm",
+      "description": "LLM Trade page functionality",
+      "description_zh": "LLM 交易页面功能",
+      "steps": [
+        "Navigate to /llm-trade page",
+        "Select LLM providers for evaluation",
+        "View aggregated strategy consensus"
+      ],
+      "passes": false,
+      "owner": "Agent 4"
+    },
+    {
+      "id": "TEST-001",
+      "category": "testing",
+      "description": "Core unit test coverage",
+      "description_zh": "核心单元测试覆盖",
+      "steps": [
+        "Exchange client tests pass",
+        "Strategy logic tests pass",
+        "Portfolio manager tests pass"
+      ],
+      "passes": false,
+      "owner": "Agent 5"
+    },
+    {
+      "id": "TEST-002",
+      "category": "testing",
+      "description": "API integration tests",
+      "description_zh": "API 集成测试",
+      "steps": [
+        "All /api/* endpoints have tests",
+        "Tests cover success and error cases",
+        "Tests run in CI pipeline"
+      ],
+      "passes": false,
+      "owner": "Agent 5"
+    },
+    {
+      "id": "DOC-001",
+      "category": "documentation",
+      "description": "User guide documentation",
+      "description_zh": "用户指南文档",
+      "steps": [
+        "Getting started guide complete",
+        "API reference documented",
+        "Strategy configuration guide available"
+      ],
+      "passes": false,
+      "owner": "Agent 5"
+    }
+  ]
+}
+

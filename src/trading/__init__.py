@@ -3,6 +3,7 @@
 
 """
 Trading module components:
+- engine: AlphaLoop trading engine
 - exchange: Exchange client (Binance)
 - order_manager: Order synchronization
 - risk_manager: Position risk management
@@ -18,8 +19,10 @@ from src.trading.risk_manager import RiskManager
 from src.trading.performance import PerformanceTracker
 from src.trading.simulation import MarketSimulator
 from src.trading.strategy_instance import StrategyInstance
+from src.trading.engine import AlphaLoop
 
 __all__ = [
+    "AlphaLoop",
     "BinanceClient",
     "OrderManager",
     "RiskManager",

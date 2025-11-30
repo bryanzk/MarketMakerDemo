@@ -66,8 +66,8 @@ class TestStrategyAdvisorPrompt:
         assert "confidence" in prompt
         assert "JSON" in prompt or "json" in prompt
 
-    def test_generate_parameter_guidelines(self):
-        """Test that prompt includes parameter guidelines"""
+    def test_generate_includes_parameter_examples(self):
+        """Test that prompt includes parameter examples for guidance"""
         context = MarketContext(
             symbol="ETHUSDT",
             mid_price=2500.0,
@@ -82,9 +82,11 @@ class TestStrategyAdvisorPrompt:
 
         prompt = StrategyAdvisorPrompt.generate(context)
 
-        assert "0.005 to 0.03" in prompt or "0.5% to 3%" in prompt
+        # JSON example now provides parameter guidance
+        assert '"spread": 0.01' in prompt
+        assert '"quantity": 0.1' in prompt
         # skew_factor is now fixed at 100 for FixedSpread strategy
-        assert "skew_factor" in prompt
+        assert '"skew_factor": 100' in prompt
 
 
 class TestRiskAdvisorPrompt:

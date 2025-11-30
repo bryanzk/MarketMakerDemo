@@ -1,53 +1,96 @@
 {
-  "module": "ai",
-  "version": "1.0.0",
-  "description": {
-    "en": "AI/LLM module: handles LLM integration, intelligent agents, and multi-LLM evaluation",
-    "zh": "AI/LLM 模块：处理 LLM 集成、智能体和多 LLM 评估"
-  },
-  "owner": "Agent AI",
-  "boundary": {
-    "includes": [
-      "LLM provider integration (Gemini, OpenAI, Claude)",
-      "Multi-LLM evaluation framework",
-      "DataAgent for metrics calculation",
-      "QuantAgent for strategy proposals",
-      "RiskAgent for proposal validation"
-    ],
-    "excludes": [
-      "Strategy execution (→ trading module)",
-      "Portfolio management (→ portfolio module)",
-      "API endpoint implementation (→ web module)",
-      "Risk indicator calculation (→ portfolio module)"
-    ]
-  },
-  "source_directory": "src/ai/",
-  "test_directory": "tests/unit/ai/",
-  "contract": "contracts/ai.json",
-  "dependencies": {
-    "internal": ["shared", "trading", "portfolio"],
-    "external": ["openai", "google-generativeai", "anthropic"]
-  },
-  "interfaces_provided": [
-    "LLMProvider",
-    "MultiLLMEvaluator",
-    "DataAgent",
-    "QuantAgent",
-    "RiskAgent"
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "id": "ai",
+  "name": "AI & Evaluation",
+  "name_zh": "AI 与评估",
+  "summary": "Multi-LLM orchestration, prompt templates, evaluation pipelines.",
+  "summary_zh": "负责多 LLM 调度、提示模板与评估流水线。",
+  "owner_agent": "Agent AI",
+  "directory": "src/ai/",
+  "depends_on": ["shared", "trading"],
+  "public_api_files": [
+    "src/ai/evaluation/evaluator.py",
+    "src/ai/evaluation/prompts.py",
+    "src/ai/llm.py"
   ],
-  "interfaces_consumed": [
-    "trading.ExchangeClient",
-    "trading.Strategy",
-    "portfolio.RiskIndicators",
-    "shared.Config",
-    "shared.Logger"
+  "responsibilities": [
+    "Integrate external LLM providers and manage credentials",
+    "Generate prompts and parse structured responses",
+    "Run simulations over trading strategies and aggregate scores"
   ],
-  "features": ["LLM-001", "LLM-002", "LLM-003"],
-  "current_implementation": {
-    "agents_path": "src/ai/agents/",
-    "evaluation_path": "src/ai/evaluation/",
-    "llm_path": "src/ai/llm.py",
-    "migration_status": "completed"
-  }
+  "non_goals": [
+    "Direct exchange order placement",
+    "Portfolio capital allocation",
+    "Web template rendering"
+  ],
+  "features": [
+    {
+      "id": "LLM-001",
+      "category": "ai",
+      "title": "Multi-LLM evaluation framework",
+      "title_zh": "多 LLM 评估框架",
+      "description": "Coordinate Gemini/OpenAI/Claude invocations and aggregate proposals.",
+      "description_zh": "协调 Gemini/OpenAI/Claude 调用并汇总策略建议。",
+      "current_step": "spec_defined",
+      "artifacts": {
+        "spec": "docs/specs/ai/LLM-001.md",
+        "story": "docs/stories/ai/US-LLM-001.md",
+        "tests": ["tests/test_multi_llm_evaluation.py"],
+        "code": ["src/ai/evaluation/evaluator.py"],
+        "contract": "contracts/ai.json#MultiLLMEvaluator",
+        "docs": "docs/user_guide/ai/multi_llm_evaluation.md"
+      }
+    },
+    {
+      "id": "LLM-002",
+      "category": "ai",
+      "title": "LLM-based market analysis",
+      "title_zh": "LLM 市场分析",
+      "description": "Feed market context into LLMs for sentiment and spread recommendations.",
+      "description_zh": "向 LLM 提供市场上下文以获取情绪与价差建议。",
+      "current_step": "spec_defined",
+      "artifacts": {
+        "spec": "docs/specs/ai/LLM-002.md",
+        "story": "docs/stories/ai/US-LLM-002.md",
+        "tests": ["tests/test_quant.py"],
+        "code": ["src/ai/agents/quant.py"],
+        "contract": "contracts/ai.json#MarketAnalyzer",
+        "docs": "docs/user_guide/ai/market_analysis.md"
+      }
+    },
+    {
+      "id": "LLM-003",
+      "category": "ai",
+      "title": "LLM Trade page functionality",
+      "title_zh": "LLM 交易页面功能",
+      "description": "Provide frontend-ready data for the dedicated LLMTrade experience.",
+      "description_zh": "为专用 LLMTrade 页面提供可直接渲染的数据。",
+      "current_step": "spec_defined",
+      "artifacts": {
+        "spec": "docs/specs/ai/LLM-003.md",
+        "story": "docs/stories/ai/US-LLM-003.md",
+        "tests": ["tests/test_llm.py"],
+        "code": ["src/web/templates/LLMTrade.html"],
+        "contract": null,
+        "docs": "docs/user_guide/ai/llm_trade_page.md"
+      }
+    }
+  ],
+  "status_flags": {
+    "spec_defined": false,
+    "story_defined": false,
+    "ac_defined": false,
+    "contract_defined": false,
+    "unit_test_written": false,
+    "code_implemented": false,
+    "code_reviewed": false,
+    "unit_test_passed": false,
+    "smoke_test_passed": false,
+    "integration_passed": false,
+    "docs_updated": false,
+    "progress_logged": false,
+    "ci_cd_passed": false
+  },
+  "last_updated": "2025-11-30"
 }
 

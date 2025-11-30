@@ -25,6 +25,15 @@ This bot is not just a script; it's a digital organization.
 4.  **Validate**: The **Risk Agent** checks the proposal against strict safety limits.
 5.  **Optimize**: If approved, the system updates its configuration instantly.
 
+## 🗂 Governance Map / 治理地图
+
+- `project_manifest.json` – Global map for modules, owners, directories, and dependencies / 用于记录模块、负责人、目录与依赖的全局地图。
+- `docs/modules/{module}.json` – Module card with responsibilities, constraints, and embedded feature list (Spec/Story/Test/CI) / 模块卡片，包含职责、约束及内嵌的 Feature（含 Spec/Story/Test/CI）。
+- `docs/progress/progress_index.json` – Read-only event log tying feature IDs to branches、PR 与 CI 结果 / 只读事件日志，把 Feature ID 与分支、PR、CI 结果串联起来。
+- `scripts/audit_check.py` – Lightweight audit validating manifest, module cards, progress index, and artifact files / 轻量审计脚本，校验 manifest、模块卡片、进度索引及实物文件。
+
+> **Workflow Tip / 流程提示**：新增 Feature 前先更新模块 JSON；开发完成后在 progress index 追加事件，并运行 `python scripts/audit_check.py` 确认闭环。
+
 ---
 
 ## 📚 Documentation Reading Guide / 文档阅读指南
@@ -112,16 +121,16 @@ This project has comprehensive documentation. **If you are new to the system**, 
    - 强平缓冲、库存偏移、最大回撤
    - 实时风险监控
 
-13. **AlphaLoop Framework Documentation** (docs/framework/)
-   - **[Framework Design](docs/framework/framework_design.md)**: The "Agent-First" architecture
+13. **AlphaLoop Framework Documentation** (docs/alphaloop/)
+   - **[Framework Design](docs/alphaloop/framework_design.md)**: The "Agent-First" architecture
      - 框架设计 - "智能体优先"架构
-   - **[Agent Roles and Hierarchy](docs/framework/agent_roles_and_hierarchy.md)**: Meet the AI agents
+   - **[Agent Roles and Hierarchy](docs/alphaloop/agent_roles_and_hierarchy.md)**: Meet the AI agents
      - 智能体角色和层级 - 了解各个 AI 智能体
-   - **[Agent Workflows](docs/framework/agent_workflows.md)**: How agents collaborate
+   - **[Agent Workflows](docs/alphaloop/agent_workflows.md)**: How agents collaborate
      - 智能体工作流 - 智能体如何协作
-   - **[Metrics Specification](docs/framework/metrics_specification.md)**: KPIs we track
+   - **[Metrics Specification](docs/alphaloop/metrics_specification.md)**: KPIs we track
      - 指标规范 - 我们跟踪的 KPI
-   - **[Evaluation Framework](docs/framework/evaluation_framework.md)**: Testing and validation
+   - **[Evaluation Framework](docs/src/ai/evaluation_framework.md)**: Testing and validation
      - 评估框架 - 测试和验证
 
 ### 📊 Quick Reference / 快速参考

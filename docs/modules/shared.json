@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "id": "shared",
+  "name": "Shared Platform",
+  "name_zh": "共享平台",
+  "summary": "Cross-module utilities such as config, logging, metrics registry.",
+  "summary_zh": "跨模块通用组件，包括配置、日志与指标注册。",
+  "owner_agent": "Agent ARCH",
+  "directory": "src/shared/",
+  "depends_on": [],
+  "public_api_files": [
+    "src/shared/config.py",
+    "src/shared/logger.py",
+    "src/shared/metrics/registry.py",
+    "src/shared/utils.py"
+  ],
+  "responsibilities": [
+    "Provide single-source configuration management",
+    "Offer standardized logging utilities",
+    "Define metrics schemas shared across modules"
+  ],
+  "non_goals": [
+    "Business-specific trading logic",
+    "Front-end presentation",
+    "Direct exchange connectivity"
+  ],
+  "features": [],
+  "status_flags": {
+    "spec_defined": true,
+    "story_defined": true,
+    "ac_defined": true,
+    "contract_defined": true,
+    "unit_test_written": true,
+    "code_implemented": true,
+    "code_reviewed": true,
+    "unit_test_passed": true,
+    "smoke_test_passed": true,
+    "integration_passed": true,
+    "docs_updated": true,
+    "progress_logged": true,
+    "ci_cd_passed": true
+  },
+  "last_updated": "2025-11-30"
+}
+

@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "version": "1.0.0",
+  "events": [
+    {
+      "id": "E-2025-0001",
+      "type": "framework_update",
+      "feature_ids": ["CORE-001", "API-001"],
+      "modules": ["trading", "web"],
+      "summary": "Initial migration to src/ layout and FastAPI shell",
+      "author": "Agent PM",
+      "timestamp": "2025-11-25T00:00:00Z",
+      "notes": "Baseline event imported from legacy tracker"
+    }
+  ]
+}
+

@@ -1,49 +1,131 @@
 {
-  "module": "trading",
-  "version": "1.0.0",
-  "description": {
-    "en": "Trading engine module: handles exchange connection, order management, and strategy execution",
-    "zh": "交易引擎模块：处理交易所连接、订单管理和策略执行"
-  },
-  "owner": "Agent TRADING",
-  "boundary": {
-    "includes": [
-      "Exchange client and connection management",
-      "Order placement, cancellation, and tracking",
-      "Position tracking and PnL calculation",
-      "Strategy implementation (FixedSpread, FundingRate)",
-      "Market data processing"
-    ],
-    "excludes": [
-      "Portfolio-level allocation (→ portfolio module)",
-      "API endpoint implementation (→ web module)",
-      "LLM-based analysis (→ ai module)",
-      "Risk alerts and thresholds (→ portfolio module)"
-    ]
-  },
-  "source_directory": "src/trading/",
-  "test_directory": "tests/unit/trading/",
-  "contract": "contracts/trading.json",
-  "dependencies": {
-    "internal": ["shared"],
-    "external": ["binance-futures-connector", "python-binance"]
-  },
-  "interfaces_provided": [
-    "ExchangeClient",
-    "OrderManager",
-    "Strategy",
-    "FixedSpreadStrategy",
-    "FundingRateStrategy"
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "id": "trading",
+  "name": "Trading Engine",
+  "name_zh": "交易引擎",
+  "summary": "Exchange connectivity, order lifecycle, and strategy execution.",
+  "summary_zh": "负责交易所连接、订单生命周期以及策略执行。",
+  "owner_agent": "Agent TRADING",
+  "directory": "src/trading/",
+  "depends_on": ["shared"],
+  "public_api_files": [
+    "src/trading/exchange.py",
+    "src/trading/order_manager.py",
+    "src/trading/engine.py"
   ],
-  "interfaces_consumed": [
-    "shared.Config",
-    "shared.Logger"
+  "responsibilities": [
+    "Provide reliable exchange connectivity and authentication",
+    "Manage order placement, cancellation, and fills",
+    "Host strategy instances and run the AlphaLoop main loop",
+    "Expose simulation tools to AI evaluators"
   ],
-  "features": ["CORE-001", "CORE-002", "CORE-003", "STRAT-001", "STRAT-002"],
-  "current_implementation": {
-    "path": "src/trading/",
-    "strategies_path": "src/trading/strategies/",
-    "migration_status": "completed"
-  }
+  "non_goals": [
+    "Portfolio-level capital allocation",
+    "LLM evaluation orchestration",
+    "User interface rendering"
+  ],
+  "features": [
+    {
+      "id": "CORE-001",
+      "category": "core",
+      "title": "Exchange connection and authentication",
+      "title_zh": "交易所连接与认证",
+      "description": "Provide deterministic Binance connection handling, secure credential storage, and health monitoring.",
+      "description_zh": "提供可预测的 Binance 连接处理、安全凭证管理以及健康监控。",
+      "current_step": "spec_defined",
+      "artifacts": {
+        "spec": "docs/specs/trading/CORE-001.md",
+        "story": "docs/stories/trading/US-CORE-001.md",
+        "tests": ["tests/test_exchange.py"],
+        "code": ["src/trading/exchange.py"],
+        "contract": "contracts/trading.json#ExchangeClient",
+        "docs": "docs/user_guide/trading/exchange_connection.md"
+      }
+    },
+    {
+      "id": "CORE-002",
+      "category": "core",
+      "title": "Order placement and management",
+      "title_zh": "订单下单与管理",
+      "description": "Support idempotent order placement, tracking, and amendments for all strategies.",
+      "description_zh": "支持所有策略的幂等下单、跟踪与调整。",
+      "current_step": "spec_defined",
+      "artifacts": {
+        "spec": "docs/specs/trading/CORE-002.md",
+        "story": "docs/stories/trading/US-CORE-002.md",
+        "tests": ["tests/test_order_manager.py"],
+        "code": ["src/trading/order_manager.py"],
+        "contract": "contracts/trading.json#OrderManager",
+        "docs": "docs/user_guide/trading/order_management.md"
+      }
+    },
+    {
+      "id": "CORE-003",
+      "category": "core",
+      "title": "Position tracking and PnL calculation",
+      "title_zh": "仓位追踪与盈亏计算",
+      "description": "Track filled orders, compute realized/unrealized PnL, and expose metrics to downstream modules.",
+      "description_zh": "跟踪成交订单、计算已实现/未实现盈亏，并向下游模块输出指标。",
+      "current_step": "spec_defined",
+      "artifacts": {
+        "spec": "docs/specs/trading/CORE-003.md",
+        "story": "docs/stories/trading/US-CORE-003.md",
+        "tests": ["tests/test_performance.py"],
+        "code": ["src/trading/performance.py"],
+        "contract": "contracts/trading.json#PositionTracker",
+        "docs": "docs/user_guide/trading/position_tracking.md"
+      }
+    },
+    {
+      "id": "STRAT-001",
+      "category": "strategy",
+      "title": "Fixed Spread market-making strategy",
+      "title_zh": "固定价差做市策略",
+      "description": "Implement tunable fixed-spread quoting with leverage and skew controls.",
+      "description_zh": "实现可调的固定价差挂单，并支持杠杆与倾斜控制。",
+      "current_step": "spec_defined",
+      "artifacts": {
+        "spec": "docs/specs/trading/STRAT-001.md",
+        "story": "docs/stories/trading/US-STRAT-001.md",
+        "tests": ["tests/test_strategy.py"],
+        "code": ["src/trading/strategies/fixed_spread.py"],
+        "contract": "contracts/trading.json#FixedSpreadStrategy",
+        "docs": "docs/user_guide/trading/fixed_spread_strategy.md"
+      }
+    },
+    {
+      "id": "STRAT-002",
+      "category": "strategy",
+      "title": "Funding Rate arbitrage strategy",
+      "title_zh": "资金费率套利策略",
+      "description": "Exploit positive/negative funding by long/short bias inventory management.",
+      "description_zh": "通过多空库存偏置利用正负资金费率机会。",
+      "current_step": "spec_defined",
+      "artifacts": {
+        "spec": "docs/specs/trading/STRAT-002.md",
+        "story": "docs/stories/trading/US-STRAT-002.md",
+        "tests": ["tests/test_funding_strategy.py"],
+        "code": ["src/trading/strategies/funding_rate.py"],
+        "contract": "contracts/trading.json#FundingRateStrategy",
+        "docs": "docs/user_guide/trading/funding_rate_strategy.md"
+      }
+    }
+  ],
+  "status_flags": {
+    "spec_defined": false,
+    "story_defined": false,
+    "ac_defined": false,
+    "contract_defined": false,
+    "unit_test_written": false,
+    "code_implemented": false,
+    "code_reviewed": false,
+    "unit_test_passed": false,
+    "smoke_test_passed": false,
+    "integration_passed": false,
+    "docs_updated": false,
+    "progress_logged": false,
+    "ci_cd_passed": false
+  },
+  "last_updated": "2025-11-30"
 }
 

@@ -1,49 +1,113 @@
 {
-  "module": "portfolio",
-  "version": "1.0.0",
-  "description": {
-    "en": "Portfolio management module: handles capital allocation, risk indicators, and health scoring",
-    "zh": "组合管理模块：处理资金分配、风险指标和健康评分"
-  },
-  "owner": "Agent PORTFOLIO",
-  "boundary": {
-    "includes": [
-      "Multi-strategy capital allocation",
-      "Portfolio rebalancing",
-      "Risk indicator calculation",
-      "Health scoring system",
-      "Risk alerts and thresholds"
-    ],
-    "excludes": [
-      "Individual strategy logic (→ trading module)",
-      "API endpoint implementation (→ web module)",
-      "LLM-based risk analysis (→ ai module)",
-      "Order execution (→ trading module)"
-    ]
-  },
-  "source_directory": "src/portfolio/",
-  "test_directory": "tests/unit/portfolio/",
-  "contract": "contracts/portfolio.json",
-  "dependencies": {
-    "internal": ["shared", "trading"],
-    "external": []
-  },
-  "interfaces_provided": [
-    "PortfolioManager",
-    "Rebalancer",
-    "RiskIndicators",
-    "RiskAlerts"
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "id": "portfolio",
+  "name": "Portfolio & Risk",
+  "name_zh": "组合与风险",
+  "summary": "Capital allocation, health scoring, and risk dashboards.",
+  "summary_zh": "负责资金分配、健康度计算与风险面板。",
+  "owner_agent": "Agent PORTFOLIO",
+  "directory": "src/portfolio/",
+  "depends_on": ["shared", "trading"],
+  "public_api_files": [
+    "src/portfolio/manager.py",
+    "src/portfolio/health.py",
+    "src/portfolio/risk.py"
   ],
-  "interfaces_consumed": [
-    "trading.ExchangeClient",
-    "trading.Strategy",
-    "shared.Config",
-    "shared.Logger"
+  "responsibilities": [
+    "Distribute capital across strategies with guardrails",
+    "Compute portfolio-level KPIs (PnL, Sharpe, ROI)",
+    "Surface risk alerts and health indicators to the UI"
   ],
-  "features": ["PORT-001", "PORT-002", "RISK-001", "RISK-002"],
-  "current_implementation": {
-    "path": "src/portfolio/",
-    "migration_status": "completed"
-  }
+  "non_goals": [
+    "Direct exchange order placement",
+    "LLM evaluation orchestration",
+    "Frontend rendering"
+  ],
+  "features": [
+    {
+      "id": "PORT-001",
+      "category": "portfolio",
+      "title": "Multi-strategy capital allocation",
+      "title_zh": "多策略资金分配",
+      "description": "Allocate wallet capital with constraints and expose API data to the dashboard.",
+      "description_zh": "在约束下分配钱包资金，并向仪表盘输出数据。",
+      "current_step": "spec_defined",
+      "artifacts": {
+        "spec": "docs/specs/portfolio/PORT-001.md",
+        "story": "docs/stories/portfolio/US-PORT-001.md",
+        "tests": ["tests/test_portfolio_api.py"],
+        "code": ["src/portfolio/manager.py"],
+        "contract": "contracts/portfolio.json#PortfolioManager",
+        "docs": "docs/user_guide/portfolio/capital_allocation.md"
+      }
+    },
+    {
+      "id": "PORT-002",
+      "category": "portfolio",
+      "title": "Portfolio rebalancing",
+      "title_zh": "组合再平衡",
+      "description": "Provide multiple rebalancing schemes (equal, Sharpe, ROI, composite).",
+      "description_zh": "提供等权、Sharpe、ROI、综合等多种再平衡策略。",
+      "current_step": "spec_defined",
+      "artifacts": {
+        "spec": "docs/specs/portfolio/PORT-002.md",
+        "story": "docs/stories/portfolio/US-PORT-002.md",
+        "tests": ["tests/test_portfolio_sync.py"],
+        "code": ["src/portfolio/manager.py"],
+        "contract": "contracts/portfolio.json#Rebalancer",
+        "docs": "docs/user_guide/portfolio/rebalancing.md"
+      }
+    },
+    {
+      "id": "RISK-001",
+      "category": "risk",
+      "title": "Risk indicators calculation",
+      "title_zh": "风险指标计算",
+      "description": "Compute liquidation buffer, inventory drift, and maximum drawdown.",
+      "description_zh": "计算强平缓冲、库存偏移、最大回撤等指标。",
+      "current_step": "spec_defined",
+      "artifacts": {
+        "spec": "docs/specs/portfolio/RISK-001.md",
+        "story": "docs/stories/portfolio/US-RISK-001.md",
+        "tests": ["tests/test_risk_indicators.py"],
+        "code": ["src/portfolio/risk.py"],
+        "contract": "contracts/portfolio.json#RiskIndicators",
+        "docs": "docs/user_guide/portfolio/risk_indicators.md"
+      }
+    },
+    {
+      "id": "RISK-002",
+      "category": "risk",
+      "title": "Risk alerts and thresholds",
+      "title_zh": "风险告警与阈值",
+      "description": "Define alert thresholds, send UI notifications, and enforce throttles.",
+      "description_zh": "定义告警阈值、推送 UI 通知，并执行限流。",
+      "current_step": "spec_defined",
+      "artifacts": {
+        "spec": "docs/specs/portfolio/RISK-002.md",
+        "story": "docs/stories/portfolio/US-RISK-002.md",
+        "tests": ["tests/test_risk_manager.py"],
+        "code": ["src/portfolio/health.py"],
+        "contract": "contracts/portfolio.json#RiskAlerts",
+        "docs": "docs/user_guide/portfolio/risk_alerts.md"
+      }
+    }
+  ],
+  "status_flags": {
+    "spec_defined": false,
+    "story_defined": false,
+    "ac_defined": false,
+    "contract_defined": false,
+    "unit_test_written": false,
+    "code_implemented": false,
+    "code_reviewed": false,
+    "unit_test_passed": false,
+    "smoke_test_passed": false,
+    "integration_passed": false,
+    "docs_updated": false,
+    "progress_logged": false,
+    "ci_cd_passed": false
+  },
+  "last_updated": "2025-11-30"
 }
 

@@ -1,54 +1,148 @@
 {
-  "module": "web",
-  "version": "1.0.0",
-  "description": {
-    "en": "Web/API module: handles FastAPI server, API routes, and frontend templates",
-    "zh": "Web/API 模块：处理 FastAPI 服务、API 路由和前端模板"
-  },
-  "owner": "Agent WEB",
-  "boundary": {
-    "includes": [
-      "FastAPI server setup and configuration",
-      "API endpoint implementation",
-      "Request/response handling",
-      "Frontend HTML templates",
-      "Static file serving"
-    ],
-    "excludes": [
-      "Business logic implementation (→ trading/portfolio/ai modules)",
-      "Strategy execution (→ trading module)",
-      "Risk calculation (→ portfolio module)",
-      "LLM integration (→ ai module)"
-    ]
-  },
-  "source_directory": "src/web/",
-  "test_directory": "tests/unit/web/",
-  "contract": "contracts/web.json",
-  "dependencies": {
-    "internal": ["shared", "trading", "portfolio", "ai"],
-    "external": ["fastapi", "uvicorn", "jinja2"]
-  },
-  "interfaces_provided": [
-    "BotControlAPI",
-    "PortfolioAPI",
-    "RiskAPI",
-    "EvaluationAPI"
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "id": "web",
+  "name": "Web & API",
+  "name_zh": "Web 与 API",
+  "summary": "FastAPI services, API routing, dashboards and templates.",
+  "summary_zh": "负责 FastAPI 服务、API 路由以及前端模板。",
+  "owner_agent": "Agent WEB",
+  "directory": "src/web/",
+  "depends_on": ["trading", "portfolio", "ai"],
+  "public_api_files": [
+    "server.py",
+    "src/web/routes",
+    "templates/LLMTrade.html",
+    "templates/index.html"
   ],
-  "interfaces_consumed": [
-    "trading.ExchangeClient",
-    "trading.Strategy",
-    "portfolio.PortfolioManager",
-    "portfolio.RiskIndicators",
-    "ai.MultiLLMEvaluator",
-    "shared.Config",
-    "shared.Logger"
+  "responsibilities": [
+    "Expose REST endpoints for bot control and monitoring",
+    "Render dashboards and LLM trade lab experience",
+    "Serve static assets and integrate with FastAPI dependencies"
   ],
-  "features": ["API-001", "API-002", "API-003", "UI-001", "UI-002", "UI-003"],
-  "current_implementation": {
-    "legacy_path": "server.py",
-    "legacy_templates": "templates/",
-    "migration_status": "pending"
-  }
+  "non_goals": [
+    "Market-making strategy logic",
+    "LLM evaluation algorithms",
+    "Portfolio capital calculations"
+  ],
+  "features": [
+    {
+      "id": "API-001",
+      "category": "api",
+      "title": "Bot control API (start/stop)",
+      "title_zh": "Bot 控制 API（启动/停止）",
+      "description": "Provide REST endpoints to start/stop the trading engine and fetch bot status.",
+      "description_zh": "提供启动/停止交易引擎以及获取状态的 REST 接口。",
+      "current_step": "spec_defined",
+      "artifacts": {
+        "spec": "docs/specs/web/API-001.md",
+        "story": "docs/stories/web/US-API-001.md",
+        "tests": ["tests/test_server_api.py"],
+        "code": ["server.py"],
+        "contract": "contracts/web.json#BotControlAPI",
+        "docs": "docs/user_guide/web/bot_control_api.md"
+      }
+    },
+    {
+      "id": "API-002",
+      "category": "api",
+      "title": "Portfolio API endpoints",
+      "title_zh": "组合管理 API 端点",
+      "description": "Expose allocation, performance, and risk KPIs for the dashboard.",
+      "description_zh": "为仪表盘提供分配、绩效与风险指标接口。",
+      "current_step": "spec_defined",
+      "artifacts": {
+        "spec": "docs/specs/web/API-002.md",
+        "story": "docs/stories/web/US-API-002.md",
+        "tests": ["tests/test_portfolio_api.py"],
+        "code": ["server.py"],
+        "contract": "contracts/web.json#PortfolioAPI",
+        "docs": "docs/user_guide/web/portfolio_api.md"
+      }
+    },
+    {
+      "id": "API-003",
+      "category": "api",
+      "title": "Risk indicators API",
+      "title_zh": "风险指标 API",
+      "description": "Deliver liquidation buffer, inventory drift, and drawdown data to the UI.",
+      "description_zh": "向 UI 提供强平缓冲、库存偏移与回撤数据。",
+      "current_step": "spec_defined",
+      "artifacts": {
+        "spec": "docs/specs/web/API-003.md",
+        "story": "docs/stories/web/US-API-003.md",
+        "tests": ["tests/test_server_funding_rates.py"],
+        "code": ["server.py"],
+        "contract": "contracts/web.json#RiskAPI",
+        "docs": "docs/user_guide/web/risk_api.md"
+      }
+    },
+    {
+      "id": "UI-001",
+      "category": "ui",
+      "title": "Dashboard main view",
+      "title_zh": "仪表盘主视图",
+      "description": "Render core KPIs, bot controls, and execution timeline.",
+      "description_zh": "渲染核心 KPI、机器人控制和执行时间线。",
+      "current_step": "spec_defined",
+      "artifacts": {
+        "spec": "docs/specs/web/UI-001.md",
+        "story": "docs/stories/web/US-UI-001.md",
+        "tests": ["tests/test_server.py"],
+        "code": ["templates/index.html"],
+        "contract": null,
+        "docs": "docs/user_guide/web/dashboard.md"
+      }
+    },
+    {
+      "id": "UI-002",
+      "category": "ui",
+      "title": "Portfolio overview panel",
+      "title_zh": "组合概览面板",
+      "description": "Provide capital allocation, health, and ROI panels for multiple strategies.",
+      "description_zh": "提供多策略的资金分配、健康度与 ROI 面板。",
+      "current_step": "spec_defined",
+      "artifacts": {
+        "spec": "docs/specs/web/UI-002.md",
+        "story": "docs/stories/web/US-UI-002.md",
+        "tests": ["tests/test_portfolio_api.py"],
+        "code": ["templates/index.html"],
+        "contract": null,
+        "docs": "docs/user_guide/web/portfolio_panel.md"
+      }
+    },
+    {
+      "id": "UI-003",
+      "category": "ui",
+      "title": "Risk indicators visualization",
+      "title_zh": "风险指标可视化",
+      "description": "Provide charts and alerts for risk indicators including liquidation buffer.",
+      "description_zh": "为风险指标（含强平缓冲）提供图表与告警。",
+      "current_step": "spec_defined",
+      "artifacts": {
+        "spec": "docs/specs/web/UI-003.md",
+        "story": "docs/stories/web/US-UI-003.md",
+        "tests": ["tests/test_risk_agent.py"],
+        "code": ["templates/index.html"],
+        "contract": null,
+        "docs": "docs/user_guide/web/risk_visualization.md"
+      }
+    }
+  ],
+  "status_flags": {
+    "spec_defined": false,
+    "story_defined": false,
+    "ac_defined": false,
+    "contract_defined": false,
+    "unit_test_written": false,
+    "code_implemented": false,
+    "code_reviewed": false,
+    "unit_test_passed": false,
+    "smoke_test_passed": false,
+    "integration_passed": false,
+    "docs_updated": false,
+    "progress_logged": false,
+    "ci_cd_passed": false
+  },
+  "last_updated": "2025-11-30"
 }
-
 

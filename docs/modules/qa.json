@@ -1,0 +1,95 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "id": "qa",
+  "name": "Quality & Documentation",
+  "name_zh": "质量与文档",
+  "summary": "Integration tests, smoke tests, user guides, and documentation QA.",
+  "summary_zh": "负责集成测试、冒烟测试、用户文档与文档质量。",
+  "owner_agent": "Agent QA",
+  "directory": null,
+  "depends_on": ["trading", "portfolio", "web", "ai"],
+  "public_api_files": [
+    "tests/integration/",
+    "tests/smoke/",
+    "docs/user_guide/"
+  ],
+  "responsibilities": [
+    "Author system-level tests before implementation (TDD)",
+    "Maintain smoke/integration suites",
+    "Update bilingual user guides and release notes"
+  ],
+  "non_goals": [
+    "Implement production code in src/**",
+    "Maintain module-specific business logic"
+  ],
+  "features": [
+    {
+      "id": "TEST-001",
+      "category": "testing",
+      "title": "Core unit test coverage",
+      "title_zh": "核心单元测试覆盖",
+      "description": "Define coverage targets and fixtures for critical trading flows.",
+      "description_zh": "为关键交易流程定义覆盖目标与基准夹具。",
+      "current_step": "spec_defined",
+      "artifacts": {
+        "spec": "docs/specs/qa/TEST-001.md",
+        "story": "docs/stories/qa/US-TEST-001.md",
+        "tests": ["tests/test_integration_business.py"],
+        "code": null,
+        "contract": null,
+        "docs": "docs/user_guide/qa/test_coverage.md"
+      }
+    },
+    {
+      "id": "TEST-002",
+      "category": "testing",
+      "title": "API integration tests",
+      "title_zh": "API 集成测试",
+      "description": "Automate FastAPI endpoint validation plus regression matrix.",
+      "description_zh": "自动化 FastAPI 端点验证与回归矩阵。",
+      "current_step": "spec_defined",
+      "artifacts": {
+        "spec": "docs/specs/qa/TEST-002.md",
+        "story": "docs/stories/qa/US-TEST-002.md",
+        "tests": ["tests/test_server_api.py"],
+        "code": null,
+        "contract": null,
+        "docs": "docs/user_guide/qa/api_testing.md"
+      }
+    },
+    {
+      "id": "DOC-001",
+      "category": "documentation",
+      "title": "User guide documentation",
+      "title_zh": "用户指南文档",
+      "description": "Maintain bilingual guides covering trading, portfolio, risk, and AI flows.",
+      "description_zh": "维护覆盖交易、组合、风险与 AI 流程的双语指南。",
+      "current_step": "spec_defined",
+      "artifacts": {
+        "spec": "docs/specs/qa/DOC-001.md",
+        "story": "docs/stories/qa/US-DOC-001.md",
+        "tests": [],
+        "code": ["docs/user_guide/README.md"],
+        "contract": null,
+        "docs": "docs/user_guide/README.md"
+      }
+    }
+  ],
+  "status_flags": {
+    "spec_defined": false,
+    "story_defined": false,
+    "ac_defined": false,
+    "contract_defined": false,
+    "unit_test_written": false,
+    "code_implemented": false,
+    "code_reviewed": false,
+    "unit_test_passed": false,
+    "smoke_test_passed": false,
+    "integration_passed": false,
+    "docs_updated": false,
+    "progress_logged": false,
+    "ci_cd_passed": false
+  },
+  "last_updated": "2025-11-30"
+}
+

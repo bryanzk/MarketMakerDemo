@@ -268,4 +268,3 @@ class StrategyInstance:
             "order_count": len(self.active_orders),
             "use_real_exchange": self.use_real_exchange,
         }
-

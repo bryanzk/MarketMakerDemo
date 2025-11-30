@@ -44,7 +44,9 @@ class FixedSpreadStrategy:
         """Return a copy of the safe default parameters."""
         return self._safe_defaults.copy()
 
-    def calculate_target_orders(self, market_data: Dict[str, Any]) -> List[Dict[str, Any]]:
+    def calculate_target_orders(
+        self, market_data: Dict[str, Any]
+    ) -> List[Dict[str, Any]]:
         """
         Calculates target orders based on fixed spread.
 
@@ -83,4 +85,3 @@ class FixedSpreadStrategy:
             {"side": "buy", "price": final_bid, "quantity": qty},
             {"side": "sell", "price": final_ask, "quantity": qty},
         ]
-

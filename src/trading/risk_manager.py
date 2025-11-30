@@ -35,4 +35,3 @@ class RiskManager:
                 allowed_sides.remove("sell")
 
         return allowed_sides
-

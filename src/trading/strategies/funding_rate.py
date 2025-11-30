@@ -109,4 +109,3 @@ class FundingRateStrategy:
             {"side": "buy", "price": final_bid, "quantity": qty},
             {"side": "sell", "price": final_ask, "quantity": qty},
         ]
-

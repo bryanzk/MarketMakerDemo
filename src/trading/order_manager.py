@@ -65,4 +65,3 @@ class OrderManager:
                 to_cancel.append(curr_sell["id"])
 
         return to_cancel, to_place
-

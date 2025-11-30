@@ -83,4 +83,3 @@ if __name__ == "__main__":
     sim = MarketSimulator(strategy)
     stats = sim.run(1000)
     print("Simulation Results:", stats)
-

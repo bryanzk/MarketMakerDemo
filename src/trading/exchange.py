@@ -603,4 +603,3 @@ class BinanceClient:
                 "commission": 0.0,
                 "net_pnl": 0.0,
             }
-

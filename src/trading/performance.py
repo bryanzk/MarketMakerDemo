@@ -102,4 +102,3 @@ class PerformanceTracker:
         self.pnl_history.clear()
         self.last_position = 0.0
         self.avg_entry_price = 0.0
-

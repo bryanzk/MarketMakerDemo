@@ -450,4 +450,3 @@ class PortfolioManager:
                 self.strategies[sid].allocation = new_alloc
 
         return constrained_allocations
-

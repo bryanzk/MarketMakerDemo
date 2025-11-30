@@ -14,7 +14,12 @@ from src.portfolio.health import (
     get_health_status,
     get_health_color,
 )
-from src.portfolio.manager import PortfolioManager, StrategyInfo, StrategyStatus, RiskLevel
+from src.portfolio.manager import (
+    PortfolioManager,
+    StrategyInfo,
+    StrategyStatus,
+    RiskLevel,
+)
 from src.portfolio.risk import RiskIndicators
 
 __all__ = [
@@ -31,4 +36,3 @@ __all__ = [
     # Risk
     "RiskIndicators",
 ]
-

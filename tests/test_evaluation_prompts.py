@@ -79,7 +79,8 @@ class TestStrategyAdvisorPrompt:
         prompt = StrategyAdvisorPrompt.generate(context)
 
         assert "0.005 to 0.03" in prompt or "0.5% to 3%" in prompt
-        assert "50 to 200" in prompt  # skew_factor range
+        # skew_factor is now fixed at 100 for FixedSpread strategy
+        assert "skew_factor" in prompt
 
 
 class TestRiskAdvisorPrompt:

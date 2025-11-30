@@ -36,7 +36,7 @@ class TestOpenAIProvider:
                 mock_openai.return_value = mock_client
                 provider = OpenAIProvider()
                 assert provider.api_key == "test_key"
-                assert provider._model_name == "gpt-4o"
+                assert provider._model_name == "gpt-5"
                 mock_openai.assert_called_with(api_key="test_key")
 
     def test_init_failure_no_key(self):
@@ -57,7 +57,7 @@ class TestOpenAIProvider:
         with patch.dict("os.environ", {"OPENAI_API_KEY": "test_key"}):
             with patch("openai.OpenAI"):
                 provider = OpenAIProvider()
-                assert provider.name == "OpenAI (gpt-4o)"
+                assert provider.name == "OpenAI (gpt-5)"
 
     def test_generate_success(self):
         """Test successful content generation"""
@@ -108,7 +108,7 @@ class TestClaudeProvider:
                 mock_anthropic.return_value = mock_client
                 provider = ClaudeProvider()
                 assert provider.api_key == "test_key"
-                assert provider._model_name == "claude-sonnet-4-20250514"
+                assert provider._model_name == "claude-3-5-sonnet-20241022"
                 mock_anthropic.assert_called_with(api_key="test_key")
 
     def test_init_failure_no_key(self):
@@ -129,7 +129,7 @@ class TestClaudeProvider:
         with patch.dict("os.environ", {"ANTHROPIC_API_KEY": "test_key"}):
             with patch("anthropic.Anthropic"):
                 provider = ClaudeProvider()
-                assert provider.name == "Claude (claude-sonnet-4-20250514)"
+                assert provider.name == "Claude (claude-3-5-sonnet-20241022)"
 
     def test_generate_success(self):
         """Test successful content generation"""
@@ -177,7 +177,7 @@ class TestGeminiProviderName:
             with patch("google.generativeai.configure"):
                 with patch("google.generativeai.GenerativeModel"):
                     provider = GeminiProvider()
-                    assert provider.name == "Gemini (gemini-1.5-pro)"
+                    assert provider.name == "Gemini (gemini-3-pro)"
 
     def test_name_property_custom_model(self):
         """Test name property with custom model"""

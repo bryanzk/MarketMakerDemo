@@ -15,7 +15,7 @@ class TestGeminiProvider:
                 with patch("google.generativeai.GenerativeModel") as mock_model:
                     provider = GeminiProvider()
                     mock_config.assert_called_with(api_key="test_key")
-                    mock_model.assert_called_with("gemini-1.5-pro")
+                    mock_model.assert_called_with("gemini-3-pro")
 
     def test_init_failure_no_key(self):
         """Test initialization failure when API key is missing"""

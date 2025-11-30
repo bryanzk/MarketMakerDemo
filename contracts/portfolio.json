@@ -1,0 +1,173 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "module": "portfolio",
+  "version": "1.0.0",
+  "description": "Portfolio management interface contracts / 组合管理接口契约",
+  "owner": "Agent ARCH",
+  "last_updated": "2025-11-30",
+  "readonly_for": ["Agent TRADING", "Agent PORTFOLIO", "Agent WEB", "Agent AI", "Agent QA"],
+  "interfaces": {
+    "PortfolioManager": {
+      "description": "Multi-strategy portfolio management / 多策略组合管理",
+      "methods": {
+        "register_strategy": {
+          "description": "Register a strategy to the portfolio",
+          "params": {
+            "strategy_id": "string",
+            "strategy": "Strategy",
+            "allocation": "float (0.0 - 1.0)"
+          },
+          "returns": "boolean",
+          "raises": ["DuplicateStrategyError", "InvalidAllocationError"]
+        },
+        "get_allocations": {
+          "description": "Get current allocation percentages",
+          "params": {},
+          "returns": {
+            "allocations": "dict[string, float]",
+            "total": "float"
+          },
+          "raises": []
+        },
+        "set_allocation": {
+          "description": "Set allocation for a strategy",
+          "params": {
+            "strategy_id": "string",
+            "allocation": "float (0.0 - 1.0)"
+          },
+          "returns": "boolean",
+          "raises": ["StrategyNotFoundError", "InvalidAllocationError"]
+        },
+        "get_portfolio_data": {
+          "description": "Get aggregated portfolio data",
+          "params": {},
+          "returns": {
+            "total_pnl": "float",
+            "net_pnl": "float",
+            "portfolio_sharpe": "float",
+            "risk_level": "string (low|medium|high|critical)",
+            "strategies": "array of StrategyStatus"
+          },
+          "raises": []
+        }
+      }
+    },
+    "Rebalancer": {
+      "description": "Portfolio rebalancing / 组合再平衡",
+      "methods": {
+        "rebalance": {
+          "description": "Trigger portfolio rebalance",
+          "params": {
+            "method": "string (equal|sharpe|composite)"
+          },
+          "returns": {
+            "old_allocations": "dict[string, float]",
+            "new_allocations": "dict[string, float]",
+            "changes": "array of AllocationChange"
+          },
+          "raises": ["RebalanceError"]
+        },
+        "get_rebalance_suggestion": {
+          "description": "Get suggested rebalance without applying",
+          "params": {
+            "method": "string"
+          },
+          "returns": {
+            "suggested_allocations": "dict[string, float]",
+            "reason": "string"
+          },
+          "raises": []
+        }
+      }
+    },
+    "RiskIndicators": {
+      "description": "Risk indicator calculation / 风险指标计算",
+      "methods": {
+        "from_exchange_data": {
+          "description": "Calculate risk indicators from exchange data",
+          "params": {
+            "current_price": "float",
+            "position_amt": "float",
+            "liquidation_price": "float",
+            "max_position": "float",
+            "pnl_history": "array of float"
+          },
+          "returns": {
+            "liquidation_buffer": "float (0-100%)",
+            "inventory_drift": "float (0-100%)",
+            "max_drawdown": "float (0-100%)",
+            "overall_risk_level": "string (low|medium|high|critical)"
+          },
+          "raises": []
+        },
+        "get_health_score": {
+          "description": "Calculate overall health score",
+          "params": {},
+          "returns": {
+            "score": "float (0-100)",
+            "grade": "string (A|B|C|D|F)",
+            "components": "dict[string, float]"
+          },
+          "raises": []
+        }
+      }
+    },
+    "RiskAlerts": {
+      "description": "Risk alerting system / 风险告警系统",
+      "methods": {
+        "check_thresholds": {
+          "description": "Check if any thresholds are breached",
+          "params": {
+            "indicators": "RiskIndicatorResult"
+          },
+          "returns": {
+            "alerts": "array of Alert",
+            "highest_severity": "string (info|warning|critical)"
+          },
+          "raises": []
+        },
+        "set_threshold": {
+          "description": "Set threshold for an indicator",
+          "params": {
+            "indicator": "string",
+            "warning_level": "float",
+            "critical_level": "float"
+          },
+          "returns": "boolean",
+          "raises": ["InvalidThresholdError"]
+        }
+      }
+    }
+  },
+  "data_types": {
+    "StrategyStatus": {
+      "id": "string",
+      "name": "string",
+      "allocation": "float",
+      "pnl": "float",
+      "sharpe": "float",
+      "running": "boolean"
+    },
+    "AllocationChange": {
+      "strategy_id": "string",
+      "old_allocation": "float",
+      "new_allocation": "float",
+      "reason": "string"
+    },
+    "RiskIndicatorResult": {
+      "liquidation_buffer": "float",
+      "inventory_drift": "float",
+      "max_drawdown": "float",
+      "overall_risk_level": "string"
+    },
+    "Alert": {
+      "indicator": "string",
+      "current_value": "float",
+      "threshold": "float",
+      "severity": "string",
+      "message": "string",
+      "timestamp": "datetime"
+    }
+  }
+}
+

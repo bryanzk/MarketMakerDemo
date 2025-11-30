@@ -1,0 +1,197 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "module": "ai",
+  "version": "1.0.0",
+  "description": "AI/LLM interface contracts / AI/LLM 接口契约",
+  "owner": "Agent ARCH",
+  "last_updated": "2025-11-30",
+  "readonly_for": ["Agent TRADING", "Agent PORTFOLIO", "Agent WEB", "Agent AI", "Agent QA"],
+  "interfaces": {
+    "LLMProvider": {
+      "description": "Base LLM provider interface / LLM 提供者基础接口",
+      "methods": {
+        "generate": {
+          "description": "Generate response from LLM",
+          "params": {
+            "prompt": "string",
+            "context": "object (optional)",
+            "max_tokens": "integer (optional)"
+          },
+          "returns": {
+            "text": "string",
+            "usage": "TokenUsage"
+          },
+          "raises": ["APIError", "RateLimitError", "TimeoutError"]
+        },
+        "get_provider_info": {
+          "description": "Get provider information",
+          "params": {},
+          "returns": {
+            "name": "string",
+            "model": "string",
+            "max_tokens": "integer"
+          },
+          "raises": []
+        }
+      }
+    },
+    "MultiLLMEvaluator": {
+      "description": "Multi-LLM strategy evaluator / 多 LLM 策略评估器",
+      "methods": {
+        "evaluate": {
+          "description": "Run evaluation with all providers",
+          "params": {
+            "context": "MarketContext"
+          },
+          "returns": "array of EvaluationResult",
+          "raises": ["EvaluationError"]
+        },
+        "aggregate_results": {
+          "description": "Aggregate results from multiple LLMs",
+          "params": {
+            "results": "array of EvaluationResult"
+          },
+          "returns": "AggregatedResult",
+          "raises": []
+        },
+        "get_best_proposal": {
+          "description": "Get the best proposal based on scoring",
+          "params": {
+            "results": "array of EvaluationResult"
+          },
+          "returns": "EvaluationResult",
+          "raises": ["NoResultsError"]
+        }
+      }
+    },
+    "DataAgent": {
+      "description": "Data processing agent / 数据处理智能体",
+      "methods": {
+        "calculate_metrics": {
+          "description": "Calculate trading metrics",
+          "params": {
+            "trades": "array of Trade",
+            "window": "integer (optional)"
+          },
+          "returns": {
+            "sharpe_ratio": "float",
+            "win_rate": "float",
+            "volatility": "float",
+            "max_drawdown": "float"
+          },
+          "raises": []
+        },
+        "prepare_context": {
+          "description": "Prepare market context for LLM",
+          "params": {
+            "market_data": "MarketData",
+            "position": "Position",
+            "history": "array of Trade"
+          },
+          "returns": "MarketContext",
+          "raises": []
+        }
+      }
+    },
+    "QuantAgent": {
+      "description": "Quantitative analysis agent / 量化分析智能体",
+      "methods": {
+        "analyze_and_propose": {
+          "description": "Analyze performance and propose changes",
+          "params": {
+            "current_config": "StrategyConfig",
+            "performance_stats": "PerformanceStats"
+          },
+          "returns": {
+            "spread": "float",
+            "skew_factor": "float",
+            "quantity": "float",
+            "reason": "string",
+            "confidence": "float (0-1)"
+          },
+          "raises": []
+        }
+      }
+    },
+    "RiskAgent": {
+      "description": "Risk validation agent / 风险验证智能体",
+      "methods": {
+        "validate_proposal": {
+          "description": "Validate a strategy proposal",
+          "params": {
+            "proposal": "StrategyProposal"
+          },
+          "returns": {
+            "approved": "boolean",
+            "reason": "string",
+            "adjusted_proposal": "StrategyProposal (optional)"
+          },
+          "raises": []
+        }
+      }
+    }
+  },
+  "data_types": {
+    "MarketContext": {
+      "symbol": "string",
+      "mid_price": "float",
+      "best_bid": "float",
+      "best_ask": "float",
+      "spread_bps": "float",
+      "volatility_24h": "float",
+      "volatility_1h": "float",
+      "funding_rate": "float",
+      "funding_rate_trend": "string (rising|falling|stable)"
+    },
+    "EvaluationResult": {
+      "provider_name": "string",
+      "rank": "integer",
+      "score": "float",
+      "latency_ms": "integer",
+      "proposal": "StrategyProposal",
+      "simulation": "SimulationResult"
+    },
+    "AggregatedResult": {
+      "strategy_consensus": "StrategyConsensus",
+      "parameter_stats": "ParameterStats",
+      "consensus_confidence": "float",
+      "recommendation_strength": "string (strong|moderate|weak)",
+      "consensus_proposal": "StrategyProposal"
+    },
+    "StrategyProposal": {
+      "recommended_strategy": "string (FixedSpread|FundingRate)",
+      "spread": "float",
+      "skew_factor": "float",
+      "quantity": "float",
+      "leverage": "float",
+      "confidence": "float",
+      "risk_level": "string",
+      "reasoning": "string"
+    },
+    "SimulationResult": {
+      "realized_pnl": "float",
+      "total_trades": "integer",
+      "win_rate": "float",
+      "sharpe_ratio": "float",
+      "max_drawdown": "float"
+    },
+    "StrategyConsensus": {
+      "consensus_strategy": "string",
+      "consensus_level": "string (unanimous|majority|split)",
+      "consensus_ratio": "float",
+      "strategy_votes": "dict[string, integer]"
+    },
+    "TokenUsage": {
+      "prompt_tokens": "integer",
+      "completion_tokens": "integer",
+      "total_tokens": "integer"
+    },
+    "PerformanceStats": {
+      "sharpe_ratio": "float",
+      "win_rate": "float",
+      "volatility": "float",
+      "max_drawdown": "float"
+    }
+  }
+}
+

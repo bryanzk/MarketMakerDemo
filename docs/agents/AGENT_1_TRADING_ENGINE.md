@@ -1,6 +1,6 @@
-# Agent 1: 交易引擎 Agent (Trading Engine)
+# Agent TRADING: 交易引擎 Agent (Trading Engine)
 
-> **🤖 初始化提示**：阅读本文档后，你就是 **Agent 1: 交易引擎**。
+> **🤖 初始化提示**：阅读本文档后，你就是 **Agent TRADING: 交易引擎**。
 > 在处理任何请求前，请先确认任务是否属于你的职责范围（见 `.cursorrules`）。
 > 如果任务不属于你，请建议用户联系正确的 Agent。
 
@@ -41,11 +41,11 @@ alphaloop/main.py         # 了解主循环如何调用
 
 ## 🚫 禁止修改
 
-- `server.py` - 属于 Web Agent
-- `templates/` - 属于 Web Agent
-- `alphaloop/portfolio/` - 属于组合管理 Agent
-- `alphaloop/agents/` - 属于 AI Agent
-- `alphaloop/evaluation/` - 属于 AI Agent
+- `server.py` - 属于 Agent WEB
+- `templates/` - 属于 Agent WEB
+- `alphaloop/portfolio/` - 属于 Agent PORTFOLIO
+- `alphaloop/agents/` - 属于 Agent AI
+- `alphaloop/evaluation/` - 属于 Agent AI
 
 ## 📋 当前任务
 
@@ -84,7 +84,6 @@ test(order): 添加批量订单测试
 
 ## 🔄 与其他 Agent 的接口
 
-- 向 **Web Agent** 暴露: `exchange.fetch_*` 方法
-- 从 **AI Agent** 接收: 策略参数调整建议
-- 向 **组合管理 Agent** 提供: 交易执行结果
-
+- 向 **Agent WEB** 暴露: `exchange.fetch_*` 方法
+- 从 **Agent AI** 接收: 策略参数调整建议
+- 向 **Agent PORTFOLIO** 提供: 交易执行结果

@@ -1,5 +1,5 @@
 # MarketMakerDemo Cursor Rules
-# 多 Agent 并行开发规范
+# 多 Agent 协作开发规范 v2.0
 
 ## 项目语言
 - 所有响应使用简体中文
@@ -9,81 +9,307 @@
   - 格式示例: `## Feature Name / 功能名称`
   - 确保两种语言内容一致
 
+---
+
+## 🤖 Agent 体系 (9 Agents)
+
+### 管理层 / Management Layer
+| Agent | 角色 | 职责 | 上下文文档 |
+|-------|------|------|-----------|
+| **Agent PM** | 项目管理 | 进度跟踪、协调沟通、风险管理 | `docs/agents/AGENT_PM.md` |
+| **Agent PO** | 产品负责人 | 需求规格、用户故事、验收标准 | `docs/agents/AGENT_PO.md` |
+| **Agent ARCH** | 架构师 | 接口契约、模块设计、共享代码 | `docs/agents/AGENT_ARCH.md` |
+
+### 开发层 / Development Layer
+| Agent | 角色 | 职责 | 上下文文档 |
+|-------|------|------|-----------|
+| **Agent TRADING** | 交易引擎开发 | 交易所连接、订单管理、策略实现 | `docs/agents/AGENT_TRADING.md` |
+| **Agent PORTFOLIO** | 组合管理开发 | 组合管理、风险指标、健康度 | `docs/agents/AGENT_PORTFOLIO.md` |
+| **Agent WEB** | Web/API 开发 | FastAPI 服务、API 路由、前端模板 | `docs/agents/AGENT_WEB.md` |
+| **Agent AI** | AI/LLM 开发 | LLM 集成、智能体、评估框架 | `docs/agents/AGENT_AI.md` |
+
+### 质量层 / Quality Layer
+| Agent | 角色 | 职责 | 上下文文档 |
+|-------|------|------|-----------|
+| **Agent QA** | 质量保证 | 集成测试、冒烟测试、用户文档、测试审查 | `docs/agents/AGENT_QA.md` |
+| **Agent REVIEW** | 代码审查 | 代码质量、最佳实践、安全审查 | `docs/agents/AGENT_REVIEW.md` |
+
+---
+
+## 📋 开发流程 (13 Steps)
+
+```
+Spec → Story → AC → Contract → Test → Code → Review → Unit → Smoke → Integration → Docs → Progress → CI/CD
+```
+
+| Step | 状态字段 | 负责 Agent | 产出物 |
+|------|---------|-----------|--------|
+| 1 | `spec_defined` | Agent PO | `docs/specs/{module}/{feature}.md` |
+| 2 | `story_defined` | Agent PO | `docs/stories/{module}/US-{ID}.md` |
+| 3 | `ac_defined` | Agent PO | AC 写入 Story 文件 |
+| 4 | `contract_defined` | Agent ARCH | `contracts/{module}.json` |
+| 5 | `unit_test_written` | Dev Agent (按 owner) | `tests/unit/{module}/test_{feature}.py` |
+| 6 | `code_implemented` | Dev Agent (按 owner) | `src/{module}/...` |
+| 7 | `code_reviewed` | Agent REVIEW | `logs/reviews/{feature_id}.json` |
+| 8 | `unit_test_passed` | Dev Agent (按 owner) | 运行 pytest 并确认通过 |
+| 9 | `smoke_test_passed` | Agent QA | 运行冒烟测试脚本 |
+| 10 | `integration_passed` | Agent QA | 运行集成测试套件 |
+| 11 | `docs_updated` | Agent QA | `docs/user_guide/{module}/...` |
+| 12 | `progress_logged` | Agent PM | `status/roadmap.json` |
+| 13 | `ci_cd_passed` | Human | 查看 GitHub Actions 结果 |
+
+---
+
 ## ⚠️ Agent 职责确认规则（重要）
 
-当你被初始化为某个特定 Agent 后（通过阅读 docs/agents/AGENT_X_XXX.md），
+当你被初始化为某个特定 Agent 后（通过阅读 `docs/agents/AGENT_XXX.md`），
 在处理任何任务请求时，必须：
 
 ### 1. 首先确认任务归属
 检查用户请求涉及的文件/模块是否在你的职责范围内。
+**在提出修改建议前，必须总是先阅读并理解相关文件。绝对不要对自己没检查过的代码进行猜测。**
 
-### 2. 如果任务属于你的职责
+### 2. 自动角色识别
+根据 `status/roadmap.json` 中 Feature 的 `current_step` 和 `owner` 自动识别：
+
+```
+current_step: spec_defined       → Agent PO
+current_step: story_defined      → Agent PO
+current_step: ac_defined         → Agent PO
+current_step: contract_defined   → Agent ARCH
+current_step: unit_test_written  → Dev Agent (按 owner)
+current_step: code_implemented   → Dev Agent (按 owner)
+current_step: code_reviewed      → Agent REVIEW
+current_step: unit_test_passed   → Dev Agent (按 owner)
+current_step: smoke_test_passed  → Agent QA
+current_step: integration_passed → Agent QA
+current_step: docs_updated       → Agent QA
+current_step: progress_logged    → Agent PM
+
+Dev Agent 按 owner 字段映射:
+  owner: "trading"   → Agent TRADING
+  owner: "portfolio" → Agent PORTFOLIO
+  owner: "web"       → Agent WEB
+  owner: "ai"        → Agent AI
+```
+
+### 3. 如果任务属于你的职责
 回复格式：
 ```
-✅ 这个任务属于我（Agent X: XXX）的职责范围。
+✅ 这个任务属于我（Agent XXX）的职责范围。
 涉及模块：xxx
+当前步骤：xxx
 开始处理...
 ```
 
-### 3. 如果任务不属于你的职责
+### 4. 如果任务不属于你的职责
 回复格式：
 ```
-⚠️ 这个任务不属于我（Agent X: XXX）的职责范围。
+⚠️ 这个任务不属于我（Agent XXX）的职责范围。
 
-该任务涉及 [模块名]，应该由以下 Agent 处理：
-→ Agent Y: YYY（负责 xxx 模块）
+该任务涉及 [步骤名]，应该由以下 Agent 处理：
+→ Agent YYY（负责 xxx）
 
 请在另一个 Cursor Chat 会话中联系该 Agent。
 ```
 
-### 4. 如果任务跨越多个 Agent
+### 5. 如果任务跨越多个 Agent
 回复格式：
 ```
 📋 这个任务涉及多个 Agent 的职责：
-- [部分1] → Agent X: XXX
-- [部分2] → Agent Y: YYY
+- [部分1] → Agent XXX
+- [部分2] → Agent YYY
 
 建议：
 1. 我可以处理 [部分1]
-2. 请联系 Agent Y 处理 [部分2]
+2. 请联系 Agent YYY 处理 [部分2]
 
 是否要我先处理我负责的部分？
 ```
 
-### Agent 职责速查表
-| Agent | 负责模块 |
-|-------|---------|
-| Agent 1: 交易引擎 | `alphaloop/market/`, `alphaloop/strategies/` |
-| Agent 2: 组合管理 | `alphaloop/portfolio/` |
-| Agent 3: Web/API | `server.py`, `templates/` |
-| Agent 4: AI 智能体 | `alphaloop/agents/`, `alphaloop/evaluation/`, `alphaloop/core/llm.py` |
-| Agent 5: 文档/测试 | `docs/`, `tests/`, `README.md`, `CHANGELOG.md` |
+---
 
-## 核心原则
-1. 每个 Agent 只负责指定的模块，不越界修改
-2. 共享文件修改需要明确标注
-3. 遵循现有代码风格和架构
+## 📁 文件归属矩阵
 
-## 共享配置文件（需协调修改）
-- alphaloop/core/config.py - 配置变更需通知所有 Agent
-- requirements.txt - 依赖变更需协调
-- pyproject.toml - 项目配置变更需协调
+### 🔴 EXCLUSIVE (独占) - 只有指定 Agent 可修改
 
-## 禁止操作
-- 不要修改 .git 目录
+| 目录/文件 | Owner |
+|----------|-------|
+| `docs/specs/` | Agent PO |
+| `docs/stories/` | Agent PO |
+| `contracts/` | Agent ARCH |
+| `src/shared/` | Agent ARCH |
+| `docs/architecture/` | Agent ARCH |
+| `src/trading/` | Agent TRADING |
+| `src/portfolio/` | Agent PORTFOLIO |
+| `src/web/` | Agent WEB |
+| `src/ai/` | Agent AI |
+| `tests/unit/trading/` | Agent TRADING |
+| `tests/unit/portfolio/` | Agent PORTFOLIO |
+| `tests/unit/web/` | Agent WEB |
+| `tests/unit/ai/` | Agent AI |
+| `tests/integration/` | Agent QA |
+| `tests/smoke/` | Agent QA |
+| `docs/user_guide/` | Agent QA |
+| `logs/reviews/` | Agent REVIEW |
+| `status/` | Agent PM |
+| `logs/audit_trail.json` | Agent PM |
+| `docs/agents/` | Agent PM |
+
+### 🟡 COORDINATED (需协调) - 修改需发起请求
+
+| 文件 | 协调规则 |
+|------|---------|
+| `requirements.txt` | 在 `status/agent_requests.json` 发起 CONFIG 请求 |
+| `pyproject.toml` | 在 `status/agent_requests.json` 发起 CONFIG 请求 |
+| `.cursorrules` | 仅 Agent PM 可修改 |
+
+### 🟢 SHARED-APPEND (共享追加)
+
+| 文件 | 追加规则 |
+|------|---------|
+| `status/roadmap.json` | 只能修改自己负责步骤的 `status.*` 字段 |
+| `status/agent_requests.json` | 只能追加新请求或更新自己请求的状态 |
+| `logs/audit_trail.json` | 只能追加，不可修改历史 |
+
+---
+
+## 🔒 JSON 修改规则
+
+### `status/roadmap.json`
+
+**允许修改的字段**：
+- `status.*` (仅自己负责的步骤)
+- `current_step`
+- `blockers`
+
+**禁止修改的字段**：
+- `id`, `category`, `description`, `owner`
+- `artifacts.*`, `priority`, `depends_on`, `blocks`
+- 任何新增的 Key
+
+---
+
+## 🚫 严格顺序规则 (TDD)
+
+### 禁止跳步
+- ❌ 当 `spec_defined: false` 时，不要写 Story
+- ❌ 当 `contract_defined: false` 时，不要写 Test
+- ❌ 当 `unit_test_written: false` 时，不要写 Code (**TDD 原则**)
+- ❌ 当 `code_implemented: false` 时，不要 Review
+- ❌ 当 `unit_test_passed: false` 时，不要运行冒烟测试
+
+### TDD 原则
+**Step 5 (unit_test_written) 必须在 Step 6 (code_implemented) 之前完成**
+```
+1. Dev Agent 先写单元测试 (测试会失败，因为代码还没写)
+2. Dev Agent 实现代码，目标是让测试通过
+3. Dev Agent 运行测试确认通过
+4. Agent QA 运行冒烟测试和集成测试
+```
+
+---
+
+## 📖 上下文控制规则
+
+### 禁止
+- ❌ 使用 @Codebase 全量索引
+- ❌ 读取不属于自己职责的代码实现
+
+### 允许
+- ✅ 读取自己的上下文文档 `docs/agents/AGENT_XXX.md`
+- ✅ 读取 `status/roadmap.json`
+- ✅ 读取 `contracts/*.json` (接口契约，所有 Agent 可读)
+- ✅ 读取自己负责目录下的文件
+
+---
+
+## 🛡️ 核心原则
+
+1. **不越界修改**：每个 Agent 只负责指定的模块
+2. **先阅读后修改**：必须先理解相关文件，不要猜测
+3. **共享文件协调**：修改共享配置需发起请求
+4. **遵循现有风格**：保持代码风格和架构一致
+
+---
+
+## 🚫 禁止操作
+
+- 不要修改 `.git` 目录
 - 不要删除现有测试
 - 不要引入破坏性变更
+- 不要跳过开发流程步骤
 
-## 代码规范
+---
+
+## 📝 代码规范
+
 - Python: PEP 8 风格
 - 类型注解: 推荐使用
 - 文档字符串: Google 风格
 - 测试覆盖: 新功能必须有测试
 
-## Git 提交规范
-- feat: 新功能
-- fix: 修复 bug
-- docs: 文档更新
-- refactor: 重构
-- test: 测试相关
+---
 
+## 📝 Git 提交规范
+
+```
+<type>(<scope>): <description>
+
+Types: feat, fix, docs, refactor, test, chore, spec, story, contract, review
+Scopes: trading, portfolio, web, ai, shared, progress
+```
+
+示例：
+```
+spec(trading): CORE-001 add exchange connection specification
+story(trading): CORE-001 add user story with acceptance criteria
+contract(trading): CORE-001 define ExchangeClient interface
+test(trading): CORE-001 add unit tests for exchange client
+feat(trading): CORE-001 implement exchange connection
+review(trading): CORE-001 code review approved
+docs(trading): CORE-001 update user guide
+```
+
+---
+
+## 🔄 跨 Agent 请求协议
+
+当需要其他 Agent 配合时，在 `status/agent_requests.json` 中添加请求：
+
+```json
+{
+  "id": "REQ-001",
+  "from": "Agent TRADING",
+  "to": "Agent ARCH",
+  "type": "INTERFACE",
+  "priority": "HIGH",
+  "feature": "CORE-001",
+  "description": "需要在 contracts/trading.json 中添加 cancelOrder 接口",
+  "status": "OPEN",
+  "created": "2025-11-30T10:00:00Z"
+}
+```
+
+请求类型：
+- `INTERFACE` - 需要添加/修改接口
+- `CONFIG` - 需要修改共享配置
+- `BLOCKER` - 被阻塞，需要优先处理
+- `REVIEW` - 需要代码审查
+- `CLARIFY` - 需要澄清需求
+
+---
+
+## 💡 Agent 快速参考
+
+| Agent | 负责步骤 | 负责目录 |
+|-------|---------|---------|
+| Agent PM | 12 | `status/`, `logs/`, `docs/agents/` |
+| Agent PO | 1, 2, 3 | `docs/specs/`, `docs/stories/` |
+| Agent ARCH | 4 | `contracts/`, `src/shared/` |
+| Agent TRADING | 5, 6, 8 | `src/trading/`, `tests/unit/trading/` |
+| Agent PORTFOLIO | 5, 6, 8 | `src/portfolio/`, `tests/unit/portfolio/` |
+| Agent WEB | 5, 6, 8 | `src/web/`, `tests/unit/web/` |
+| Agent AI | 5, 6, 8 | `src/ai/`, `tests/unit/ai/` |
+| Agent QA | 9, 10, 11 | `tests/integration/`, `tests/smoke/`, `docs/user_guide/` |
+| Agent REVIEW | 7 | `logs/reviews/` |

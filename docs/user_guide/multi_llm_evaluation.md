@@ -239,8 +239,8 @@ A: Suggestions: / 建议：
 
 ## API Reference for Web Integration / Web 集成 API 参考
 
-> **For Agent 3: Web/API** - Use this section to implement the web API endpoints.
-> **给 Agent 3: Web/API** - 使用此部分实现 Web API 接口。
+> **For Agent WEB** - Use this section to implement the web API endpoints.
+> **给 Agent WEB** - 使用此部分实现 Web API 接口。
 
 ### Recommended API Endpoints / 建议的 API 接口
 

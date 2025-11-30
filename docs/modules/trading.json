@@ -1,0 +1,49 @@
+{
+  "module": "trading",
+  "version": "1.0.0",
+  "description": {
+    "en": "Trading engine module: handles exchange connection, order management, and strategy execution",
+    "zh": "交易引擎模块：处理交易所连接、订单管理和策略执行"
+  },
+  "owner": "Agent TRADING",
+  "boundary": {
+    "includes": [
+      "Exchange client and connection management",
+      "Order placement, cancellation, and tracking",
+      "Position tracking and PnL calculation",
+      "Strategy implementation (FixedSpread, FundingRate)",
+      "Market data processing"
+    ],
+    "excludes": [
+      "Portfolio-level allocation (→ portfolio module)",
+      "API endpoint implementation (→ web module)",
+      "LLM-based analysis (→ ai module)",
+      "Risk alerts and thresholds (→ portfolio module)"
+    ]
+  },
+  "source_directory": "src/trading/",
+  "test_directory": "tests/unit/trading/",
+  "contract": "contracts/trading.json",
+  "dependencies": {
+    "internal": ["shared"],
+    "external": ["binance-futures-connector", "python-binance"]
+  },
+  "interfaces_provided": [
+    "ExchangeClient",
+    "OrderManager",
+    "Strategy",
+    "FixedSpreadStrategy",
+    "FundingRateStrategy"
+  ],
+  "interfaces_consumed": [
+    "shared.Config",
+    "shared.Logger"
+  ],
+  "features": ["CORE-001", "CORE-002", "CORE-003", "STRAT-001", "STRAT-002"],
+  "current_implementation": {
+    "legacy_path": "alphaloop/market/",
+    "legacy_strategies": "alphaloop/strategies/",
+    "migration_status": "pending"
+  }
+}
+

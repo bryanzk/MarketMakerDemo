@@ -1,0 +1,186 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "module": "trading",
+  "version": "1.0.0",
+  "description": "Trading engine interface contracts / 交易引擎接口契约",
+  "owner": "Agent ARCH",
+  "last_updated": "2025-11-30",
+  "readonly_for": ["Agent TRADING", "Agent PORTFOLIO", "Agent WEB", "Agent AI", "Agent QA"],
+  "interfaces": {
+    "ExchangeClient": {
+      "description": "Exchange connection and data fetching / 交易所连接与数据获取",
+      "methods": {
+        "connect": {
+          "description": "Establish connection to exchange",
+          "params": {
+            "api_key": "string",
+            "api_secret": "string",
+            "testnet": "boolean"
+          },
+          "returns": "boolean",
+          "raises": ["ConnectionError", "AuthenticationError"]
+        },
+        "fetch_market_data": {
+          "description": "Fetch current market data for symbol",
+          "params": {
+            "symbol": "string"
+          },
+          "returns": {
+            "mid_price": "float",
+            "best_bid": "float",
+            "best_ask": "float",
+            "volume_24h": "float",
+            "funding_rate": "float"
+          },
+          "raises": ["ConnectionError", "SymbolNotFoundError"]
+        },
+        "fetch_account_balance": {
+          "description": "Fetch account balance",
+          "params": {},
+          "returns": {
+            "total": "float",
+            "available": "float",
+            "margin_used": "float"
+          },
+          "raises": ["ConnectionError"]
+        },
+        "fetch_position": {
+          "description": "Fetch current position for symbol",
+          "params": {
+            "symbol": "string"
+          },
+          "returns": {
+            "symbol": "string",
+            "side": "string (LONG|SHORT|NONE)",
+            "size": "float",
+            "entry_price": "float",
+            "unrealized_pnl": "float",
+            "liquidation_price": "float"
+          },
+          "raises": ["ConnectionError"]
+        }
+      }
+    },
+    "OrderManager": {
+      "description": "Order placement and management / 订单管理",
+      "methods": {
+        "place_order": {
+          "description": "Place a new order",
+          "params": {
+            "symbol": "string",
+            "side": "string (BUY|SELL)",
+            "order_type": "string (LIMIT|MARKET)",
+            "quantity": "float",
+            "price": "float (optional for MARKET)"
+          },
+          "returns": {
+            "order_id": "string",
+            "status": "string",
+            "filled_qty": "float"
+          },
+          "raises": ["InsufficientBalanceError", "InvalidOrderError"]
+        },
+        "cancel_order": {
+          "description": "Cancel an existing order",
+          "params": {
+            "order_id": "string"
+          },
+          "returns": "boolean",
+          "raises": ["OrderNotFoundError"]
+        },
+        "get_open_orders": {
+          "description": "Get all open orders",
+          "params": {
+            "symbol": "string (optional)"
+          },
+          "returns": "array of Order objects",
+          "raises": ["ConnectionError"]
+        }
+      }
+    },
+    "Strategy": {
+      "description": "Base strategy interface / 策略基础接口",
+      "methods": {
+        "initialize": {
+          "description": "Initialize strategy with config",
+          "params": {
+            "config": "StrategyConfig"
+          },
+          "returns": "void",
+          "raises": ["InvalidConfigError"]
+        },
+        "on_tick": {
+          "description": "Called on each market data update",
+          "params": {
+            "market_data": "MarketData"
+          },
+          "returns": {
+            "orders": "array of OrderRequest"
+          },
+          "raises": []
+        },
+        "get_status": {
+          "description": "Get current strategy status",
+          "params": {},
+          "returns": {
+            "name": "string",
+            "running": "boolean",
+            "pnl": "float",
+            "position": "float"
+          },
+          "raises": []
+        }
+      }
+    },
+    "FixedSpreadStrategy": {
+      "extends": "Strategy",
+      "description": "Fixed spread market-making strategy / 固定价差做市策略",
+      "config": {
+        "spread": "float (0.001 - 0.05)",
+        "quantity": "float",
+        "max_position": "float",
+        "skew_factor": "float (50 - 200)"
+      }
+    },
+    "FundingRateStrategy": {
+      "extends": "Strategy",
+      "description": "Funding rate arbitrage strategy / 资金费率套利策略",
+      "config": {
+        "threshold": "float",
+        "quantity": "float",
+        "max_position": "float"
+      }
+    }
+  },
+  "data_types": {
+    "MarketData": {
+      "symbol": "string",
+      "mid_price": "float",
+      "best_bid": "float",
+      "best_ask": "float",
+      "timestamp": "datetime"
+    },
+    "Order": {
+      "order_id": "string",
+      "symbol": "string",
+      "side": "string",
+      "type": "string",
+      "quantity": "float",
+      "price": "float",
+      "status": "string",
+      "created_at": "datetime"
+    },
+    "OrderRequest": {
+      "side": "string",
+      "type": "string",
+      "quantity": "float",
+      "price": "float"
+    },
+    "StrategyConfig": {
+      "name": "string",
+      "symbol": "string",
+      "params": "object"
+    }
+  }
+}
+

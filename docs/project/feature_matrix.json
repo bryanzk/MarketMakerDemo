@@ -24,7 +24,7 @@
         "Fetch account balance successfully"
       ],
       "passes": false,
-      "owner": "Agent 1"
+      "owner": "Agent TRADING"
     },
     {
       "id": "CORE-002",
@@ -38,7 +38,7 @@
         "Query order status"
       ],
       "passes": false,
-      "owner": "Agent 1"
+      "owner": "Agent TRADING"
     },
     {
       "id": "CORE-003",
@@ -51,7 +51,7 @@
         "Track realized PnL history"
       ],
       "passes": false,
-      "owner": "Agent 1"
+      "owner": "Agent TRADING"
     },
     {
       "id": "STRAT-001",
@@ -65,7 +65,7 @@
         "Rebalance orders on price movement"
       ],
       "passes": false,
-      "owner": "Agent 1"
+      "owner": "Agent TRADING"
     },
     {
       "id": "STRAT-002",
@@ -79,7 +79,7 @@
         "Close position after funding settlement"
       ],
       "passes": false,
-      "owner": "Agent 1"
+      "owner": "Agent TRADING"
     },
     {
       "id": "PORT-001",
@@ -93,7 +93,7 @@
         "Track per-strategy performance"
       ],
       "passes": false,
-      "owner": "Agent 2"
+      "owner": "Agent PORTFOLIO"
     },
     {
       "id": "PORT-002",
@@ -106,7 +106,7 @@
         "Apply new allocations to strategies"
       ],
       "passes": false,
-      "owner": "Agent 2"
+      "owner": "Agent PORTFOLIO"
     },
     {
       "id": "RISK-001",
@@ -120,7 +120,7 @@
         "Generate health score"
       ],
       "passes": false,
-      "owner": "Agent 2"
+      "owner": "Agent PORTFOLIO"
     },
     {
       "id": "RISK-002",
@@ -133,7 +133,7 @@
         "Trigger alerts on threshold breach"
       ],
       "passes": false,
-      "owner": "Agent 2"
+      "owner": "Agent PORTFOLIO"
     },
     {
       "id": "API-001",
@@ -146,7 +146,7 @@
         "GET /api/status returns correct running state"
       ],
       "passes": false,
-      "owner": "Agent 3"
+      "owner": "Agent WEB"
     },
     {
       "id": "API-002",
@@ -159,7 +159,7 @@
         "PUT /api/portfolio/allocation/limits updates limits"
       ],
       "passes": false,
-      "owner": "Agent 3"
+      "owner": "Agent WEB"
     },
     {
       "id": "API-003",
@@ -171,7 +171,7 @@
         "Response includes margin_ratio, liq_distance, health_score"
       ],
       "passes": false,
-      "owner": "Agent 3"
+      "owner": "Agent WEB"
     },
     {
       "id": "UI-001",
@@ -185,7 +185,7 @@
         "Show PnL summary"
       ],
       "passes": false,
-      "owner": "Agent 3"
+      "owner": "Agent WEB"
     },
     {
       "id": "UI-002",
@@ -198,7 +198,7 @@
         "Visualize allocation distribution"
       ],
       "passes": false,
-      "owner": "Agent 3"
+      "owner": "Agent WEB"
     },
     {
       "id": "UI-003",
@@ -211,7 +211,7 @@
         "Alert indicators for high-risk states"
       ],
       "passes": false,
-      "owner": "Agent 3"
+      "owner": "Agent WEB"
     },
     {
       "id": "LLM-001",
@@ -224,7 +224,7 @@
         "Aggregate and compare proposals"
       ],
       "passes": false,
-      "owner": "Agent 4"
+      "owner": "Agent AI"
     },
     {
       "id": "LLM-002",
@@ -237,7 +237,7 @@
         "Display analysis in UI"
       ],
       "passes": false,
-      "owner": "Agent 4"
+      "owner": "Agent AI"
     },
     {
       "id": "LLM-003",
@@ -250,7 +250,7 @@
         "View aggregated strategy consensus"
       ],
       "passes": false,
-      "owner": "Agent 4"
+      "owner": "Agent AI"
     },
     {
       "id": "TEST-001",
@@ -263,7 +263,7 @@
         "Portfolio manager tests pass"
       ],
       "passes": false,
-      "owner": "Agent 5"
+      "owner": "Agent QA"
     },
     {
       "id": "TEST-002",
@@ -276,7 +276,7 @@
         "Tests run in CI pipeline"
       ],
       "passes": false,
-      "owner": "Agent 5"
+      "owner": "Agent QA"
     },
     {
       "id": "DOC-001",
@@ -289,8 +289,7 @@
         "Strategy configuration guide available"
       ],
       "passes": false,
-      "owner": "Agent 5"
+      "owner": "Agent QA"
     }
   ]
 }
-

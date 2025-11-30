@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "version": "1.0.0",
+  "last_updated": "2025-11-30",
+  "mutation_rules": {
+    "allowed": [
+      "Append new requests",
+      "Update status of your own requests",
+      "Update status of requests assigned to you"
+    ],
+    "forbidden": [
+      "Delete requests",
+      "Modify requests created by others (except status)",
+      "Change request IDs"
+    ]
+  },
+  "request_types": {
+    "INTERFACE": "Need to add/modify interface contract",
+    "CONFIG": "Need to modify shared configuration",
+    "BLOCKER": "Blocked, need priority handling",
+    "REVIEW": "Need code review",
+    "CLARIFY": "Need requirement clarification"
+  },
+  "status_flow": ["OPEN", "IN_PROGRESS", "RESOLVED", "WONT_FIX", "DUPLICATE"],
+  "requests": []
+}
+

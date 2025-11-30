@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "version": "1.0.0",
+  "description": "Audit trail for all changes / 所有变更的审计日志",
+  "mutation_rules": {
+    "allowed": ["Append new entries"],
+    "forbidden": ["Modify existing entries", "Delete entries"]
+  },
+  "entries": [
+    {
+      "id": "AUDIT-001",
+      "timestamp": "2025-11-30T12:00:00Z",
+      "agent": "Agent PM",
+      "action": "INIT",
+      "description": "Phase 1: Created new directory structure and status tracking files",
+      "files_created": [
+        "project_manifest.json",
+        "status/roadmap.json",
+        "status/agent_requests.json",
+        "contracts/trading.json",
+        "contracts/portfolio.json",
+        "contracts/web.json",
+        "contracts/ai.json",
+        "docs/modules/trading.json",
+        "docs/modules/portfolio.json",
+        "docs/modules/web.json",
+        "docs/modules/ai.json",
+        "logs/audit_trail.json"
+      ],
+      "files_modified": [],
+      "files_deleted": [],
+      "commit": null
+    }
+  ]
+}
+

@@ -1,5 +1,30 @@
 # TODO - Future Improvements
 
+
+## 2025.11.30
+### QA
+- pass unit tests
+- push the code
+
+### Project Management
+- Review Current process progress
+- Add missed scenarios
+- Clear Roles definition 
+- Clear Done Definition
+- Clear process clarification
+- To sum: 
+  -  https://github.com/sarwarbeing-ai/Agentic_Design_Patterns/blob/main/Agentic_Design_Patterns.pdf
+
+### Business
+- Right way to measure the suggestion from LLMs
+  - docs
+  - implementation using the new PM process
+
+
+
+
+
+
 ## High Priority
 
 ### Leverage Verification

@@ -1,6 +1,6 @@
-# Agent 4: AI/智能体 Agent (AI Agents & Evaluation)
+# Agent AI: AI/智能体 Agent (AI Agents & Evaluation)
 
-> **🤖 初始化提示**：阅读本文档后，你就是 **Agent 4: AI 智能体**。
+> **🤖 初始化提示**：阅读本文档后，你就是 **Agent AI: AI 智能体**。
 > 在处理任何请求前，请先确认任务是否属于你的职责范围（见 `.cursorrules`）。
 > 如果任务不属于你，请建议用户联系正确的 Agent。
 
@@ -49,10 +49,10 @@ alphaloop/main.py             # 了解如何被调用
 
 ## 🚫 禁止修改
 
-- `alphaloop/market/` - 属于交易引擎 Agent
-- `alphaloop/strategies/` - 属于交易引擎 Agent
-- `alphaloop/portfolio/` - 属于组合管理 Agent
-- `server.py` - 属于 Web Agent
+- `alphaloop/market/` - 属于 Agent TRADING
+- `alphaloop/strategies/` - 属于 Agent TRADING
+- `alphaloop/portfolio/` - 属于 Agent PORTFOLIO
+- `server.py` - 属于 Agent WEB
 
 ## 📋 当前任务
 
@@ -101,10 +101,10 @@ feat(eval): 添加多模型共识算法
 
 ## 🔄 与其他 Agent 的接口
 
-- 从 **交易引擎 Agent** 获取: 交易数据、市场数据
-- 向 **交易引擎 Agent** 提供: 策略调整建议
-- 从 **组合管理 Agent** 获取: 组合级风险数据
-- 向 **Web Agent** 提供: 分析结果和建议
+- 从 **Agent TRADING** 获取: 交易数据、市场数据
+- 向 **Agent TRADING** 提供: 策略调整建议
+- 从 **Agent PORTFOLIO** 获取: 组合级风险数据
+- 向 **Agent WEB** 提供: 分析结果和建议
 
 ## 🧠 智能体工作流
 
@@ -141,4 +141,3 @@ feat(eval): 添加多模型共识算法
 # 风险验证结果
 (bool, str)  # (是否通过, 原因)
 ```
-

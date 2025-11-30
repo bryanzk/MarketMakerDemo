@@ -1,0 +1,49 @@
+{
+  "module": "portfolio",
+  "version": "1.0.0",
+  "description": {
+    "en": "Portfolio management module: handles capital allocation, risk indicators, and health scoring",
+    "zh": "组合管理模块：处理资金分配、风险指标和健康评分"
+  },
+  "owner": "Agent PORTFOLIO",
+  "boundary": {
+    "includes": [
+      "Multi-strategy capital allocation",
+      "Portfolio rebalancing",
+      "Risk indicator calculation",
+      "Health scoring system",
+      "Risk alerts and thresholds"
+    ],
+    "excludes": [
+      "Individual strategy logic (→ trading module)",
+      "API endpoint implementation (→ web module)",
+      "LLM-based risk analysis (→ ai module)",
+      "Order execution (→ trading module)"
+    ]
+  },
+  "source_directory": "src/portfolio/",
+  "test_directory": "tests/unit/portfolio/",
+  "contract": "contracts/portfolio.json",
+  "dependencies": {
+    "internal": ["shared", "trading"],
+    "external": []
+  },
+  "interfaces_provided": [
+    "PortfolioManager",
+    "Rebalancer",
+    "RiskIndicators",
+    "RiskAlerts"
+  ],
+  "interfaces_consumed": [
+    "trading.ExchangeClient",
+    "trading.Strategy",
+    "shared.Config",
+    "shared.Logger"
+  ],
+  "features": ["PORT-001", "PORT-002", "RISK-001", "RISK-002"],
+  "current_implementation": {
+    "legacy_path": "alphaloop/portfolio/",
+    "migration_status": "pending"
+  }
+}
+

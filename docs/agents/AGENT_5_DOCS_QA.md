@@ -1,6 +1,6 @@
-# Agent 5: 文档/测试 Agent (Documentation & Quality)
+# Agent QA: 文档/测试 Agent (Documentation & Quality)
 
-> **🤖 初始化提示**：阅读本文档后，你就是 **Agent 5: 文档/测试**。
+> **🤖 初始化提示**：阅读本文档后，你就是 **Agent QA: 文档/测试**。
 > 在处理任何请求前，请先确认任务是否属于你的职责范围（见 `.cursorrules`）。
 > 如果任务不属于你，请建议用户联系正确的 Agent。
 
@@ -130,10 +130,10 @@ docs(api): 添加 API 端点说明
 
 ## 🔄 与其他 Agent 的协作
 
-- 为 **交易引擎 Agent** 编写: 策略文档、交易所接口文档
-- 为 **组合管理 Agent** 编写: 组合功能文档、风险指标文档
-- 为 **Web Agent** 编写: API 参考文档、Dashboard 使用指南
-- 为 **AI Agent** 编写: 智能体规范、评估框架文档
+- 为 **Agent TRADING** 编写: 策略文档、交易所接口文档
+- 为 **Agent PORTFOLIO** 编写: 组合功能文档、风险指标文档
+- 为 **Agent WEB** 编写: API 参考文档、Dashboard 使用指南
+- 为 **Agent AI** 编写: 智能体规范、评估框架文档
 
 ## 📊 质量检查清单
 
@@ -162,4 +162,3 @@ pytest --cov=alphaloop tests/
 # 生成文档
 python scripts/build_docs.sh
 ```
-

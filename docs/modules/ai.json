@@ -1,0 +1,53 @@
+{
+  "module": "ai",
+  "version": "1.0.0",
+  "description": {
+    "en": "AI/LLM module: handles LLM integration, intelligent agents, and multi-LLM evaluation",
+    "zh": "AI/LLM 模块：处理 LLM 集成、智能体和多 LLM 评估"
+  },
+  "owner": "Agent AI",
+  "boundary": {
+    "includes": [
+      "LLM provider integration (Gemini, OpenAI, Claude)",
+      "Multi-LLM evaluation framework",
+      "DataAgent for metrics calculation",
+      "QuantAgent for strategy proposals",
+      "RiskAgent for proposal validation"
+    ],
+    "excludes": [
+      "Strategy execution (→ trading module)",
+      "Portfolio management (→ portfolio module)",
+      "API endpoint implementation (→ web module)",
+      "Risk indicator calculation (→ portfolio module)"
+    ]
+  },
+  "source_directory": "src/ai/",
+  "test_directory": "tests/unit/ai/",
+  "contract": "contracts/ai.json",
+  "dependencies": {
+    "internal": ["shared", "trading", "portfolio"],
+    "external": ["openai", "google-generativeai", "anthropic"]
+  },
+  "interfaces_provided": [
+    "LLMProvider",
+    "MultiLLMEvaluator",
+    "DataAgent",
+    "QuantAgent",
+    "RiskAgent"
+  ],
+  "interfaces_consumed": [
+    "trading.ExchangeClient",
+    "trading.Strategy",
+    "portfolio.RiskIndicators",
+    "shared.Config",
+    "shared.Logger"
+  ],
+  "features": ["LLM-001", "LLM-002", "LLM-003"],
+  "current_implementation": {
+    "legacy_agents": "alphaloop/agents/",
+    "legacy_evaluation": "alphaloop/evaluation/",
+    "legacy_llm": "alphaloop/core/llm.py",
+    "migration_status": "pending"
+  }
+}
+

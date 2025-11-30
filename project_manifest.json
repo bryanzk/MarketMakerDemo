@@ -1,0 +1,178 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "version": "1.0.0",
+  "project": {
+    "name": "MarketMakerDemo",
+    "description": "Multi-Agent Collaborative Market Making Bot / 多 Agent 协作做市机器人",
+    "language": "Python 3.11+",
+    "framework": "FastAPI + Binance API"
+  },
+  "modules": {
+    "trading": {
+      "description": "Trading engine: exchange connection, order management, strategy execution / 交易引擎：交易所连接、订单管理、策略执行",
+      "owner": "Agent TRADING",
+      "source_dir": "src/trading/",
+      "test_dir": "tests/unit/trading/",
+      "contract": "contracts/trading.json",
+      "module_card": "docs/modules/trading.json"
+    },
+    "portfolio": {
+      "description": "Portfolio management: capital allocation, risk indicators, health scoring / 组合管理：资金分配、风险指标、健康评分",
+      "owner": "Agent PORTFOLIO",
+      "source_dir": "src/portfolio/",
+      "test_dir": "tests/unit/portfolio/",
+      "contract": "contracts/portfolio.json",
+      "module_card": "docs/modules/portfolio.json"
+    },
+    "web": {
+      "description": "Web/API layer: FastAPI server, API routes, frontend templates / Web/API 层：FastAPI 服务、API 路由、前端模板",
+      "owner": "Agent WEB",
+      "source_dir": "src/web/",
+      "test_dir": "tests/unit/web/",
+      "contract": "contracts/web.json",
+      "module_card": "docs/modules/web.json"
+    },
+    "ai": {
+      "description": "AI/LLM layer: intelligent agents, multi-LLM evaluation, LLM integration / AI/LLM 层：智能体、多 LLM 评估、LLM 集成",
+      "owner": "Agent AI",
+      "source_dir": "src/ai/",
+      "test_dir": "tests/unit/ai/",
+      "contract": "contracts/ai.json",
+      "module_card": "docs/modules/ai.json"
+    },
+    "shared": {
+      "description": "Shared utilities: config, logger, common interfaces / 共享工具：配置、日志、公共接口",
+      "owner": "Agent ARCH",
+      "source_dir": "src/shared/",
+      "test_dir": null,
+      "contract": null,
+      "module_card": null
+    }
+  },
+  "agents": {
+    "management": [
+      {
+        "id": "PM",
+        "name": "Agent PM",
+        "role": "Project Manager / 项目管理",
+        "responsibilities": ["Progress tracking", "Coordination", "Risk management"],
+        "context_doc": "docs/agents/AGENT_PM.md",
+        "owned_dirs": ["status/", "logs/", "docs/agents/"],
+        "pipeline_steps": [12]
+      },
+      {
+        "id": "PO",
+        "name": "Agent PO",
+        "role": "Product Owner / 产品负责人",
+        "responsibilities": ["Specifications", "User stories", "Acceptance criteria"],
+        "context_doc": "docs/agents/AGENT_PO.md",
+        "owned_dirs": ["docs/specs/", "docs/stories/"],
+        "pipeline_steps": [1, 2, 3]
+      },
+      {
+        "id": "ARCH",
+        "name": "Agent ARCH",
+        "role": "Architect / 架构师",
+        "responsibilities": ["Interface contracts", "Module design", "Shared code"],
+        "context_doc": "docs/agents/AGENT_ARCH.md",
+        "owned_dirs": ["contracts/", "src/shared/", "docs/architecture/"],
+        "pipeline_steps": [4]
+      }
+    ],
+    "development": [
+      {
+        "id": "TRADING",
+        "name": "Agent TRADING",
+        "role": "Trading Engine Developer / 交易引擎开发",
+        "responsibilities": ["Exchange connection", "Order management", "Strategy implementation"],
+        "context_doc": "docs/agents/AGENT_TRADING.md",
+        "owned_dirs": ["src/trading/", "tests/unit/trading/"],
+        "pipeline_steps": [5, 6, 8]
+      },
+      {
+        "id": "PORTFOLIO",
+        "name": "Agent PORTFOLIO",
+        "role": "Portfolio Developer / 组合管理开发",
+        "responsibilities": ["Portfolio management", "Risk indicators", "Health scoring"],
+        "context_doc": "docs/agents/AGENT_PORTFOLIO.md",
+        "owned_dirs": ["src/portfolio/", "tests/unit/portfolio/"],
+        "pipeline_steps": [5, 6, 8]
+      },
+      {
+        "id": "WEB",
+        "name": "Agent WEB",
+        "role": "Web/API Developer / Web/API 开发",
+        "responsibilities": ["FastAPI server", "API routes", "Frontend templates"],
+        "context_doc": "docs/agents/AGENT_WEB.md",
+        "owned_dirs": ["src/web/", "tests/unit/web/"],
+        "pipeline_steps": [5, 6, 8]
+      },
+      {
+        "id": "AI",
+        "name": "Agent AI",
+        "role": "AI/LLM Developer / AI/LLM 开发",
+        "responsibilities": ["LLM integration", "Intelligent agents", "Evaluation framework"],
+        "context_doc": "docs/agents/AGENT_AI.md",
+        "owned_dirs": ["src/ai/", "tests/unit/ai/"],
+        "pipeline_steps": [5, 6, 8]
+      }
+    ],
+    "quality": [
+      {
+        "id": "QA",
+        "name": "Agent QA",
+        "role": "Quality Assurance / 质量保证",
+        "responsibilities": ["Integration tests", "Smoke tests", "User documentation", "Test review"],
+        "context_doc": "docs/agents/AGENT_QA.md",
+        "owned_dirs": ["tests/integration/", "tests/smoke/", "docs/user_guide/"],
+        "pipeline_steps": [9, 10, 11]
+      },
+      {
+        "id": "REVIEW",
+        "name": "Agent REVIEW",
+        "role": "Code Reviewer / 代码审查",
+        "responsibilities": ["Code quality", "Best practices", "Security review"],
+        "context_doc": "docs/agents/AGENT_REVIEW.md",
+        "owned_dirs": ["logs/reviews/"],
+        "pipeline_steps": [7]
+      }
+    ]
+  },
+  "pipeline": {
+    "description": "13-step development pipeline / 13 步开发流程",
+    "steps": [
+      {"step": 1, "field": "spec_defined", "agent": "PO", "artifact": "docs/specs/{module}/{feature}.md"},
+      {"step": 2, "field": "story_defined", "agent": "PO", "artifact": "docs/stories/{module}/US-{ID}.md"},
+      {"step": 3, "field": "ac_defined", "agent": "PO", "artifact": "AC in story file"},
+      {"step": 4, "field": "contract_defined", "agent": "ARCH", "artifact": "contracts/{module}.json"},
+      {"step": 5, "field": "unit_test_written", "agent": "DEV", "artifact": "tests/unit/{module}/test_{feature}.py"},
+      {"step": 6, "field": "code_implemented", "agent": "DEV", "artifact": "src/{module}/..."},
+      {"step": 7, "field": "code_reviewed", "agent": "REVIEW", "artifact": "logs/reviews/{feature_id}.json"},
+      {"step": 8, "field": "unit_test_passed", "agent": "DEV", "artifact": "pytest report"},
+      {"step": 9, "field": "smoke_test_passed", "agent": "QA", "artifact": "smoke test report"},
+      {"step": 10, "field": "integration_passed", "agent": "QA", "artifact": "integration test report"},
+      {"step": 11, "field": "docs_updated", "agent": "QA", "artifact": "docs/user_guide/{module}/..."},
+      {"step": 12, "field": "progress_logged", "agent": "PM", "artifact": "status/roadmap.json"},
+      {"step": 13, "field": "ci_cd_passed", "agent": "HUMAN", "artifact": "GitHub Actions result"}
+    ]
+  },
+  "directory_structure": {
+    "src/": "Source code by module",
+    "tests/": "Tests organized by type and module",
+    "docs/": "Documentation",
+    "contracts/": "Interface contracts (JSON)",
+    "status/": "Project status tracking (JSON)",
+    "logs/": "Audit logs and reviews",
+    "scripts/": "Utility scripts"
+  },
+  "naming_conventions": {
+    "feature_id": "{CATEGORY}-{NUMBER} (e.g., CORE-001, STRAT-002)",
+    "user_story": "US-{MODULE}-{NUMBER} (e.g., US-TRADING-001)",
+    "test_file": "test_{feature}.py",
+    "commit_message": "<type>(<scope>): <description>"
+  },
+  "readonly": true,
+  "last_updated": "2025-11-30",
+  "maintained_by": "Agent PM"
+}
+

@@ -1,6 +1,6 @@
-# Agent 2: 组合管理 Agent (Portfolio Management)
+# Agent PORTFOLIO: 组合管理 Agent (Portfolio Management)
 
-> **🤖 初始化提示**：阅读本文档后，你就是 **Agent 2: 组合管理**。
+> **🤖 初始化提示**：阅读本文档后，你就是 **Agent PORTFOLIO: 组合管理**。
 > 在处理任何请求前，请先确认任务是否属于你的职责范围（见 `.cursorrules`）。
 > 如果任务不属于你，请建议用户联系正确的 Agent。
 
@@ -40,10 +40,10 @@ server.py                     # 了解 API 如何调用
 
 ## 🚫 禁止修改
 
-- `alphaloop/market/` - 属于交易引擎 Agent
-- `alphaloop/strategies/` - 属于交易引擎 Agent
-- `server.py` - 属于 Web Agent（但可提供 API 接口建议）
-- `alphaloop/agents/` - 属于 AI Agent
+- `alphaloop/market/` - 属于 Agent TRADING
+- `alphaloop/strategies/` - 属于 Agent TRADING
+- `server.py` - 属于 Agent WEB（但可提供 API 接口建议）
+- `alphaloop/agents/` - 属于 Agent AI
 
 ## 📋 当前任务
 
@@ -86,9 +86,9 @@ docs(portfolio): 更新用户故事文档
 
 ## 🔄 与其他 Agent 的接口
 
-- 从 **交易引擎 Agent** 获取: 仓位、价格、强平价数据
-- 向 **Web Agent** 暴露: `get_portfolio_data()`, `RiskIndicators`
-- 与 **AI Agent** 协作: 提供风险数据用于决策
+- 从 **Agent TRADING** 获取: 仓位、价格、强平价数据
+- 向 **Agent WEB** 暴露: `get_portfolio_data()`, `RiskIndicators`
+- 与 **Agent AI** 协作: 提供风险数据用于决策
 
 ## 📊 核心数据结构
 
@@ -110,4 +110,3 @@ docs(portfolio): 更新用户故事文档
     "overall_risk_level": str
 }
 ```
-

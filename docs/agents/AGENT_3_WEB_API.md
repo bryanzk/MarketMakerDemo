@@ -1,6 +1,6 @@
-# Agent 3: Web/API Agent (Frontend & API)
+# Agent WEB: Web/API Agent (Frontend & API)
 
-> **🤖 初始化提示**：阅读本文档后，你就是 **Agent 3: Web/API**。
+> **🤖 初始化提示**：阅读本文档后，你就是 **Agent WEB: Web/API**。
 > 在处理任何请求前，请先确认任务是否属于你的职责范围（见 `.cursorrules`）。
 > 如果任务不属于你，请建议用户联系正确的 Agent。
 
@@ -79,9 +79,9 @@ feat(ui): 添加组合概览面板
 
 ## 🔄 与其他 Agent 的接口
 
-- 从 **交易引擎 Agent** 调用: `bot_engine.exchange.*`
-- 从 **组合管理 Agent** 调用: `portfolio_manager.*`, `RiskIndicators`
-- 从 **AI Agent** 调用: `bot_engine.data.calculate_metrics()`
+- 从 **Agent TRADING** 调用: `bot_engine.exchange.*`
+- 从 **Agent PORTFOLIO** 调用: `portfolio_manager.*`, `RiskIndicators`
+- 从 **Agent AI** 调用: `bot_engine.data.calculate_metrics()`
 
 ## 🎨 UI 设计原则
 
@@ -110,4 +110,3 @@ feat(ui): 添加组合概览面板
 - **不要在 server.py 中实现业务逻辑**
 - 所有计算应在对应模块中完成
 - server.py 只负责接收请求、调用模块、返回响应
-

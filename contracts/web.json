@@ -1,0 +1,169 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "module": "web",
+  "version": "1.0.0",
+  "description": "Web/API interface contracts / Web/API 接口契约",
+  "owner": "Agent ARCH",
+  "last_updated": "2025-11-30",
+  "readonly_for": ["Agent TRADING", "Agent PORTFOLIO", "Agent WEB", "Agent AI", "Agent QA"],
+  "api_endpoints": {
+    "BotControlAPI": {
+      "description": "Bot control endpoints / Bot 控制接口",
+      "endpoints": {
+        "POST /api/control": {
+          "description": "Start or stop the bot",
+          "request": {
+            "action": "string (start|stop)"
+          },
+          "response": {
+            "status": "string (success|error)",
+            "message": "string",
+            "running": "boolean"
+          },
+          "errors": {
+            "400": "Invalid action",
+            "500": "Internal error"
+          }
+        },
+        "GET /api/status": {
+          "description": "Get current bot status",
+          "request": {},
+          "response": {
+            "running": "boolean",
+            "uptime": "float (seconds)",
+            "last_trade": "datetime",
+            "current_position": "Position"
+          },
+          "errors": {
+            "500": "Internal error"
+          }
+        }
+      }
+    },
+    "PortfolioAPI": {
+      "description": "Portfolio management endpoints / 组合管理接口",
+      "endpoints": {
+        "GET /api/portfolio/allocation": {
+          "description": "Get current allocations",
+          "request": {},
+          "response": {
+            "allocations": "dict[string, float]",
+            "total": "float"
+          },
+          "errors": {}
+        },
+        "POST /api/portfolio/rebalance": {
+          "description": "Trigger portfolio rebalance",
+          "request": {
+            "method": "string (equal|sharpe|composite)"
+          },
+          "response": {
+            "status": "string",
+            "old_allocations": "dict[string, float]",
+            "new_allocations": "dict[string, float]"
+          },
+          "errors": {
+            "400": "Invalid method",
+            "500": "Rebalance failed"
+          }
+        },
+        "PUT /api/portfolio/allocation/limits": {
+          "description": "Update allocation limits",
+          "request": {
+            "strategy_id": "string",
+            "min_allocation": "float",
+            "max_allocation": "float"
+          },
+          "response": {
+            "status": "string",
+            "updated": "boolean"
+          },
+          "errors": {
+            "400": "Invalid limits",
+            "404": "Strategy not found"
+          }
+        }
+      }
+    },
+    "RiskAPI": {
+      "description": "Risk indicators endpoints / 风险指标接口",
+      "endpoints": {
+        "GET /api/risk-indicators": {
+          "description": "Get current risk indicators",
+          "request": {},
+          "response": {
+            "liquidation_buffer": "float",
+            "inventory_drift": "float",
+            "max_drawdown": "float",
+            "overall_risk_level": "string",
+            "health_score": "float",
+            "alerts": "array of Alert"
+          },
+          "errors": {}
+        },
+        "PUT /api/risk/thresholds": {
+          "description": "Update risk thresholds",
+          "request": {
+            "indicator": "string",
+            "warning_level": "float",
+            "critical_level": "float"
+          },
+          "response": {
+            "status": "string",
+            "updated": "boolean"
+          },
+          "errors": {
+            "400": "Invalid threshold values"
+          }
+        }
+      }
+    },
+    "EvaluationAPI": {
+      "description": "Multi-LLM evaluation endpoints / 多 LLM 评估接口",
+      "endpoints": {
+        "POST /api/evaluation/run": {
+          "description": "Run multi-LLM evaluation",
+          "request": {
+            "symbol": "string",
+            "simulation_steps": "integer (default: 500)"
+          },
+          "response": {
+            "individual_results": "array of EvaluationResult",
+            "aggregated": "AggregatedResult"
+          },
+          "errors": {
+            "400": "Invalid request",
+            "503": "LLM providers unavailable"
+          }
+        },
+        "POST /api/evaluation/apply": {
+          "description": "Apply evaluation proposal",
+          "request": {
+            "source": "string (consensus|individual)",
+            "provider_name": "string (optional)"
+          },
+          "response": {
+            "status": "string",
+            "applied_config": "StrategyConfig"
+          },
+          "errors": {
+            "400": "Invalid source",
+            "404": "Proposal not found"
+          }
+        }
+      }
+    }
+  },
+  "response_format": {
+    "success": {
+      "status": "success",
+      "data": "object"
+    },
+    "error": {
+      "error": "string",
+      "code": "string",
+      "details": "object (optional)"
+    }
+  }
+}
+

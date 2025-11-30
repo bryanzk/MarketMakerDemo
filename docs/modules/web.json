@@ -1,0 +1,53 @@
+{
+  "module": "web",
+  "version": "1.0.0",
+  "description": {
+    "en": "Web/API module: handles FastAPI server, API routes, and frontend templates",
+    "zh": "Web/API 模块：处理 FastAPI 服务、API 路由和前端模板"
+  },
+  "owner": "Agent WEB",
+  "boundary": {
+    "includes": [
+      "FastAPI server setup and configuration",
+      "API endpoint implementation",
+      "Request/response handling",
+      "Frontend HTML templates",
+      "Static file serving"
+    ],
+    "excludes": [
+      "Business logic implementation (→ trading/portfolio/ai modules)",
+      "Strategy execution (→ trading module)",
+      "Risk calculation (→ portfolio module)",
+      "LLM integration (→ ai module)"
+    ]
+  },
+  "source_directory": "src/web/",
+  "test_directory": "tests/unit/web/",
+  "contract": "contracts/web.json",
+  "dependencies": {
+    "internal": ["shared", "trading", "portfolio", "ai"],
+    "external": ["fastapi", "uvicorn", "jinja2"]
+  },
+  "interfaces_provided": [
+    "BotControlAPI",
+    "PortfolioAPI",
+    "RiskAPI",
+    "EvaluationAPI"
+  ],
+  "interfaces_consumed": [
+    "trading.ExchangeClient",
+    "trading.Strategy",
+    "portfolio.PortfolioManager",
+    "portfolio.RiskIndicators",
+    "ai.MultiLLMEvaluator",
+    "shared.Config",
+    "shared.Logger"
+  ],
+  "features": ["API-001", "API-002", "API-003", "UI-001", "UI-002", "UI-003"],
+  "current_implementation": {
+    "legacy_path": "server.py",
+    "legacy_templates": "templates/",
+    "migration_status": "pending"
+  }
+}
+

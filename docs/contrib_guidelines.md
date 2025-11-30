@@ -215,17 +215,17 @@ git log --oneline -1
 
 | Scope / 范围 | Agent | Examples / 示例 |
 |--------------|-------|----------------|
-| `trading` | Agent TRADING | `feat(trading): add order cancellation` |
-| `strategy` | Agent TRADING | `feat(strategy): implement funding rate logic` |
-| `portfolio` | Agent PORTFOLIO | `feat(portfolio): add rebalance method` |
-| `risk` | Agent PORTFOLIO | `fix(risk): correct margin calculation` |
-| `api` | Agent WEB | `feat(api): add /api/risk-indicators endpoint` |
-| `ui` | Agent WEB | `feat(ui): add portfolio overview panel` |
-| `llm` | Agent AI | `feat(llm): integrate OpenAI provider` |
-| `eval` | Agent AI | `refactor(eval): improve prompt structure` |
-| `docs` | Agent QA | `docs(guide): update user stories` |
-| `test` | Agent QA | `test(integration): add portfolio sync tests` |
-| `harness` | Agent QA | `feat(harness): add file locking rules` |
+| `trading` | Agent 1 | `feat(trading): add order cancellation` |
+| `strategy` | Agent 1 | `feat(strategy): implement funding rate logic` |
+| `portfolio` | Agent 2 | `feat(portfolio): add rebalance method` |
+| `risk` | Agent 2 | `fix(risk): correct margin calculation` |
+| `api` | Agent 3 | `feat(api): add /api/risk-indicators endpoint` |
+| `ui` | Agent 3 | `feat(ui): add portfolio overview panel` |
+| `llm` | Agent 4 | `feat(llm): integrate OpenAI provider` |
+| `eval` | Agent 4 | `refactor(eval): improve prompt structure` |
+| `docs` | Agent 5 | `docs(guide): update user stories` |
+| `test` | Agent 5 | `test(integration): add portfolio sync tests` |
+| `harness` | Agent 5 | `feat(harness): add file locking rules` |
 
 ### Examples / 示例
 
@@ -323,7 +323,7 @@ git revert <commit-hash>
 1. Record in `claude_progress.md`:  
    在 `claude_progress.md` 中记录：
    ```markdown
-   | 2025-11-28 | Agent XXX | FEAT-XXX | — | ❌ | Rolled back | Attempted approach failed: [reason] |
+   | 2025-11-28 | Agent X | FEAT-XXX | — | ❌ | Rolled back | Attempted approach failed: [reason] |
    ```
 
 2. Keep `passes: false` in `feature_matrix.json`  
@@ -516,4 +516,5 @@ Session End / 会话结束
 - `docs/project/issue_tracker.md` — Bug and issue tracking / 问题追踪
 - `docs/project/init_plan.md` — Initialization blueprint / 初始化蓝图
 - `docs/agents/README.md` — Agent overview / Agent 概览
+
 

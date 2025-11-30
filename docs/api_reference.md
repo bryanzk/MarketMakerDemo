@@ -225,5 +225,5 @@ Returns real-time risk monitoring indicators.
   [风险指标指南](user_guide/risk_indicators.md) – 风险监控用户指南。
 - [Multi-LLM Evaluation Guide](user_guide/multi_llm_evaluation.md) – Multi-model strategy evaluation.
   [多 LLM 评估指南](user_guide/multi_llm_evaluation.md) – 多模型策略评估。
-- [AlphaLoop Framework](framework/framework_design.md) – Architecture and design reference.
-  [AlphaLoop 框架](framework/framework_design.md) – 架构与设计参考。
+- [AlphaLoop Framework](alphaloop/framework_design.md) – Architecture and design reference.
+  [AlphaLoop 框架](alphaloop/framework_design.md) – 架构与设计参考。

@@ -1,0 +1,18 @@
+#!/bin/bash
+# Git pre-commit hook: Feature advancement check
+# 检查是否有 Feature 相关改动但未运行 advance_feature.py
+
+# Check if any governance JSON files were modified
+if git diff --cached --name-only | grep -E "(docs/modules/.*\.json|status/roadmap\.json|docs/progress/progress_index\.json)" > /dev/null; then
+    echo "⚠️  Governance JSON files modified."
+    echo "   Did you run 'python scripts/advance_feature.py' to update feature state?"
+    echo "   If not, please run it before committing."
+    read -p "Continue anyway? (y/N) " -n 1 -r
+    echo
+    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+        exit 1
+    fi
+fi
+
+exit 0
+

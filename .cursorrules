@@ -172,6 +172,13 @@ Dev Agent 按 owner 字段映射:
 | `status/agent_requests.json` | 只能追加新请求或更新自己请求的状态 |
 | `logs/audit_trail.json` | 只能追加，不可修改历史 |
 
+### 🟠 Lint Fix Exception / Lint 修复例外
+
+- Agent QA may edit any module strictly for lint-related fixes (formatting, unused imports, whitespace) when CI/CD lint checks fail; no behavioral or logic changes are allowed.
+- 当 CI/CD 因 lint 失败被阻塞时，Agent QA 可跨模块进行仅限格式、未使用导入、空白等 lint 修复，但禁止修改业务逻辑。
+- QA must notify the owning Agent after the fix and reference the lint report in the commit or task note to keep accountability.
+- QA 在完成修复后需通知对应 Owner Agent，并在提交或任务记录中标注 lint 报告来源以便追溯。
+
 ---
 
 ## 🔒 JSON 修改规则

@@ -25,3 +25,4 @@ pytest tests/smoke/ -v
 3. Core functionality works / 核心功能正常
 4. No critical errors / 无严重错误
 
+

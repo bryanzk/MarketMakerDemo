@@ -11,4 +11,3 @@ Web module components:
 # from src.web.server import app
 
 __all__ = []
-

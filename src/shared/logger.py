@@ -56,4 +56,3 @@ def setup_logger(name: str, level: int = logging.INFO) -> logging.Logger:
     logger.addHandler(handler)
 
     return logger
-

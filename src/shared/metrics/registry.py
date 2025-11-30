@@ -51,4 +51,3 @@ class MetricsRegistry:
             except Exception as e:
                 logger.error(f"Error calculating {name}: {e}")
         return results
-

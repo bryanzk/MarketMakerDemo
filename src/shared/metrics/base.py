@@ -38,4 +38,3 @@ class Metric(ABC):
             The calculated metric value, or None if calculation fails.
         """
         pass
-

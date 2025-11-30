@@ -42,4 +42,3 @@ def round_tick_size(price: float, tick_size: float) -> float:
     return float(
         (price / tick_size).quantize(Decimal("1"), rounding=ROUND_FLOOR) * tick_size
     )
-

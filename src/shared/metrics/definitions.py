@@ -52,4 +52,3 @@ class TickToTradeLatency(Metric):
     def calculate(self, data: Dict[str, Any]) -> float:
         # Mock implementation
         return 3.5  # ms
-

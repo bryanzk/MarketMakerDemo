@@ -61,4 +61,3 @@ METRICS_CONFIG = {
         "sortino_ratio": {"enabled": True, "target": 3.0},
     },
 }
-

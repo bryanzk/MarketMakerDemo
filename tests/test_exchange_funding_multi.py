@@ -7,13 +7,13 @@ from unittest.mock import MagicMock, Mock, patch
 
 import pytest
 
-from alphaloop.market.exchange import BinanceClient
+from src.trading.exchange import BinanceClient
 
 
 @pytest.fixture
 def mock_exchange():
     """Create a mocked BinanceClient for testing"""
-    with patch("alphaloop.market.exchange.ccxt.binanceusdm") as mock_ccxt:
+    with patch("src.trading.exchange.ccxt.binanceusdm") as mock_ccxt:
         # Mock the exchange instance
         mock_instance = Mock()
         mock_ccxt.return_value = mock_instance

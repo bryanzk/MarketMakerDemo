@@ -7,7 +7,7 @@ from unittest.mock import MagicMock, Mock, patch
 
 import pytest
 
-from alphaloop.market.exchange import BinanceClient
+from src.trading.exchange import BinanceClient
 
 
 class TestLeverageManagement:
@@ -16,7 +16,7 @@ class TestLeverageManagement:
     @pytest.fixture
     def mock_client(self):
         """Create a properly mocked BinanceClient"""
-        with patch("alphaloop.market.exchange.ccxt.binanceusdm") as mock_binance:
+        with patch("src.trading.exchange.ccxt.binanceusdm") as mock_binance:
             mock_exchange = MagicMock()
             mock_exchange.load_markets.return_value = {
                 "ETH/USDT:USDT": {
@@ -32,7 +32,7 @@ class TestLeverageManagement:
             }
             mock_binance.return_value = mock_exchange
 
-            with patch("alphaloop.market.exchange.LEVERAGE", 5):
+            with patch("src.trading.exchange.LEVERAGE", 5):
                 client = BinanceClient()
             yield client
 
@@ -147,7 +147,7 @@ class TestSymbolLimits:
     @pytest.fixture
     def mock_client(self):
         """Create a properly mocked BinanceClient"""
-        with patch("alphaloop.market.exchange.ccxt.binanceusdm") as mock_binance:
+        with patch("src.trading.exchange.ccxt.binanceusdm") as mock_binance:
             mock_exchange = MagicMock()
             mock_exchange.load_markets.return_value = {
                 "ETH/USDT:USDT": {
@@ -162,7 +162,7 @@ class TestSymbolLimits:
             }
             mock_binance.return_value = mock_exchange
 
-            with patch("alphaloop.market.exchange.LEVERAGE", 5):
+            with patch("src.trading.exchange.LEVERAGE", 5):
                 client = BinanceClient()
             yield client
 
@@ -213,14 +213,14 @@ class TestTickerAndAccount:
     @pytest.fixture
     def mock_client(self):
         """Create a properly mocked BinanceClient"""
-        with patch("alphaloop.market.exchange.ccxt.binanceusdm") as mock_binance:
+        with patch("src.trading.exchange.ccxt.binanceusdm") as mock_binance:
             mock_exchange = MagicMock()
             mock_exchange.load_markets.return_value = {
                 "ETH/USDT:USDT": {"id": "ETHUSDT", "symbol": "ETH/USDT:USDT"}
             }
             mock_binance.return_value = mock_exchange
 
-            with patch("alphaloop.market.exchange.LEVERAGE", 5):
+            with patch("src.trading.exchange.LEVERAGE", 5):
                 client = BinanceClient()
             yield client
 

@@ -12,7 +12,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from fastapi.testclient import TestClient
 
-from alphaloop.portfolio.manager import StrategyStatus
+from src.portfolio.manager import StrategyStatus
 
 # ============================================================================
 # Epic 1: Portfolio Overview Tests
@@ -316,7 +316,7 @@ class TestStrategyComparisonTable:
         When: 计算健康度
         Then: 结果符合公式
         """
-        from alphaloop.portfolio.health import calculate_strategy_health
+        from src.portfolio.health import calculate_strategy_health
 
         metrics = {
             "pnl": 100,  # 盈利 100
@@ -341,7 +341,7 @@ class TestStrategyComparisonTable:
         """
         US-2.3: 各因素权重正确（40% + 30% + 20% + 10% = 100%）
         """
-        from alphaloop.portfolio.health import HEALTH_WEIGHTS
+        from src.portfolio.health import HEALTH_WEIGHTS
 
         total_weight = sum(HEALTH_WEIGHTS.values())
         assert total_weight == pytest.approx(1.0, rel=0.01)

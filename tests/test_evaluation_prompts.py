@@ -9,12 +9,12 @@ Tests for:
 """
 
 import pytest
-from alphaloop.evaluation.prompts import (
+from src.ai.evaluation.prompts import (
     MarketDiagnosisPrompt,
     RiskAdvisorPrompt,
     StrategyAdvisorPrompt,
 )
-from alphaloop.evaluation.schemas import MarketContext
+from src.ai.evaluation.schemas import MarketContext
 
 
 class TestStrategyAdvisorPrompt:

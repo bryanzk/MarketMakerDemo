@@ -5,8 +5,8 @@ import pytest
 from fastapi.testclient import TestClient
 
 import server
-from alphaloop.strategies.funding import FundingRateStrategy
-from alphaloop.evaluation.schemas import (
+from src.trading.strategies.funding_rate import FundingRateStrategy
+from src.ai.evaluation.schemas import (
     AggregatedResult,
     EvaluationResult,
     ParameterStatistics,

@@ -9,7 +9,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from alphaloop.portfolio.manager import PortfolioManager, StrategyStatus
+from src.portfolio.manager import PortfolioManager, StrategyStatus
 
 
 class TestPortfolioSync:

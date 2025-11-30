@@ -1,6 +1,6 @@
 import pytest
 
-from alphaloop.strategies.strategy import FixedSpreadStrategy
+from src.trading.strategies.fixed_spread import FixedSpreadStrategy
 
 
 class TestFixedSpreadStrategy:

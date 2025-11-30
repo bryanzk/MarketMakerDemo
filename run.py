@@ -1,4 +1,4 @@
-from alphaloop.main import AlphaLoop
+from src.trading.engine import AlphaLoop
 
 if __name__ == "__main__":
     loop = AlphaLoop()

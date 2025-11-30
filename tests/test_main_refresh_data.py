@@ -12,7 +12,7 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from alphaloop.market.strategy_instance import StrategyInstance
+from src.trading.strategy_instance import StrategyInstance
 
 
 class TestRefreshData:
@@ -40,7 +40,7 @@ class TestRefreshData:
     def test_refresh_data_success(self, mock_exchange):
         """Test successful data refresh updates all caches"""
         with patch(
-            "alphaloop.market.strategy_instance.BinanceClient",
+            "src.trading.strategy_instance.BinanceClient",
             return_value=mock_exchange,
         ):
             instance = StrategyInstance("test_strategy", "fixed_spread")
@@ -63,7 +63,7 @@ class TestRefreshData:
     def test_refresh_data_no_exchange(self):
         """Test refresh_data returns False when exchange not available"""
         with patch(
-            "alphaloop.market.strategy_instance.BinanceClient",
+            "src.trading.strategy_instance.BinanceClient",
             side_effect=Exception("No exchange"),
         ):
             instance = StrategyInstance("test_strategy", "fixed_spread")
@@ -79,7 +79,7 @@ class TestRefreshData:
         mock_exchange.fetch_market_data.return_value = None
 
         with patch(
-            "alphaloop.market.strategy_instance.BinanceClient",
+            "src.trading.strategy_instance.BinanceClient",
             return_value=mock_exchange,
         ):
             instance = StrategyInstance("test_strategy", "fixed_spread")
@@ -97,7 +97,7 @@ class TestRefreshData:
         }
 
         with patch(
-            "alphaloop.market.strategy_instance.BinanceClient",
+            "src.trading.strategy_instance.BinanceClient",
             return_value=mock_exchange,
         ):
             instance = StrategyInstance("test_strategy", "fixed_spread")
@@ -118,7 +118,7 @@ class TestRefreshData:
         }
 
         with patch(
-            "alphaloop.market.strategy_instance.BinanceClient",
+            "src.trading.strategy_instance.BinanceClient",
             return_value=mock_exchange,
         ):
             instance = StrategyInstance("test_strategy", "fixed_spread")
@@ -135,7 +135,7 @@ class TestRefreshData:
         mock_exchange.fetch_market_data.side_effect = Exception("API error")
 
         with patch(
-            "alphaloop.market.strategy_instance.BinanceClient",
+            "src.trading.strategy_instance.BinanceClient",
             return_value=mock_exchange,
         ):
             instance = StrategyInstance("test_strategy", "fixed_spread")
@@ -147,7 +147,7 @@ class TestRefreshData:
     def test_refresh_data_updates_all_three_caches(self, mock_exchange):
         """Verify all three cache fields are updated"""
         with patch(
-            "alphaloop.market.strategy_instance.BinanceClient",
+            "src.trading.strategy_instance.BinanceClient",
             return_value=mock_exchange,
         ):
             instance = StrategyInstance("test_strategy", "fixed_spread")
@@ -167,7 +167,7 @@ class TestRefreshData:
     def test_refresh_data_with_different_strategy_types(self, mock_exchange):
         """Test refresh_data works for different strategy types"""
         with patch(
-            "alphaloop.market.strategy_instance.BinanceClient",
+            "src.trading.strategy_instance.BinanceClient",
             return_value=mock_exchange,
         ):
             # Test with fixed_spread
@@ -183,7 +183,7 @@ class TestRefreshData:
     def test_refresh_data_with_custom_symbol(self, mock_exchange):
         """Test refresh_data works with custom trading symbol"""
         with patch(
-            "alphaloop.market.strategy_instance.BinanceClient",
+            "src.trading.strategy_instance.BinanceClient",
             return_value=mock_exchange,
         ):
             instance = StrategyInstance("test_btc", "fixed_spread", symbol="BTC/USDT:USDT")

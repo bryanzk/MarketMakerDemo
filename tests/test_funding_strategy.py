@@ -2,9 +2,9 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from alphaloop.agents.risk import RiskAgent
-from alphaloop.core.config import RISK_LIMITS
-from alphaloop.strategies.funding import FundingRateStrategy
+from src.ai.agents.risk import RiskAgent
+from src.shared.config import RISK_LIMITS
+from src.trading.strategies.funding_rate import FundingRateStrategy
 
 
 class TestFundingRateStrategy:

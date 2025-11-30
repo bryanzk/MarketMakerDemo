@@ -16,7 +16,7 @@ from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 
 # Import the bot engine class
-from alphaloop.evaluation import (
+from src.ai.evaluation import (
     AggregatedResult,
     EvaluationResult,
     MarketContext,
@@ -26,12 +26,12 @@ from alphaloop.evaluation import (
     StrategyConsensus,
     StrategyProposal,
 )
-from alphaloop.main import AlphaLoop
-from alphaloop.portfolio.manager import PortfolioManager, StrategyStatus
-from alphaloop.portfolio.risk import RiskIndicators
-from alphaloop.core.llm import create_all_providers
-from alphaloop.strategies.funding import FundingRateStrategy
-from alphaloop.strategies.strategy import FixedSpreadStrategy
+from src.trading.engine import AlphaLoop
+from src.portfolio.manager import PortfolioManager, StrategyStatus
+from src.portfolio.risk import RiskIndicators
+from src.ai.llm import create_all_providers
+from src.trading.strategies.funding_rate import FundingRateStrategy
+from src.trading.strategies.fixed_spread import FixedSpreadStrategy
 
 app = FastAPI()
 

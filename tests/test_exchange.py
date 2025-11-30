@@ -4,13 +4,13 @@ from unittest.mock import MagicMock, Mock, patch
 import certifi
 import pytest
 
-from alphaloop.market.exchange import BinanceClient
+from src.trading.exchange import BinanceClient
 
 
 class TestBinanceClient:
     """Test cases for BinanceClient class"""
 
-    @patch("alphaloop.market.exchange.ccxt.binanceusdm")
+    @patch("src.trading.exchange.ccxt.binanceusdm")
     def test_init_success(self, mock_binance):
         """Test successful initialization of BinanceClient"""
         # Setup mock
@@ -23,7 +23,7 @@ class TestBinanceClient:
         mock_binance.return_value = mock_exchange
 
         # Create client
-        with patch("alphaloop.market.exchange.LEVERAGE", 5):
+        with patch("src.trading.exchange.LEVERAGE", 5):
             client = BinanceClient()
 
         # Verify
@@ -31,7 +31,7 @@ class TestBinanceClient:
         assert client.market["id"] == "ETHUSDT"
         mock_exchange.load_markets.assert_called_once()
 
-    @patch("alphaloop.market.exchange.ccxt.binanceusdm")
+    @patch("src.trading.exchange.ccxt.binanceusdm")
     def test_init_sets_custom_ca_bundle(self, mock_binance, monkeypatch):
         """Client should configure requests to use an accessible CA bundle."""
         mock_exchange = MagicMock()
@@ -45,7 +45,7 @@ class TestBinanceClient:
         monkeypatch.delenv("SSL_CERT_FILE", raising=False)
         monkeypatch.delenv("REQUESTS_CA_BUNDLE", raising=False)
 
-        with patch("alphaloop.market.exchange.LEVERAGE", 5):
+        with patch("src.trading.exchange.LEVERAGE", 5):
             BinanceClient()
 
         ca_path = certifi.where()
@@ -53,7 +53,7 @@ class TestBinanceClient:
         assert os.environ["REQUESTS_CA_BUNDLE"] == ca_path
         assert mock_exchange.session.verify == ca_path
 
-    @patch("alphaloop.market.exchange.ccxt.binanceusdm")
+    @patch("src.trading.exchange.ccxt.binanceusdm")
     def test_set_symbol_success(self, mock_binance):
         """Test setting a new symbol successfully"""
         mock_exchange = MagicMock()
@@ -64,7 +64,7 @@ class TestBinanceClient:
         mock_exchange.markets = mock_exchange.load_markets.return_value
         mock_binance.return_value = mock_exchange
 
-        with patch("alphaloop.market.exchange.LEVERAGE", 5):
+        with patch("src.trading.exchange.LEVERAGE", 5):
             client = BinanceClient()
 
         # Change symbol
@@ -74,7 +74,7 @@ class TestBinanceClient:
         assert client.symbol == "BTC/USDT:USDT"
         assert client.market["id"] == "BTCUSDT"
 
-    @patch("alphaloop.market.exchange.ccxt.binanceusdm")
+    @patch("src.trading.exchange.ccxt.binanceusdm")
     def test_set_symbol_clears_errors(self, mock_binance):
         """Test that set_symbol clears old errors when switching symbol"""
         mock_exchange = MagicMock()
@@ -85,7 +85,7 @@ class TestBinanceClient:
         mock_exchange.markets = mock_exchange.load_markets.return_value
         mock_binance.return_value = mock_exchange
 
-        with patch("alphaloop.market.exchange.LEVERAGE", 5):
+        with patch("src.trading.exchange.LEVERAGE", 5):
             client = BinanceClient()
 
         # Set some errors
@@ -100,7 +100,7 @@ class TestBinanceClient:
         assert client.last_order_error is None
         assert client.last_api_error is None
 
-    @patch("alphaloop.market.exchange.ccxt.binanceusdm")
+    @patch("src.trading.exchange.ccxt.binanceusdm")
     def test_set_symbol_not_found(self, mock_binance):
         """Test setting a symbol that doesn't exist"""
         mock_exchange = MagicMock()
@@ -110,7 +110,7 @@ class TestBinanceClient:
         mock_exchange.markets = mock_exchange.load_markets.return_value
         mock_binance.return_value = mock_exchange
 
-        with patch("alphaloop.market.exchange.LEVERAGE", 5):
+        with patch("src.trading.exchange.LEVERAGE", 5):
             client = BinanceClient()
 
         # Try to set invalid symbol
@@ -119,7 +119,7 @@ class TestBinanceClient:
         assert result is False
         assert client.symbol == "ETH/USDT:USDT"  # Should remain unchanged
 
-    @patch("alphaloop.market.exchange.ccxt.binanceusdm")
+    @patch("src.trading.exchange.ccxt.binanceusdm")
     def test_set_symbol_exception(self, mock_binance):
         """Test exception handling in set_symbol"""
         mock_exchange = MagicMock()
@@ -130,7 +130,7 @@ class TestBinanceClient:
         # Don't set side_effect here, it will break init
         mock_binance.return_value = mock_exchange
 
-        with patch("alphaloop.market.exchange.LEVERAGE", 5):
+        with patch("src.trading.exchange.LEVERAGE", 5):
             client = BinanceClient()
             # Set side effect after init
             client.exchange.load_markets.side_effect = Exception("API Error")
@@ -143,7 +143,7 @@ class TestBinanceClient:
 
     # Removed test_fetch_order_book_success as method does not exist
 
-    @patch("alphaloop.market.exchange.ccxt.binanceusdm")
+    @patch("src.trading.exchange.ccxt.binanceusdm")
     def test_fetch_market_data_empty_orderbook(self, mock_binance):
         """Test market data extraction with empty orderbook"""
         mock_exchange = MagicMock()
@@ -153,7 +153,7 @@ class TestBinanceClient:
         mock_exchange.fetch_order_book.return_value = {"bids": [], "asks": []}
         mock_binance.return_value = mock_exchange
 
-        with patch("alphaloop.market.exchange.LEVERAGE", 5):
+        with patch("src.trading.exchange.LEVERAGE", 5):
             client = BinanceClient()
 
         market_data = client.fetch_market_data()
@@ -162,7 +162,7 @@ class TestBinanceClient:
         assert market_data["best_ask"] is None
         assert market_data["mid_price"] is None
 
-    @patch("alphaloop.market.exchange.ccxt.binanceusdm")
+    @patch("src.trading.exchange.ccxt.binanceusdm")
     def test_fetch_market_data_tick_size_from_int_precision(self, mock_binance):
         """Test tick_size is calculated from integer precision (decimals)"""
         mock_exchange = MagicMock()
@@ -182,7 +182,7 @@ class TestBinanceClient:
         }
         mock_binance.return_value = mock_exchange
 
-        with patch("alphaloop.market.exchange.LEVERAGE", 5):
+        with patch("src.trading.exchange.LEVERAGE", 5):
             client = BinanceClient()
 
         market_data = client.fetch_market_data()
@@ -190,7 +190,7 @@ class TestBinanceClient:
         assert market_data["tick_size"] == 0.01  # 10^(-2)
         assert market_data["step_size"] == 0.001  # 10^(-3)
 
-    @patch("alphaloop.market.exchange.ccxt.binanceusdm")
+    @patch("src.trading.exchange.ccxt.binanceusdm")
     def test_fetch_market_data_tick_size_from_float_precision(self, mock_binance):
         """Test tick_size is used directly when precision is already a float"""
         mock_exchange = MagicMock()
@@ -207,7 +207,7 @@ class TestBinanceClient:
         }
         mock_binance.return_value = mock_exchange
 
-        with patch("alphaloop.market.exchange.LEVERAGE", 5):
+        with patch("src.trading.exchange.LEVERAGE", 5):
             client = BinanceClient()
 
         market_data = client.fetch_market_data()
@@ -215,7 +215,7 @@ class TestBinanceClient:
         assert market_data["tick_size"] == 0.0001
         assert market_data["step_size"] == 0.01
 
-    @patch("alphaloop.market.exchange.ccxt.binanceusdm")
+    @patch("src.trading.exchange.ccxt.binanceusdm")
     def test_fetch_market_data_no_precision(self, mock_binance):
         """Test tick_size and step_size are None when precision not available"""
         mock_exchange = MagicMock()
@@ -232,7 +232,7 @@ class TestBinanceClient:
         }
         mock_binance.return_value = mock_exchange
 
-        with patch("alphaloop.market.exchange.LEVERAGE", 5):
+        with patch("src.trading.exchange.LEVERAGE", 5):
             client = BinanceClient()
 
         market_data = client.fetch_market_data()
@@ -240,7 +240,7 @@ class TestBinanceClient:
         assert market_data["tick_size"] is None
         assert market_data["step_size"] is None
 
-    @patch("alphaloop.market.exchange.ccxt.binanceusdm")
+    @patch("src.trading.exchange.ccxt.binanceusdm")
     def test_fetch_realized_pnl_success(self, mock_binance):
         """Test successful realized PnL fetch"""
         mock_exchange = MagicMock()
@@ -254,14 +254,14 @@ class TestBinanceClient:
         ]
         mock_binance.return_value = mock_exchange
 
-        with patch("alphaloop.market.exchange.LEVERAGE", 5):
+        with patch("src.trading.exchange.LEVERAGE", 5):
             client = BinanceClient()
 
         pnl = client.fetch_realized_pnl()
 
         assert pnl == 15.8
 
-    @patch("alphaloop.market.exchange.ccxt.binanceusdm")
+    @patch("src.trading.exchange.ccxt.binanceusdm")
     def test_fetch_realized_pnl_with_start_time(self, mock_binance):
         """Test realized PnL fetch with start time filter"""
         mock_exchange = MagicMock()
@@ -273,7 +273,7 @@ class TestBinanceClient:
         ]
         mock_binance.return_value = mock_exchange
 
-        with patch("alphaloop.market.exchange.LEVERAGE", 5):
+        with patch("src.trading.exchange.LEVERAGE", 5):
             client = BinanceClient()
 
         start_time = 1700000000000
@@ -289,7 +289,7 @@ class TestBinanceClient:
         )
         assert pnl == 10.5
 
-    @patch("alphaloop.market.exchange.ccxt.binanceusdm")
+    @patch("src.trading.exchange.ccxt.binanceusdm")
     def test_fetch_realized_pnl_no_records(self, mock_binance):
         """Test realized PnL fetch with no records"""
         mock_exchange = MagicMock()
@@ -299,14 +299,14 @@ class TestBinanceClient:
         mock_exchange.fapiPrivateGetIncome.return_value = []
         mock_binance.return_value = mock_exchange
 
-        with patch("alphaloop.market.exchange.LEVERAGE", 5):
+        with patch("src.trading.exchange.LEVERAGE", 5):
             client = BinanceClient()
 
         pnl = client.fetch_realized_pnl()
 
         assert pnl == 0.0
 
-    @patch("alphaloop.market.exchange.ccxt.binanceusdm")
+    @patch("src.trading.exchange.ccxt.binanceusdm")
     def test_fetch_realized_pnl_error(self, mock_binance):
         """Test realized PnL fetch error handling"""
         mock_exchange = MagicMock()
@@ -316,7 +316,7 @@ class TestBinanceClient:
         mock_exchange.fapiPrivateGetIncome.side_effect = Exception("API Error")
         mock_binance.return_value = mock_exchange
 
-        with patch("alphaloop.market.exchange.LEVERAGE", 5):
+        with patch("src.trading.exchange.LEVERAGE", 5):
             client = BinanceClient()
 
         pnl = client.fetch_realized_pnl()
@@ -327,7 +327,7 @@ class TestBinanceClient:
 class TestCommission:
     """Test cases for commission/trading fees methods"""
 
-    @patch("alphaloop.market.exchange.ccxt.binanceusdm")
+    @patch("src.trading.exchange.ccxt.binanceusdm")
     def test_fetch_commission_success(self, mock_binance):
         """Test successful commission fetch"""
         mock_exchange = MagicMock()
@@ -341,7 +341,7 @@ class TestCommission:
         ]
         mock_binance.return_value = mock_exchange
 
-        with patch("alphaloop.market.exchange.LEVERAGE", 5):
+        with patch("src.trading.exchange.LEVERAGE", 5):
             client = BinanceClient()
 
         commission = client.fetch_commission()
@@ -349,7 +349,7 @@ class TestCommission:
         # Should return positive value (absolute)
         assert commission == 0.8
 
-    @patch("alphaloop.market.exchange.ccxt.binanceusdm")
+    @patch("src.trading.exchange.ccxt.binanceusdm")
     def test_fetch_commission_with_start_time(self, mock_binance):
         """Test commission fetch with start time filter"""
         mock_exchange = MagicMock()
@@ -361,7 +361,7 @@ class TestCommission:
         ]
         mock_binance.return_value = mock_exchange
 
-        with patch("alphaloop.market.exchange.LEVERAGE", 5):
+        with patch("src.trading.exchange.LEVERAGE", 5):
             client = BinanceClient()
 
         start_time = 1700000000000
@@ -377,7 +377,7 @@ class TestCommission:
         )
         assert commission == 1.0
 
-    @patch("alphaloop.market.exchange.ccxt.binanceusdm")
+    @patch("src.trading.exchange.ccxt.binanceusdm")
     def test_fetch_commission_no_records(self, mock_binance):
         """Test commission fetch with no records"""
         mock_exchange = MagicMock()
@@ -387,14 +387,14 @@ class TestCommission:
         mock_exchange.fapiPrivateGetIncome.return_value = []
         mock_binance.return_value = mock_exchange
 
-        with patch("alphaloop.market.exchange.LEVERAGE", 5):
+        with patch("src.trading.exchange.LEVERAGE", 5):
             client = BinanceClient()
 
         commission = client.fetch_commission()
 
         assert commission == 0.0
 
-    @patch("alphaloop.market.exchange.ccxt.binanceusdm")
+    @patch("src.trading.exchange.ccxt.binanceusdm")
     def test_fetch_commission_error(self, mock_binance):
         """Test commission fetch error handling"""
         mock_exchange = MagicMock()
@@ -404,14 +404,14 @@ class TestCommission:
         mock_exchange.fapiPrivateGetIncome.side_effect = Exception("API Error")
         mock_binance.return_value = mock_exchange
 
-        with patch("alphaloop.market.exchange.LEVERAGE", 5):
+        with patch("src.trading.exchange.LEVERAGE", 5):
             client = BinanceClient()
 
         commission = client.fetch_commission()
 
         assert commission == 0.0
 
-    @patch("alphaloop.market.exchange.ccxt.binanceusdm")
+    @patch("src.trading.exchange.ccxt.binanceusdm")
     def test_fetch_pnl_and_fees_success(self, mock_binance):
         """Test fetching both PnL and fees together"""
         mock_exchange = MagicMock()
@@ -435,7 +435,7 @@ class TestCommission:
         mock_exchange.fapiPrivateGetIncome.side_effect = mock_income
         mock_binance.return_value = mock_exchange
 
-        with patch("alphaloop.market.exchange.LEVERAGE", 5):
+        with patch("src.trading.exchange.LEVERAGE", 5):
             client = BinanceClient()
 
         result = client.fetch_pnl_and_fees()
@@ -444,7 +444,7 @@ class TestCommission:
         assert result["commission"] == 1.5
         assert result["net_pnl"] == 13.5  # 15.0 - 1.5
 
-    @patch("alphaloop.market.exchange.ccxt.binanceusdm")
+    @patch("src.trading.exchange.ccxt.binanceusdm")
     def test_fetch_pnl_and_fees_error(self, mock_binance):
         """Test fetch_pnl_and_fees error handling returns zeros"""
         mock_exchange = MagicMock()
@@ -454,7 +454,7 @@ class TestCommission:
         mock_exchange.fapiPrivateGetIncome.side_effect = Exception("API Error")
         mock_binance.return_value = mock_exchange
 
-        with patch("alphaloop.market.exchange.LEVERAGE", 5):
+        with patch("src.trading.exchange.LEVERAGE", 5):
             client = BinanceClient()
 
         result = client.fetch_pnl_and_fees()

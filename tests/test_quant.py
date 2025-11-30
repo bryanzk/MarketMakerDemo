@@ -2,7 +2,7 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from alphaloop.agents.quant import QuantAgent
+from src.ai.agents.quant import QuantAgent
 
 
 class TestQuantAgent:
@@ -10,7 +10,7 @@ class TestQuantAgent:
 
     def test_init_fallback(self):
         """Test initialization falls back when no API key"""
-        with patch("alphaloop.agents.quant.GeminiProvider") as mock_provider:
+        with patch("src.ai.agents.quant.GeminiProvider") as mock_provider:
             mock_provider.side_effect = ValueError("No API Key")
             agent = QuantAgent()
             assert agent.gateway is None

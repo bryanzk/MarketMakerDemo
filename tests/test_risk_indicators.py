@@ -13,7 +13,7 @@ import pytest
 from unittest.mock import MagicMock, patch
 
 # Import the module to be tested (will be created next)
-from alphaloop.portfolio.risk import RiskIndicators
+from src.portfolio.risk import RiskIndicators
 
 
 class TestLiquidationBuffer:

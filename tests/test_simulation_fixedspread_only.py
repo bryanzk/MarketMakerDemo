@@ -9,9 +9,9 @@ the simulation will always use FixedSpread strategy.
 
 import pytest
 from unittest.mock import Mock, patch
-from alphaloop.evaluation.schemas import MarketContext, StrategyProposal
-from alphaloop.evaluation.evaluator import MultiLLMEvaluator, StrategySimulator
-from alphaloop.strategies.strategy import FixedSpreadStrategy
+from src.ai.evaluation.schemas import MarketContext, StrategyProposal
+from src.ai.evaluation.evaluator import MultiLLMEvaluator, StrategySimulator
+from src.trading.strategies.fixed_spread import FixedSpreadStrategy
 
 
 class TestSimulationFixedSpreadOnly:
@@ -150,7 +150,7 @@ class TestSimulationFixedSpreadOnly:
         测试模拟仅创建 FixedSpreadStrategy，从不创建 FundingRateStrategy
         """
         # Verify FundingRateStrategy is not imported in evaluator
-        import alphaloop.evaluation.evaluator as evaluator_module
+        import src.ai.evaluation.evaluator as evaluator_module
 
         # FundingRateStrategy should not be in the module (we removed the import)
         assert not hasattr(evaluator_module, "FundingRateStrategy"), (

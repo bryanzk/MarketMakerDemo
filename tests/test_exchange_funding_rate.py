@@ -2,10 +2,10 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from alphaloop.market.exchange import BinanceClient
+from src.trading.exchange import BinanceClient
 
 
-@patch("alphaloop.market.exchange.ccxt.binanceusdm")
+@patch("src.trading.exchange.ccxt.binanceusdm")
 def test_fetch_funding_rate_prefers_predicted(mock_binanceusdm):
     """BinanceClient should return predictedFundingRate when available."""
     mock_ex = MagicMock()
@@ -25,7 +25,7 @@ def test_fetch_funding_rate_prefers_predicted(mock_binanceusdm):
     assert rate == pytest.approx(0.0000212)
 
 
-@patch("alphaloop.market.exchange.ccxt.binanceusdm")
+@patch("src.trading.exchange.ccxt.binanceusdm")
 def test_fetch_funding_rate_falls_back_to_last(mock_binanceusdm):
     """If predictedFundingRate is missing, fall back to lastFundingRate."""
     mock_ex = MagicMock()

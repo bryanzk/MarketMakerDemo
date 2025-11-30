@@ -3,17 +3,17 @@ from unittest.mock import MagicMock, Mock, patch
 
 import pytest
 
-from alphaloop.main import AlphaLoop
+from src.trading.engine import AlphaLoop
 
 
 class TestAlphaLoop:
     """Test cases for AlphaLoop class"""
 
-    @patch("alphaloop.market.strategy_instance.BinanceClient")
-    @patch("alphaloop.main.DataAgent")
-    @patch("alphaloop.main.QuantAgent")
-    @patch("alphaloop.main.RiskAgent")
-    @patch("alphaloop.main.FixedSpreadStrategy")
+    @patch("src.trading.strategy_instance.BinanceClient")
+    @patch("src.trading.engine.DataAgent")
+    @patch("src.trading.engine.QuantAgent")
+    @patch("src.trading.engine.RiskAgent")
+    @patch("src.trading.engine.FixedSpreadStrategy")
     def test_init_success(
         self, mock_strategy, mock_risk, mock_quant, mock_data, mock_client
     ):
@@ -46,11 +46,11 @@ class TestAlphaLoop:
         assert engine.risk is not None
         assert engine.strategy is not None
 
-    @patch("alphaloop.market.strategy_instance.BinanceClient")
-    @patch("alphaloop.main.DataAgent")
-    @patch("alphaloop.main.QuantAgent")
-    @patch("alphaloop.main.RiskAgent")
-    @patch("alphaloop.main.FixedSpreadStrategy")
+    @patch("src.trading.strategy_instance.BinanceClient")
+    @patch("src.trading.engine.DataAgent")
+    @patch("src.trading.engine.QuantAgent")
+    @patch("src.trading.engine.RiskAgent")
+    @patch("src.trading.engine.FixedSpreadStrategy")
     def test_run_cycle_flow(
         self,
         mock_strategy_cls,
@@ -112,11 +112,11 @@ class TestAlphaLoop:
         # But since we're using real instances, we verify the flow completed
         # by checking that the cycle didn't raise exceptions
 
-    @patch("alphaloop.market.strategy_instance.BinanceClient")
-    @patch("alphaloop.main.DataAgent")
-    @patch("alphaloop.main.QuantAgent")
-    @patch("alphaloop.main.RiskAgent")
-    @patch("alphaloop.main.FixedSpreadStrategy")
+    @patch("src.trading.strategy_instance.BinanceClient")
+    @patch("src.trading.engine.DataAgent")
+    @patch("src.trading.engine.QuantAgent")
+    @patch("src.trading.engine.RiskAgent")
+    @patch("src.trading.engine.FixedSpreadStrategy")
     def test_risk_rejection(
         self,
         mock_strategy_cls,
@@ -181,11 +181,11 @@ class TestAlphaLoop:
         # Verify that spread was reset to safe default (0.015 from config)
         assert default_instance.strategy.spread == 0.015
 
-    @patch("alphaloop.market.strategy_instance.BinanceClient")
-    @patch("alphaloop.main.DataAgent")
-    @patch("alphaloop.main.QuantAgent")
-    @patch("alphaloop.main.RiskAgent")
-    @patch("alphaloop.main.FixedSpreadStrategy")
+    @patch("src.trading.strategy_instance.BinanceClient")
+    @patch("src.trading.engine.DataAgent")
+    @patch("src.trading.engine.QuantAgent")
+    @patch("src.trading.engine.RiskAgent")
+    @patch("src.trading.engine.FixedSpreadStrategy")
     def test_set_symbol(
         self,
         mock_strategy_cls,
@@ -209,11 +209,11 @@ class TestAlphaLoop:
 class TestErrorHistory:
     """Test cases for error_history tracking in AlphaLoop"""
 
-    @patch("alphaloop.market.strategy_instance.BinanceClient")
-    @patch("alphaloop.main.DataAgent")
-    @patch("alphaloop.main.QuantAgent")
-    @patch("alphaloop.main.RiskAgent")
-    @patch("alphaloop.main.FixedSpreadStrategy")
+    @patch("src.trading.strategy_instance.BinanceClient")
+    @patch("src.trading.engine.DataAgent")
+    @patch("src.trading.engine.QuantAgent")
+    @patch("src.trading.engine.RiskAgent")
+    @patch("src.trading.engine.FixedSpreadStrategy")
     def test_error_history_initialized_empty(
         self,
         mock_strategy_cls,
@@ -235,11 +235,11 @@ class TestErrorHistory:
         assert len(engine.error_history) == 0
         assert engine.error_history.maxlen == 200
 
-    @patch("alphaloop.market.strategy_instance.BinanceClient")
-    @patch("alphaloop.main.DataAgent")
-    @patch("alphaloop.main.QuantAgent")
-    @patch("alphaloop.main.RiskAgent")
-    @patch("alphaloop.main.FixedSpreadStrategy")
+    @patch("src.trading.strategy_instance.BinanceClient")
+    @patch("src.trading.engine.DataAgent")
+    @patch("src.trading.engine.QuantAgent")
+    @patch("src.trading.engine.RiskAgent")
+    @patch("src.trading.engine.FixedSpreadStrategy")
     def test_error_history_captures_order_error(
         self,
         mock_strategy_cls,
@@ -308,11 +308,11 @@ class TestErrorHistory:
         assert "timestamp" in error
         assert "message" in error
 
-    @patch("alphaloop.market.strategy_instance.BinanceClient")
-    @patch("alphaloop.main.DataAgent")
-    @patch("alphaloop.main.QuantAgent")
-    @patch("alphaloop.main.RiskAgent")
-    @patch("alphaloop.main.FixedSpreadStrategy")
+    @patch("src.trading.strategy_instance.BinanceClient")
+    @patch("src.trading.engine.DataAgent")
+    @patch("src.trading.engine.QuantAgent")
+    @patch("src.trading.engine.RiskAgent")
+    @patch("src.trading.engine.FixedSpreadStrategy")
     def test_error_history_includes_strategy_type(
         self,
         mock_strategy_cls,
@@ -373,11 +373,11 @@ class TestErrorHistory:
         assert "strategy_type" in error
         assert error["strategy_type"] == "fixed_spread"
 
-    @patch("alphaloop.market.strategy_instance.BinanceClient")
-    @patch("alphaloop.main.DataAgent")
-    @patch("alphaloop.main.QuantAgent")
-    @patch("alphaloop.main.RiskAgent")
-    @patch("alphaloop.main.FixedSpreadStrategy")
+    @patch("src.trading.strategy_instance.BinanceClient")
+    @patch("src.trading.engine.DataAgent")
+    @patch("src.trading.engine.QuantAgent")
+    @patch("src.trading.engine.RiskAgent")
+    @patch("src.trading.engine.FixedSpreadStrategy")
     def test_error_history_no_error_when_order_succeeds(
         self,
         mock_strategy_cls,
@@ -431,11 +431,11 @@ class TestErrorHistory:
         # Verify no error was captured
         assert len(engine.error_history) == 0
 
-    @patch("alphaloop.market.strategy_instance.BinanceClient")
-    @patch("alphaloop.main.DataAgent")
-    @patch("alphaloop.main.QuantAgent")
-    @patch("alphaloop.main.RiskAgent")
-    @patch("alphaloop.main.FixedSpreadStrategy")
+    @patch("src.trading.strategy_instance.BinanceClient")
+    @patch("src.trading.engine.DataAgent")
+    @patch("src.trading.engine.QuantAgent")
+    @patch("src.trading.engine.RiskAgent")
+    @patch("src.trading.engine.FixedSpreadStrategy")
     def test_refresh_data_failure_sets_alert(
         self,
         mock_strategy_cls,
@@ -476,11 +476,11 @@ class TestErrorHistory:
         # Note: With per-instance exchange, refresh failure is handled per instance
         # The cycle continues for other instances, so stage may not reflect failure
 
-    @patch("alphaloop.market.strategy_instance.BinanceClient")
-    @patch("alphaloop.main.DataAgent")
-    @patch("alphaloop.main.QuantAgent")
-    @patch("alphaloop.main.RiskAgent")
-    @patch("alphaloop.main.FixedSpreadStrategy")
+    @patch("src.trading.strategy_instance.BinanceClient")
+    @patch("src.trading.engine.DataAgent")
+    @patch("src.trading.engine.QuantAgent")
+    @patch("src.trading.engine.RiskAgent")
+    @patch("src.trading.engine.FixedSpreadStrategy")
     def test_cycle_exception_records_error_and_sets_alert(
         self,
         mock_strategy_cls,
@@ -556,10 +556,10 @@ class TestErrorHistory:
 class TestMultiStrategy:
     """Test cases for multi-strategy support"""
 
-    @patch("alphaloop.market.strategy_instance.BinanceClient")
-    @patch("alphaloop.main.DataAgent")
-    @patch("alphaloop.main.QuantAgent")
-    @patch("alphaloop.main.RiskAgent")
+    @patch("src.trading.strategy_instance.BinanceClient")
+    @patch("src.trading.engine.DataAgent")
+    @patch("src.trading.engine.QuantAgent")
+    @patch("src.trading.engine.RiskAgent")
     def test_add_strategy_instance(self, mock_risk, mock_quant, mock_data, mock_client):
         """Test adding a new strategy instance"""
         mock_client_instance = Mock()
@@ -583,10 +583,10 @@ class TestMultiStrategy:
         assert result is False
         assert len(engine.strategy_instances) == 2
 
-    @patch("alphaloop.market.strategy_instance.BinanceClient")
-    @patch("alphaloop.main.DataAgent")
-    @patch("alphaloop.main.QuantAgent")
-    @patch("alphaloop.main.RiskAgent")
+    @patch("src.trading.strategy_instance.BinanceClient")
+    @patch("src.trading.engine.DataAgent")
+    @patch("src.trading.engine.QuantAgent")
+    @patch("src.trading.engine.RiskAgent")
     def test_remove_strategy_instance(self, mock_risk, mock_quant, mock_data, mock_client):
         """Test removing a strategy instance"""
         mock_client_instance = Mock()
@@ -611,10 +611,10 @@ class TestMultiStrategy:
         result = engine.remove_strategy_instance("nonexistent")
         assert result is False
 
-    @patch("alphaloop.market.strategy_instance.BinanceClient")
-    @patch("alphaloop.main.DataAgent")
-    @patch("alphaloop.main.QuantAgent")
-    @patch("alphaloop.main.RiskAgent")
+    @patch("src.trading.strategy_instance.BinanceClient")
+    @patch("src.trading.engine.DataAgent")
+    @patch("src.trading.engine.QuantAgent")
+    @patch("src.trading.engine.RiskAgent")
     def test_multi_strategy_independent_params(self, mock_risk, mock_quant, mock_data, mock_client):
         """Test that multiple strategy instances have independent parameters"""
         mock_client_instance = Mock()
@@ -636,10 +636,10 @@ class TestMultiStrategy:
         assert strategy_2_instance.strategy.spread != default_instance.strategy.spread
         assert strategy_2_instance.strategy.spread == 0.015  # Default from config
 
-    @patch("alphaloop.market.strategy_instance.BinanceClient")
-    @patch("alphaloop.main.DataAgent")
-    @patch("alphaloop.main.QuantAgent")
-    @patch("alphaloop.main.RiskAgent")
+    @patch("src.trading.strategy_instance.BinanceClient")
+    @patch("src.trading.engine.DataAgent")
+    @patch("src.trading.engine.QuantAgent")
+    @patch("src.trading.engine.RiskAgent")
     def test_get_status_includes_strategy_instances(self, mock_risk, mock_quant, mock_data, mock_client):
         """Test that get_status includes strategy instances information"""
         mock_client_instance = Mock()
@@ -657,10 +657,10 @@ class TestMultiStrategy:
         assert "default" in status["strategy_instances"]
         assert "strategy_2" in status["strategy_instances"]
 
-    @patch("alphaloop.market.strategy_instance.BinanceClient")
-    @patch("alphaloop.main.DataAgent")
-    @patch("alphaloop.main.QuantAgent")
-    @patch("alphaloop.main.RiskAgent")
+    @patch("src.trading.strategy_instance.BinanceClient")
+    @patch("src.trading.engine.DataAgent")
+    @patch("src.trading.engine.QuantAgent")
+    @patch("src.trading.engine.RiskAgent")
     def test_run_cycle_respects_instance_running_state(self, mock_risk, mock_quant, mock_data, mock_client):
         """Ensure stopped strategy instances are skipped during run_cycle execution"""
         mock_data.return_value.calculate_metrics.return_value = {
@@ -699,10 +699,10 @@ class TestMultiStrategy:
 class TestErrorHandlingAndAlerts:
     """Test error handling and alert setting for strategy instances"""
 
-    @patch("alphaloop.market.strategy_instance.BinanceClient")
-    @patch("alphaloop.main.DataAgent")
-    @patch("alphaloop.main.QuantAgent")
-    @patch("alphaloop.main.RiskAgent")
+    @patch("src.trading.strategy_instance.BinanceClient")
+    @patch("src.trading.engine.DataAgent")
+    @patch("src.trading.engine.QuantAgent")
+    @patch("src.trading.engine.RiskAgent")
     def test_insufficient_funds_sets_strategy_alert(self, mock_risk, mock_quant, mock_data, mock_client):
         """Test that insufficient funds error sets alert on strategy instance"""
         mock_client_instance = Mock()
@@ -745,10 +745,10 @@ class TestErrorHandlingAndAlerts:
         assert error["type"] == "insufficient_funds"
         assert error["strategy_id"] == "default"
 
-    @patch("alphaloop.market.strategy_instance.BinanceClient")
-    @patch("alphaloop.main.DataAgent")
-    @patch("alphaloop.main.QuantAgent")
-    @patch("alphaloop.main.RiskAgent")
+    @patch("src.trading.strategy_instance.BinanceClient")
+    @patch("src.trading.engine.DataAgent")
+    @patch("src.trading.engine.QuantAgent")
+    @patch("src.trading.engine.RiskAgent")
     def test_get_error_suggestion(self, mock_risk, mock_quant, mock_data, mock_client):
         """Test error suggestion generation"""
         mock_client_instance = Mock()
@@ -774,10 +774,10 @@ class TestErrorHandlingAndAlerts:
         suggestion = engine._get_error_suggestion("unknown_error", {})
         assert len(suggestion) > 0
 
-    @patch("alphaloop.market.strategy_instance.BinanceClient")
-    @patch("alphaloop.main.DataAgent")
-    @patch("alphaloop.main.QuantAgent")
-    @patch("alphaloop.main.RiskAgent")
+    @patch("src.trading.strategy_instance.BinanceClient")
+    @patch("src.trading.engine.DataAgent")
+    @patch("src.trading.engine.QuantAgent")
+    @patch("src.trading.engine.RiskAgent")
     def test_multiple_strategies_independent_error_handling(self, mock_risk, mock_quant, mock_data, mock_client):
         """Test that errors are handled independently for each strategy instance"""
         mock_client_instance = Mock()

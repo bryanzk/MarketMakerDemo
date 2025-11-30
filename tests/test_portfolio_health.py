@@ -8,7 +8,7 @@ Tests for:
 """
 
 import pytest
-from alphaloop.portfolio.health import (
+from src.portfolio.health import (
     HEALTH_WEIGHTS,
     calculate_strategy_health,
     get_health_color,

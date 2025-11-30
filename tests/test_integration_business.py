@@ -3,9 +3,9 @@ from unittest.mock import MagicMock, Mock, patch
 
 import pytest
 
-from alphaloop.main import AlphaLoop
-from alphaloop.market.strategy_instance import StrategyInstance
-from alphaloop.strategies.funding import FundingRateStrategy
+from src.trading.engine import AlphaLoop
+from src.trading.strategy_instance import StrategyInstance
+from src.trading.strategies.funding_rate import FundingRateStrategy
 
 
 class TestBusinessLogicIntegration:
@@ -36,7 +36,7 @@ class TestBusinessLogicIntegration:
     def test_strategy_switch_clears_orders(self, mock_exchange):
         """Verify old orders are treated as needing reset when strategy changes"""
         with patch(
-            "alphaloop.market.strategy_instance.BinanceClient",
+            "src.trading.strategy_instance.BinanceClient",
             return_value=mock_exchange,
         ):
             bot = AlphaLoop()
@@ -74,7 +74,7 @@ class TestBusinessLogicIntegration:
     def test_order_sync_minimizes_changes(self, mock_exchange):
         """Verify OrderManager correctly identifies what needs to change"""
         with patch(
-            "alphaloop.market.strategy_instance.BinanceClient",
+            "src.trading.strategy_instance.BinanceClient",
             return_value=mock_exchange,
         ):
             bot = AlphaLoop()
@@ -100,7 +100,7 @@ class TestBusinessLogicIntegration:
     def test_order_sync_detects_price_change(self, mock_exchange):
         """Verify OrderManager detects when price moves beyond tolerance"""
         with patch(
-            "alphaloop.market.strategy_instance.BinanceClient",
+            "src.trading.strategy_instance.BinanceClient",
             return_value=mock_exchange,
         ):
             bot = AlphaLoop()
@@ -126,7 +126,7 @@ class TestBusinessLogicIntegration:
     def test_stale_data_protection(self, mock_exchange):
         """Verify refresh_data still updates cache with stale data but logs warning"""
         with patch(
-            "alphaloop.market.strategy_instance.BinanceClient",
+            "src.trading.strategy_instance.BinanceClient",
             return_value=mock_exchange,
         ):
             bot = AlphaLoop()
@@ -151,7 +151,7 @@ class TestBusinessLogicIntegration:
     def test_fresh_data_accepted(self, mock_exchange):
         """Verify cycle proceeds with fresh data"""
         with patch(
-            "alphaloop.market.strategy_instance.BinanceClient",
+            "src.trading.strategy_instance.BinanceClient",
             return_value=mock_exchange,
         ):
             bot = AlphaLoop()
@@ -178,7 +178,7 @@ class TestBusinessLogicIntegration:
     def test_strategy_switch_preserves_params(self, mock_exchange):
         """Verify strategy switch preserves spread, quantity, leverage"""
         with patch(
-            "alphaloop.market.strategy_instance.BinanceClient",
+            "src.trading.strategy_instance.BinanceClient",
             return_value=mock_exchange,
         ):
             bot = AlphaLoop()
@@ -203,7 +203,7 @@ class TestBusinessLogicIntegration:
     def test_get_status_includes_strategy_config(self, mock_exchange):
         """Status should expose core strategy config for UI"""
         with patch(
-            "alphaloop.market.strategy_instance.BinanceClient",
+            "src.trading.strategy_instance.BinanceClient",
             return_value=mock_exchange,
         ):
             bot = AlphaLoop()
@@ -224,7 +224,7 @@ class TestBusinessLogicIntegration:
     def test_order_history_includes_strategy_type(self, mock_exchange):
         """Order history entries should include strategy_type for filtering"""
         with patch(
-            "alphaloop.market.strategy_instance.BinanceClient",
+            "src.trading.strategy_instance.BinanceClient",
             return_value=mock_exchange,
         ):
             bot = AlphaLoop()
@@ -256,7 +256,7 @@ class TestBusinessLogicIntegration:
         mock_exchange.fetch_market_data.return_value = None
 
         with patch(
-            "alphaloop.market.strategy_instance.BinanceClient",
+            "src.trading.strategy_instance.BinanceClient",
             return_value=mock_exchange,
         ):
             bot = AlphaLoop()

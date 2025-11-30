@@ -1,6 +1,6 @@
 import pytest
 
-from alphaloop.market.performance import PerformanceTracker
+from src.trading.performance import PerformanceTracker
 
 
 class TestPerformanceTracker:

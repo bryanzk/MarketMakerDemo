@@ -2,7 +2,7 @@ from unittest.mock import MagicMock, Mock
 
 import pytest
 
-from alphaloop.market.simulation import MarketSimulator
+from src.trading.simulation import MarketSimulator
 
 
 class TestMarketSimulator:

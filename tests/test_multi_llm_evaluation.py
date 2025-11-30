@@ -27,7 +27,7 @@ class TestUSML001_GetMultiModelSuggestions:
     @pytest.fixture
     def sample_market_context(self):
         """创建示例市场上下文"""
-        from alphaloop.evaluation.schemas import MarketContext
+        from src.ai.evaluation.schemas import MarketContext
 
         return MarketContext(
             symbol="ETHUSDT",
@@ -69,7 +69,7 @@ class TestUSML001_GetMultiModelSuggestions:
         验收标准: 我应该收到 3 个评估结果
         AC: 调用 evaluate() 后返回 3 个结果
         """
-        from alphaloop.evaluation.evaluator import MultiLLMEvaluator
+        from src.ai.evaluation.evaluator import MultiLLMEvaluator
 
         evaluator = MultiLLMEvaluator(providers=mock_three_providers)
         results = evaluator.evaluate(sample_market_context)
@@ -82,7 +82,7 @@ class TestUSML001_GetMultiModelSuggestions:
         """
         验收标准: 每个结果包含策略类型、参数建议、置信度
         """
-        from alphaloop.evaluation.evaluator import MultiLLMEvaluator
+        from src.ai.evaluation.evaluator import MultiLLMEvaluator
 
         evaluator = MultiLLMEvaluator(providers=mock_three_providers)
         results = evaluator.evaluate(sample_market_context)
@@ -101,7 +101,7 @@ class TestUSML001_GetMultiModelSuggestions:
         """
         验收标准: 每个结果包含模型名称标识
         """
-        from alphaloop.evaluation.evaluator import MultiLLMEvaluator
+        from src.ai.evaluation.evaluator import MultiLLMEvaluator
 
         evaluator = MultiLLMEvaluator(providers=mock_three_providers)
         results = evaluator.evaluate(sample_market_context)
@@ -117,7 +117,7 @@ class TestUSML001_GetMultiModelSuggestions:
         """
         验收标准: 部分模型 API 失败时仍返回可用结果
         """
-        from alphaloop.evaluation.evaluator import MultiLLMEvaluator
+        from src.ai.evaluation.evaluator import MultiLLMEvaluator
 
         # 创建一个会失败的 Provider
         failing_provider = Mock()
@@ -147,7 +147,7 @@ class TestUSML001_GetMultiModelSuggestions:
         """
         验收标准: 正确解析带有 markdown 代码块的 JSON
         """
-        from alphaloop.evaluation.evaluator import MultiLLMEvaluator
+        from src.ai.evaluation.evaluator import MultiLLMEvaluator
 
         provider = Mock()
         provider.name = "TestLLM"
@@ -173,7 +173,7 @@ class TestUSML001_GetMultiModelSuggestions:
         """
         验收标准: JSON 格式错误时使用默认值并标记解析失败
         """
-        from alphaloop.evaluation.evaluator import MultiLLMEvaluator
+        from src.ai.evaluation.evaluator import MultiLLMEvaluator
 
         provider = Mock()
         provider.name = "TestLLM"
@@ -196,7 +196,7 @@ class TestUSML002_SimulationComparison:
 
     @pytest.fixture
     def sample_market_context(self):
-        from alphaloop.evaluation.schemas import MarketContext
+        from src.ai.evaluation.schemas import MarketContext
 
         return MarketContext(
             symbol="ETHUSDT",
@@ -226,7 +226,7 @@ class TestUSML002_SimulationComparison:
         """
         验收标准: 每个建议都应该有对应的模拟结果
         """
-        from alphaloop.evaluation.evaluator import MultiLLMEvaluator
+        from src.ai.evaluation.evaluator import MultiLLMEvaluator
 
         evaluator = MultiLLMEvaluator(providers=mock_providers, simulation_steps=100)
         results = evaluator.evaluate(sample_market_context)
@@ -243,7 +243,7 @@ class TestUSML002_SimulationComparison:
         """
         验收标准: 模拟结果包含 PnL、胜率、夏普比率
         """
-        from alphaloop.evaluation.evaluator import MultiLLMEvaluator
+        from src.ai.evaluation.evaluator import MultiLLMEvaluator
 
         evaluator = MultiLLMEvaluator(providers=mock_providers, simulation_steps=100)
         results = evaluator.evaluate(sample_market_context)
@@ -260,7 +260,7 @@ class TestUSML002_SimulationComparison:
         """
         验收标准: 模拟使用建议的参数
         """
-        from alphaloop.evaluation.evaluator import MultiLLMEvaluator
+        from src.ai.evaluation.evaluator import MultiLLMEvaluator
 
         # Gemini 建议 spread=0.012
         gemini = Mock()
@@ -280,7 +280,7 @@ class TestUSML002_SimulationComparison:
         """
         验收标准: 可配置模拟步数
         """
-        from alphaloop.evaluation.evaluator import MultiLLMEvaluator
+        from src.ai.evaluation.evaluator import MultiLLMEvaluator
 
         evaluator = MultiLLMEvaluator(providers=mock_providers, simulation_steps=1000)
         results = evaluator.evaluate(sample_market_context)
@@ -299,7 +299,7 @@ class TestUSML003_RankedResults:
 
     @pytest.fixture
     def sample_market_context(self):
-        from alphaloop.evaluation.schemas import MarketContext
+        from src.ai.evaluation.schemas import MarketContext
 
         return MarketContext(
             symbol="ETHUSDT",
@@ -317,7 +317,7 @@ class TestUSML003_RankedResults:
         """
         验收标准: 结果应该按 score 降序排列
         """
-        from alphaloop.evaluation.evaluator import MultiLLMEvaluator
+        from src.ai.evaluation.evaluator import MultiLLMEvaluator
 
         providers = []
         for name in ["ModelA", "ModelB", "ModelC"]:
@@ -337,7 +337,7 @@ class TestUSML003_RankedResults:
         """
         验收标准: 第一名的 rank=1，第二名的 rank=2，依此类推
         """
-        from alphaloop.evaluation.evaluator import MultiLLMEvaluator
+        from src.ai.evaluation.evaluator import MultiLLMEvaluator
 
         providers = []
         for name in ["ModelA", "ModelB", "ModelC"]:
@@ -356,7 +356,7 @@ class TestUSML003_RankedResults:
         """
         验收标准: get_best_proposal 返回 rank=1 的结果
         """
-        from alphaloop.evaluation.evaluator import MultiLLMEvaluator
+        from src.ai.evaluation.evaluator import MultiLLMEvaluator
 
         providers = []
         for name in ["ModelA", "ModelB", "ModelC"]:
@@ -375,7 +375,7 @@ class TestUSML003_RankedResults:
         """
         验收标准: 解析失败的结果 score 应该为 0
         """
-        from alphaloop.evaluation.evaluator import MultiLLMEvaluator
+        from src.ai.evaluation.evaluator import MultiLLMEvaluator
 
         failing = Mock()
         failing.name = "FailingModel"
@@ -407,12 +407,12 @@ class TestUSML004_ComparisonTable:
         """
         验收标准: 生成格式化的字符串表格
         """
-        from alphaloop.evaluation.schemas import (
+        from src.ai.evaluation.schemas import (
             EvaluationResult,
             StrategyProposal,
             SimulationResult,
         )
-        from alphaloop.evaluation.evaluator import MultiLLMEvaluator
+        from src.ai.evaluation.evaluator import MultiLLMEvaluator
 
         results = [
             EvaluationResult(
@@ -445,12 +445,12 @@ class TestUSML004_ComparisonTable:
         """
         验收标准: 表格包含排名、模型名、策略、参数、PnL、胜率、夏普、评分
         """
-        from alphaloop.evaluation.schemas import (
+        from src.ai.evaluation.schemas import (
             EvaluationResult,
             StrategyProposal,
             SimulationResult,
         )
-        from alphaloop.evaluation.evaluator import MultiLLMEvaluator
+        from src.ai.evaluation.evaluator import MultiLLMEvaluator
 
         results = [
             EvaluationResult(
@@ -486,12 +486,12 @@ class TestUSML004_ComparisonTable:
         """
         验收标准: PnL 显示为带货币符号的格式
         """
-        from alphaloop.evaluation.schemas import (
+        from src.ai.evaluation.schemas import (
             EvaluationResult,
             StrategyProposal,
             SimulationResult,
         )
-        from alphaloop.evaluation.evaluator import MultiLLMEvaluator
+        from src.ai.evaluation.evaluator import MultiLLMEvaluator
 
         results = [
             EvaluationResult(
@@ -514,12 +514,12 @@ class TestUSML004_ComparisonTable:
         """
         验收标准: 延迟显示为毫秒
         """
-        from alphaloop.evaluation.schemas import (
+        from src.ai.evaluation.schemas import (
             EvaluationResult,
             StrategyProposal,
             SimulationResult,
         )
-        from alphaloop.evaluation.evaluator import MultiLLMEvaluator
+        from src.ai.evaluation.evaluator import MultiLLMEvaluator
 
         results = [
             EvaluationResult(
@@ -550,7 +550,7 @@ class TestUSML005_SuggestionReasoning:
 
     @pytest.fixture
     def sample_market_context(self):
-        from alphaloop.evaluation.schemas import MarketContext
+        from src.ai.evaluation.schemas import MarketContext
 
         return MarketContext(
             symbol="ETHUSDT",
@@ -568,7 +568,7 @@ class TestUSML005_SuggestionReasoning:
         """
         验收标准: StrategyProposal.reasoning 应该包含理由文本
         """
-        from alphaloop.evaluation.evaluator import MultiLLMEvaluator
+        from src.ai.evaluation.evaluator import MultiLLMEvaluator
 
         provider = Mock()
         provider.name = "TestLLM"
@@ -583,7 +583,7 @@ class TestUSML005_SuggestionReasoning:
         """
         验收标准: StrategyProposal.risk_level 应该是 low、medium 或 high
         """
-        from alphaloop.evaluation.evaluator import MultiLLMEvaluator
+        from src.ai.evaluation.evaluator import MultiLLMEvaluator
 
         provider = Mock()
         provider.name = "TestLLM"
@@ -598,7 +598,7 @@ class TestUSML005_SuggestionReasoning:
         """
         验收标准: StrategyProposal.expected_return 应该是浮点数
         """
-        from alphaloop.evaluation.evaluator import MultiLLMEvaluator
+        from src.ai.evaluation.evaluator import MultiLLMEvaluator
 
         provider = Mock()
         provider.name = "TestLLM"
@@ -621,7 +621,7 @@ class TestUSML006_LatencyMeasurement:
 
     @pytest.fixture
     def sample_market_context(self):
-        from alphaloop.evaluation.schemas import MarketContext
+        from src.ai.evaluation.schemas import MarketContext
 
         return MarketContext(
             symbol="ETHUSDT",
@@ -639,7 +639,7 @@ class TestUSML006_LatencyMeasurement:
         """
         验收标准: 延迟以毫秒为单位存储在 latency_ms 字段
         """
-        from alphaloop.evaluation.evaluator import MultiLLMEvaluator
+        from src.ai.evaluation.evaluator import MultiLLMEvaluator
 
         def slow_generate(prompt):
             time.sleep(0.1)  # 模拟 100ms 延迟
@@ -659,7 +659,7 @@ class TestUSML006_LatencyMeasurement:
         """
         验收标准: 延迟包含在 EvaluationResult 中
         """
-        from alphaloop.evaluation.evaluator import MultiLLMEvaluator
+        from src.ai.evaluation.evaluator import MultiLLMEvaluator
 
         provider = Mock()
         provider.name = "TestLLM"
@@ -684,7 +684,7 @@ class TestMarketContext:
 
     def test_create_with_required_fields(self):
         """应该能创建包含所有必要字段的市场上下文"""
-        from alphaloop.evaluation.schemas import MarketContext
+        from src.ai.evaluation.schemas import MarketContext
 
         ctx = MarketContext(
             symbol="ETHUSDT",
@@ -704,7 +704,7 @@ class TestMarketContext:
 
     def test_to_prompt_string_format(self):
         """应该能将上下文转换为 LLM Prompt 字符串"""
-        from alphaloop.evaluation.schemas import MarketContext
+        from src.ai.evaluation.schemas import MarketContext
 
         ctx = MarketContext(
             symbol="ETHUSDT",
@@ -730,7 +730,7 @@ class TestStrategyProposal:
 
     def test_create_proposal(self):
         """应该能创建策略建议"""
-        from alphaloop.evaluation.schemas import StrategyProposal
+        from src.ai.evaluation.schemas import StrategyProposal
 
         proposal = StrategyProposal(
             recommended_strategy="FundingRate",
@@ -750,7 +750,7 @@ class TestEvaluationResult:
 
     def test_to_summary(self):
         """应该能生成结果摘要"""
-        from alphaloop.evaluation.schemas import (
+        from src.ai.evaluation.schemas import (
             EvaluationResult,
             StrategyProposal,
             SimulationResult,
@@ -792,7 +792,7 @@ class TestLLMProviders:
         with patch.dict("os.environ", {"GEMINI_API_KEY": "test-key"}):
             with patch("google.generativeai.configure"):
                 with patch("google.generativeai.GenerativeModel"):
-                    from alphaloop.core.llm import GeminiProvider
+                    from src.ai.llm import GeminiProvider
 
                     provider = GeminiProvider()
                     assert "Gemini" in provider.name
@@ -819,7 +819,7 @@ class TestLLMProviders:
                         with patch.dict("sys.modules", {"anthropic": mock_anthropic}):
                             mock_anthropic.Anthropic = MagicMock()
 
-                            from alphaloop.core.llm import create_all_providers
+                            from src.ai.llm import create_all_providers
 
                             providers = create_all_providers()
                             assert len(providers) >= 1  # At least Gemini should work
@@ -835,8 +835,8 @@ class TestPromptGeneration:
 
     def test_strategy_advisor_prompt_includes_context(self):
         """策略顾问 Prompt 应该包含市场上下文"""
-        from alphaloop.evaluation.prompts import StrategyAdvisorPrompt
-        from alphaloop.evaluation.schemas import MarketContext
+        from src.ai.evaluation.prompts import StrategyAdvisorPrompt
+        from src.ai.evaluation.schemas import MarketContext
 
         ctx = MarketContext(
             symbol="BTCUSDT",
@@ -858,8 +858,8 @@ class TestPromptGeneration:
 
     def test_prompt_specifies_output_format(self):
         """Prompt 应该明确指定输出格式"""
-        from alphaloop.evaluation.prompts import StrategyAdvisorPrompt
-        from alphaloop.evaluation.schemas import MarketContext
+        from src.ai.evaluation.prompts import StrategyAdvisorPrompt
+        from src.ai.evaluation.schemas import MarketContext
 
         ctx = MarketContext(
             symbol="ETHUSDT",
@@ -890,8 +890,8 @@ class TestEndToEndIntegration:
 
     def test_full_evaluation_workflow(self):
         """完整评估工作流测试"""
-        from alphaloop.evaluation.schemas import MarketContext
-        from alphaloop.evaluation.evaluator import MultiLLMEvaluator
+        from src.ai.evaluation.schemas import MarketContext
+        from src.ai.evaluation.evaluator import MultiLLMEvaluator
 
         # 1. 准备市场数据
         context = MarketContext(
@@ -962,7 +962,7 @@ class TestUSML007_StrategyConsensus:
 
     @pytest.fixture
     def sample_market_context(self):
-        from alphaloop.evaluation.schemas import MarketContext
+        from src.ai.evaluation.schemas import MarketContext
 
         return MarketContext(
             symbol="ETHUSDT",
@@ -980,7 +980,7 @@ class TestUSML007_StrategyConsensus:
         """
         验收标准: 当所有模型推荐相同策略时，共识程度为 'full'
         """
-        from alphaloop.evaluation.evaluator import MultiLLMEvaluator
+        from src.ai.evaluation.evaluator import MultiLLMEvaluator
 
         # All recommend FundingRate
         providers = []
@@ -1004,7 +1004,7 @@ class TestUSML007_StrategyConsensus:
         """
         验收标准: 当多数模型推荐相同策略时，共识程度为 'majority'
         """
-        from alphaloop.evaluation.evaluator import MultiLLMEvaluator
+        from src.ai.evaluation.evaluator import MultiLLMEvaluator
 
         # 2 recommend FundingRate, 1 recommends FixedSpread
         gemini = Mock()
@@ -1036,7 +1036,7 @@ class TestUSML007_StrategyConsensus:
         """
         验收标准: 当投票平分时，共识程度为 'split'
         """
-        from alphaloop.evaluation.evaluator import MultiLLMEvaluator
+        from src.ai.evaluation.evaluator import MultiLLMEvaluator
 
         # 1 FundingRate, 1 FixedSpread
         gemini = Mock()
@@ -1060,7 +1060,7 @@ class TestUSML007_StrategyConsensus:
         """
         验收标准: 按策略分组的 Provider 列表应该正确
         """
-        from alphaloop.evaluation.evaluator import MultiLLMEvaluator
+        from src.ai.evaluation.evaluator import MultiLLMEvaluator
 
         gemini = Mock()
         gemini.name = "Gemini"
@@ -1097,7 +1097,7 @@ class TestUSML008_ParameterStatistics:
 
     @pytest.fixture
     def sample_market_context(self):
-        from alphaloop.evaluation.schemas import MarketContext
+        from src.ai.evaluation.schemas import MarketContext
 
         return MarketContext(
             symbol="ETHUSDT",
@@ -1115,7 +1115,7 @@ class TestUSML008_ParameterStatistics:
         """
         验收标准: 应该正确计算 spread 的统计数据
         """
-        from alphaloop.evaluation.evaluator import MultiLLMEvaluator
+        from src.ai.evaluation.evaluator import MultiLLMEvaluator
 
         providers = []
         spreads = [0.010, 0.012, 0.015]
@@ -1144,7 +1144,7 @@ class TestUSML008_ParameterStatistics:
         """
         验收标准: 应该正确计算 confidence 的统计数据
         """
-        from alphaloop.evaluation.evaluator import MultiLLMEvaluator
+        from src.ai.evaluation.evaluator import MultiLLMEvaluator
 
         providers = []
         confidences = [0.70, 0.85, 0.92]
@@ -1167,7 +1167,7 @@ class TestUSML008_ParameterStatistics:
         """
         验收标准: 空结果应该返回默认统计数据
         """
-        from alphaloop.evaluation.evaluator import MultiLLMEvaluator
+        from src.ai.evaluation.evaluator import MultiLLMEvaluator
 
         stats = MultiLLMEvaluator.get_parameter_statistics([])
 
@@ -1186,7 +1186,7 @@ class TestUSML009_ConsensusConfidence:
 
     @pytest.fixture
     def sample_market_context(self):
-        from alphaloop.evaluation.schemas import MarketContext
+        from src.ai.evaluation.schemas import MarketContext
 
         return MarketContext(
             symbol="ETHUSDT",
@@ -1204,7 +1204,7 @@ class TestUSML009_ConsensusConfidence:
         """
         验收标准: 全体一致时置信度最高
         """
-        from alphaloop.evaluation.evaluator import MultiLLMEvaluator
+        from src.ai.evaluation.evaluator import MultiLLMEvaluator
 
         providers = []
         for name in ["Gemini", "OpenAI", "Claude"]:
@@ -1229,7 +1229,7 @@ class TestUSML009_ConsensusConfidence:
         """
         验收标准: 多数共识时置信度应该降低
         """
-        from alphaloop.evaluation.evaluator import MultiLLMEvaluator
+        from src.ai.evaluation.evaluator import MultiLLMEvaluator
 
         gemini = Mock()
         gemini.name = "Gemini"
@@ -1261,7 +1261,7 @@ class TestUSML009_ConsensusConfidence:
         """
         验收标准: 分解应该包含每个模型的置信度
         """
-        from alphaloop.evaluation.evaluator import MultiLLMEvaluator
+        from src.ai.evaluation.evaluator import MultiLLMEvaluator
 
         providers = []
         for name, conf in [("Gemini", 0.85), ("OpenAI", 0.78), ("Claude", 0.92)]:
@@ -1292,7 +1292,7 @@ class TestUSML010_ResultAggregation:
 
     @pytest.fixture
     def sample_market_context(self):
-        from alphaloop.evaluation.schemas import MarketContext
+        from src.ai.evaluation.schemas import MarketContext
 
         return MarketContext(
             symbol="ETHUSDT",
@@ -1310,7 +1310,7 @@ class TestUSML010_ResultAggregation:
         """
         验收标准: aggregate_results 应该返回完整的聚合结果
         """
-        from alphaloop.evaluation.evaluator import MultiLLMEvaluator
+        from src.ai.evaluation.evaluator import MultiLLMEvaluator
 
         providers = []
         for name in ["Gemini", "OpenAI", "Claude"]:
@@ -1339,7 +1339,7 @@ class TestUSML010_ResultAggregation:
         验收标准: 共识建议应该使用最佳模型的完整参数集
         AC: Consensus proposal should use the best-performing model's complete parameter set
         """
-        from alphaloop.evaluation.evaluator import MultiLLMEvaluator
+        from src.ai.evaluation.evaluator import MultiLLMEvaluator
 
         spreads = [0.010, 0.012, 0.015]
         providers = []
@@ -1364,7 +1364,7 @@ class TestUSML010_ResultAggregation:
         """
         验收标准: 聚合结果应该包含性能平均值
         """
-        from alphaloop.evaluation.evaluator import MultiLLMEvaluator
+        from src.ai.evaluation.evaluator import MultiLLMEvaluator
 
         providers = []
         for name in ["Gemini", "OpenAI", "Claude"]:
@@ -1388,7 +1388,7 @@ class TestUSML010_ResultAggregation:
         """
         验收标准: 应该正确处理部分失败的情况
         """
-        from alphaloop.evaluation.evaluator import MultiLLMEvaluator
+        from src.ai.evaluation.evaluator import MultiLLMEvaluator
 
         working = Mock()
         working.name = "WorkingModel"
@@ -1411,7 +1411,7 @@ class TestUSML010_ResultAggregation:
         """
         验收标准: to_summary 应该返回格式化的字典
         """
-        from alphaloop.evaluation.evaluator import MultiLLMEvaluator
+        from src.ai.evaluation.evaluator import MultiLLMEvaluator
 
         providers = []
         for name in ["Gemini", "OpenAI", "Claude"]:
@@ -1435,7 +1435,7 @@ class TestUSML010_ResultAggregation:
         """
         验收标准: 推荐强度应该正确反映共识程度
         """
-        from alphaloop.evaluation.evaluator import MultiLLMEvaluator
+        from src.ai.evaluation.evaluator import MultiLLMEvaluator
 
         # Full consensus
         providers = []
@@ -1463,7 +1463,7 @@ class TestUSML011_ConsensusSummaryReport:
 
     @pytest.fixture
     def sample_market_context(self):
-        from alphaloop.evaluation.schemas import MarketContext
+        from src.ai.evaluation.schemas import MarketContext
 
         return MarketContext(
             symbol="ETHUSDT",
@@ -1481,7 +1481,7 @@ class TestUSML011_ConsensusSummaryReport:
         """
         验收标准: 应该生成格式化的摘要报告
         """
-        from alphaloop.evaluation.evaluator import MultiLLMEvaluator
+        from src.ai.evaluation.evaluator import MultiLLMEvaluator
 
         providers = []
         for name in ["Gemini", "OpenAI", "Claude"]:
@@ -1504,7 +1504,7 @@ class TestUSML011_ConsensusSummaryReport:
         """
         验收标准: 报告应该包含关键部分
         """
-        from alphaloop.evaluation.evaluator import MultiLLMEvaluator
+        from src.ai.evaluation.evaluator import MultiLLMEvaluator
 
         providers = []
         for name in ["Gemini", "OpenAI", "Claude"]:
@@ -1529,7 +1529,7 @@ class TestUSML011_ConsensusSummaryReport:
         """
         验收标准: 报告应该显示投票分布
         """
-        from alphaloop.evaluation.evaluator import MultiLLMEvaluator
+        from src.ai.evaluation.evaluator import MultiLLMEvaluator
 
         gemini = Mock()
         gemini.name = "Gemini"
@@ -1566,7 +1566,7 @@ class TestAggregatedResultSchema:
 
     def test_create_aggregated_result(self):
         """应该能创建聚合结果"""
-        from alphaloop.evaluation.schemas import (
+        from src.ai.evaluation.schemas import (
             AggregatedResult,
             StrategyConsensus,
             ParameterStatistics,
@@ -1594,7 +1594,7 @@ class TestAggregatedResultSchema:
 
     def test_strategy_consensus_helpers(self):
         """测试 StrategyConsensus 辅助方法"""
-        from alphaloop.evaluation.schemas import StrategyConsensus
+        from src.ai.evaluation.schemas import StrategyConsensus
 
         # Full consensus
         full = StrategyConsensus(
@@ -1628,7 +1628,7 @@ class TestAggregatedResultSchema:
 
     def test_aggregated_result_to_summary(self):
         """测试聚合结果摘要生成"""
-        from alphaloop.evaluation.schemas import (
+        from src.ai.evaluation.schemas import (
             AggregatedResult,
             StrategyConsensus,
             ParameterStatistics,
@@ -1660,7 +1660,7 @@ class TestAggregatedResultSchema:
 
     def test_recommendation_strength(self):
         """测试推荐强度计算"""
-        from alphaloop.evaluation.schemas import AggregatedResult, StrategyConsensus
+        from src.ai.evaluation.schemas import AggregatedResult, StrategyConsensus
 
         # Strong (unanimous)
         strong = AggregatedResult(

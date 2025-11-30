@@ -15,7 +15,7 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from alphaloop.core.llm import (
+from src.ai.llm import (
     ClaudeProvider,
     LLMGateway,
     OpenAIProvider,

@@ -1,6 +1,6 @@
 import pytest
 
-from alphaloop.market.order_manager import OrderManager
+from src.trading.order_manager import OrderManager
 
 
 class TestOrderManager:

@@ -38,8 +38,12 @@ class TestStrategyAdvisorPrompt:
 
         assert "ETHUSDT" in prompt
         assert "2,500.00" in prompt or "2500" in prompt  # Formatted price
-        assert "3.50%" in prompt or "0.035" in prompt  # volatility_24h (formatted as percentage)
-        assert "0.0100%" in prompt or "0.0001" in prompt  # funding_rate (formatted as percentage)
+        assert (
+            "3.50%" in prompt or "0.035" in prompt
+        )  # volatility_24h (formatted as percentage)
+        assert (
+            "0.0100%" in prompt or "0.0001" in prompt
+        )  # funding_rate (formatted as percentage)
 
     def test_generate_includes_template_structure(self):
         """Test that generated prompt includes template structure"""
@@ -208,4 +212,3 @@ class TestMarketDiagnosisPrompt:
         prompt = MarketDiagnosisPrompt.generate(context)
 
         assert "trending" in prompt or "ranging" in prompt or "volatile" in prompt
-

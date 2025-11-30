@@ -92,7 +92,10 @@ class TestOpenAIProvider:
     def test_init_import_error(self):
         """Test initialization failure when openai package is not installed"""
         with patch.dict("os.environ", {"OPENAI_API_KEY": "test_key"}):
-            with patch("builtins.__import__", side_effect=ImportError("No module named 'openai'")):
+            with patch(
+                "builtins.__import__",
+                side_effect=ImportError("No module named 'openai'"),
+            ):
                 with pytest.raises(ImportError, match="openai package is required"):
                     OpenAIProvider()
 
@@ -163,7 +166,10 @@ class TestClaudeProvider:
     def test_init_import_error(self):
         """Test initialization failure when anthropic package is not installed"""
         with patch.dict("os.environ", {"ANTHROPIC_API_KEY": "test_key"}):
-            with patch("builtins.__import__", side_effect=ImportError("No module named 'anthropic'")):
+            with patch(
+                "builtins.__import__",
+                side_effect=ImportError("No module named 'anthropic'"),
+            ):
                 with pytest.raises(ImportError, match="anthropic package is required"):
                     ClaudeProvider()
 
@@ -259,10 +265,12 @@ class TestCreateAllProviders:
                 with patch("google.generativeai.GenerativeModel"):
                     # Simulate OpenAI import error by making the import raise ImportError
                     original_import = __import__
+
                     def mock_import(name, *args, **kwargs):
                         if name == "openai":
                             raise ImportError("No module named 'openai'")
                         return original_import(name, *args, **kwargs)
+
                     with patch("builtins.__import__", side_effect=mock_import):
                         providers = create_all_providers()
                         # Should still get Gemini
@@ -315,4 +323,3 @@ class TestCreateProvider:
         with patch.dict("os.environ", {}, clear=True):
             with pytest.raises(ValueError):
                 create_provider("gemini")
-

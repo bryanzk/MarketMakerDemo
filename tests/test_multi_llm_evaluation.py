@@ -92,12 +92,8 @@ class TestUSML001_GetMultiModelSuggestions:
                 "FixedSpread",
                 "FundingRate",
             ], "策略类型应该是 FixedSpread 或 FundingRate"
-            assert (
-                0.005 <= result.proposal.spread <= 0.03
-            ), "spread 应该在合理范围内"
-            assert (
-                0 <= result.proposal.confidence <= 1
-            ), "置信度应该在 0-1 之间"
+            assert 0.005 <= result.proposal.spread <= 0.03, "spread 应该在合理范围内"
+            assert 0 <= result.proposal.confidence <= 1, "置信度应该在 0-1 之间"
 
     def test_AC3_each_result_contains_provider_name(
         self, mock_three_providers, sample_market_context
@@ -278,7 +274,9 @@ class TestUSML002_SimulationComparison:
         assert results[0].proposal.spread == 0.012
         assert results[0].proposal.skew_factor == 120
 
-    def test_AC4_configurable_simulation_steps(self, mock_providers, sample_market_context):
+    def test_AC4_configurable_simulation_steps(
+        self, mock_providers, sample_market_context
+    ):
         """
         验收标准: 可配置模拟步数
         """
@@ -385,7 +383,9 @@ class TestUSML003_RankedResults:
 
         working = Mock()
         working.name = "WorkingModel"
-        working.generate.return_value = '{"recommended_strategy": "FixedSpread", "spread": 0.01, "confidence": 0.8}'
+        working.generate.return_value = (
+            '{"recommended_strategy": "FixedSpread", "spread": 0.01, "confidence": 0.8}'
+        )
 
         evaluator = MultiLLMEvaluator(providers=[failing, working])
         results = evaluator.evaluate(sample_market_context)
@@ -663,7 +663,9 @@ class TestUSML006_LatencyMeasurement:
 
         provider = Mock()
         provider.name = "TestLLM"
-        provider.generate.return_value = '{"recommended_strategy": "FixedSpread", "spread": 0.01, "confidence": 0.8}'
+        provider.generate.return_value = (
+            '{"recommended_strategy": "FixedSpread", "spread": 0.01, "confidence": 0.8}'
+        )
 
         evaluator = MultiLLMEvaluator(providers=[provider])
         results = evaluator.evaluate(sample_market_context)
@@ -811,14 +813,14 @@ class TestLLMProviders:
                     mock_openai = MagicMock()
                     with patch.dict("sys.modules", {"openai": mock_openai}):
                         mock_openai.OpenAI = MagicMock()
-                        
+
                         # Mock Anthropic
                         mock_anthropic = MagicMock()
                         with patch.dict("sys.modules", {"anthropic": mock_anthropic}):
                             mock_anthropic.Anthropic = MagicMock()
-                            
+
                             from alphaloop.core.llm import create_all_providers
-                            
+
                             providers = create_all_providers()
                             assert len(providers) >= 1  # At least Gemini should work
 
@@ -907,9 +909,18 @@ class TestEndToEndIntegration:
         # 2. 创建 Mock Providers
         mock_providers = []
         for name, response in [
-            ("Gemini", '{"recommended_strategy": "FundingRate", "spread": 0.012, "skew_factor": 120, "confidence": 0.85}'),
-            ("OpenAI", '{"recommended_strategy": "FixedSpread", "spread": 0.015, "skew_factor": 100, "confidence": 0.78}'),
-            ("Claude", '{"recommended_strategy": "FundingRate", "spread": 0.010, "skew_factor": 150, "confidence": 0.92}'),
+            (
+                "Gemini",
+                '{"recommended_strategy": "FundingRate", "spread": 0.012, "skew_factor": 120, "confidence": 0.85}',
+            ),
+            (
+                "OpenAI",
+                '{"recommended_strategy": "FixedSpread", "spread": 0.015, "skew_factor": 100, "confidence": 0.78}',
+            ),
+            (
+                "Claude",
+                '{"recommended_strategy": "FundingRate", "spread": 0.010, "skew_factor": 150, "confidence": 0.92}',
+            ),
         ]:
             mock = Mock()
             mock.name = name
@@ -1008,7 +1019,9 @@ class TestUSML007_StrategyConsensus:
         claude.name = "Claude"
         claude.generate.return_value = '{"recommended_strategy": "FixedSpread", "spread": 0.015, "confidence": 0.70}'
 
-        evaluator = MultiLLMEvaluator(providers=[gemini, openai, claude], simulation_steps=50)
+        evaluator = MultiLLMEvaluator(
+            providers=[gemini, openai, claude], simulation_steps=50
+        )
         results = evaluator.evaluate(sample_market_context)
 
         consensus = MultiLLMEvaluator.get_strategy_consensus(results)
@@ -1061,7 +1074,9 @@ class TestUSML007_StrategyConsensus:
         claude.name = "Claude"
         claude.generate.return_value = '{"recommended_strategy": "FundingRate", "spread": 0.012, "confidence": 0.80}'
 
-        evaluator = MultiLLMEvaluator(providers=[gemini, openai, claude], simulation_steps=50)
+        evaluator = MultiLLMEvaluator(
+            providers=[gemini, openai, claude], simulation_steps=50
+        )
         results = evaluator.evaluate(sample_market_context)
 
         consensus = MultiLLMEvaluator.get_strategy_consensus(results)
@@ -1104,7 +1119,9 @@ class TestUSML008_ParameterStatistics:
 
         providers = []
         spreads = [0.010, 0.012, 0.015]
-        for i, (name, spread) in enumerate(zip(["Gemini", "OpenAI", "Claude"], spreads)):
+        for i, (name, spread) in enumerate(
+            zip(["Gemini", "OpenAI", "Claude"], spreads)
+        ):
             p = Mock()
             p.name = name
             p.generate.return_value = f'{{"recommended_strategy": "FixedSpread", "spread": {spread}, "confidence": 0.8}}'
@@ -1200,7 +1217,9 @@ class TestUSML009_ConsensusConfidence:
         results = evaluator.evaluate(sample_market_context)
 
         consensus = MultiLLMEvaluator.get_strategy_consensus(results)
-        conf, breakdown = MultiLLMEvaluator.calculate_consensus_confidence(results, consensus)
+        conf, breakdown = MultiLLMEvaluator.calculate_consensus_confidence(
+            results, consensus
+        )
 
         # Full consensus with 0.9 individual confidence = 1.0 * 0.9 = 0.9
         assert conf >= 0.85
@@ -1224,11 +1243,15 @@ class TestUSML009_ConsensusConfidence:
         claude.name = "Claude"
         claude.generate.return_value = '{"recommended_strategy": "FixedSpread", "spread": 0.015, "confidence": 0.80}'
 
-        evaluator = MultiLLMEvaluator(providers=[gemini, openai, claude], simulation_steps=50)
+        evaluator = MultiLLMEvaluator(
+            providers=[gemini, openai, claude], simulation_steps=50
+        )
         results = evaluator.evaluate(sample_market_context)
 
         consensus = MultiLLMEvaluator.get_strategy_consensus(results)
-        conf, breakdown = MultiLLMEvaluator.calculate_consensus_confidence(results, consensus)
+        conf, breakdown = MultiLLMEvaluator.calculate_consensus_confidence(
+            results, consensus
+        )
 
         # Majority consensus factor = 0.8
         assert breakdown["agreement_factor"] == 0.8
@@ -1251,7 +1274,9 @@ class TestUSML009_ConsensusConfidence:
         results = evaluator.evaluate(sample_market_context)
 
         consensus = MultiLLMEvaluator.get_strategy_consensus(results)
-        conf, breakdown = MultiLLMEvaluator.calculate_consensus_confidence(results, consensus)
+        conf, breakdown = MultiLLMEvaluator.calculate_consensus_confidence(
+            results, consensus
+        )
 
         assert "individual_confidences" in breakdown
         assert len(breakdown["individual_confidences"]) == 3
@@ -1307,7 +1332,9 @@ class TestUSML010_ResultAggregation:
         assert aggregated.successful_evaluations == 3
         assert aggregated.failed_evaluations == 0
 
-    def test_AC2_consensus_proposal_uses_best_model_parameters(self, sample_market_context):
+    def test_AC2_consensus_proposal_uses_best_model_parameters(
+        self, sample_market_context
+    ):
         """
         验收标准: 共识建议应该使用最佳模型的完整参数集
         AC: Consensus proposal should use the best-performing model's complete parameter set
@@ -1516,7 +1543,9 @@ class TestUSML011_ConsensusSummaryReport:
         claude.name = "Claude"
         claude.generate.return_value = '{"recommended_strategy": "FundingRate", "spread": 0.012, "confidence": 0.80}'
 
-        evaluator = MultiLLMEvaluator(providers=[gemini, openai, claude], simulation_steps=50)
+        evaluator = MultiLLMEvaluator(
+            providers=[gemini, openai, claude], simulation_steps=50
+        )
         results = evaluator.evaluate(sample_market_context)
 
         aggregated = evaluator.aggregate_results(results)

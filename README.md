@@ -31,8 +31,11 @@ This bot is not just a script; it's a digital organization.
 - `docs/modules/{module}.json` – Module card with responsibilities, constraints, and embedded feature list (Spec/Story/Test/CI) / 模块卡片，包含职责、约束及内嵌的 Feature（含 Spec/Story/Test/CI）。
 - `docs/progress/progress_index.json` – Read-only event log tying feature IDs to branches、PR 与 CI 结果 / 只读事件日志，把 Feature ID 与分支、PR、CI 结果串联起来。
 - `scripts/audit_check.py` – Lightweight audit validating manifest, module cards, progress index, and artifact files / 轻量审计脚本，校验 manifest、模块卡片、进度索引及实物文件。
+- `scripts/advance_feature.py` – **Automated feature advancement** / **自动化 Feature 推进**：一键更新模块 JSON、同步 roadmap、添加进度事件并运行审计检查。详见 [Feature Automation Guide](docs/development_protocol_feature_automation.md)。
 
-> **Workflow Tip / 流程提示**：新增 Feature 前先更新模块 JSON；开发完成后在 progress index 追加事件，并运行 `python scripts/audit_check.py` 确认闭环。
+> **Workflow Tip / 流程提示**：
+> - **推荐**：使用 `python scripts/advance_feature.py <feature_id> <new_step>` 自动推进 Feature
+> - **手动流程**：新增 Feature 前先更新模块 JSON；开发完成后在 progress index 追加事件，并运行 `python scripts/audit_check.py` 确认闭环
 
 ---
 

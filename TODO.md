@@ -3,8 +3,8 @@
 
 ## 2025.11.30
 ### QA
-- pass unit tests
-- push the code
+- Done: pass unit tests
+- Done: push the code
 
 ### Project Management
 - Review Current process progress

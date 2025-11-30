@@ -11,7 +11,7 @@ The plan follows the harness practices described in [Effective harnesses for lon
 ## Workstreams Overview / 工作流总览
 - Initializer assets seed a consistent baseline for later sessions.  
   初始化工件为后续会话提供一致的基线。
-- Structured trackers keep every feature's status transparent.  
+- Structured trackers keep every feature’s status transparent.  
   结构化追踪器确保每个功能状态透明。
 - Standard checklists and policies enforce incremental, test-backed commits.  
   标准检查清单与策略保证增量提交和测试闭环。
@@ -20,7 +20,7 @@ The plan follows the harness practices described in [Effective harnesses for lon
 
 ## 1. Initialization Blueprint / 初始化蓝图 ✅ COMPLETED
 **Deliverable / 交付物**: `docs/project/init_plan.md` describing `init.sh`, `claude_progress.md`, `feature_matrix.json`, and smoke steps.  
-**Responsible Agent / 责任 Agent**: Agent QA 主导文档，Agent TRADING & WEB 提供技术输入。
+**Responsible Agent / 责任 Agent**: Agent 5 主导文档，Agent 1 & 3 提供技术输入。
 
 ### Artifacts Created / 已创建工件
 - `docs/project/init_plan.md` — Initialization blueprint with acceptance criteria  
@@ -40,7 +40,7 @@ The plan follows the harness practices described in [Effective harnesses for lon
 
 ## 2. Feature Tracker Schema / 功能追踪结构 ✅ COMPLETED
 **Deliverable / 交付物**: `docs/project/feature_matrix.json` plus editing rules.  
-**Responsible Agent / 责任 Agent**: Agent QA 维护模板，各业务 Agent 更新 `passes`。
+**Responsible Agent / 责任 Agent**: Agent 5 维护模板，各业务 Agent 更新 `passes`。
 
 ### Artifact Created / 已创建工件
 - `docs/project/feature_matrix.json` — Contains 22 features across 8 categories with mutation rules embedded
@@ -57,7 +57,7 @@ The plan follows the harness practices described in [Effective harnesses for lon
 
 ## 3. Progress Log Template / 进度日志模板 ✅ COMPLETED
 **Deliverable / 交付物**: `docs/project/claude_progress.md` with structured tables.  
-**Responsible Agent / 责任 Agent**: Agent QA 维护格式，所有 Agent 填写。
+**Responsible Agent / 责任 Agent**: Agent 5 维护格式，所有 Agent 填写。
 
 ### Artifact Created / 已创建工件
 - `docs/project/claude_progress.md` — Progress log with table structure, update protocol, and first entry
@@ -74,7 +74,7 @@ The plan follows the harness practices described in [Effective harnesses for lon
 
 ## 4. Session Checklist Upgrade / 会话检查清单强化
 **Deliverable / 交付物**: Update `docs/agents/README.md` with mandatory startup routine.  
-**Responsible Agent / 责任 Agent**: Agent QA。
+**Responsible Agent / 责任 Agent**: Agent 5。
 
 ### Tasks / 任务
 - [ ] Insert ordered list (`pwd → git log → claude-progress → feature_matrix → init.sh smoke`).  
@@ -88,11 +88,11 @@ The plan follows the harness practices described in [Effective harnesses for lon
 
 ## 5. Incremental Commit Policy / 增量提交策略
 **Deliverable / 交付物**: `docs/contrib_guidelines.md` expansion focused on incremental work.  
-**Responsible Agent / 责任 Agent**: Agent QA。
+**Responsible Agent / 责任 Agent**: Agent 5。
 
 ### Tasks / 任务
-- [ ] Define "one feature per session" expectation and exception path.  
-  [ ] 明确"单次会话仅推进一个功能"及例外处理。
+- [ ] Define “one feature per session” expectation and exception path.  
+  [ ] 明确“单次会话仅推进一个功能”及例外处理。
 - [ ] Require linked tests, git commit, and progress entry before marking passes=true.  
   [ ] 规定通过测试、提交记录、进度日志是设置 passes=true 的前置条件。
 - [ ] Document rollback guidance for failed experiments.  
@@ -102,7 +102,7 @@ The plan follows the harness practices described in [Effective harnesses for lon
 
 ## 6. Testing Harness Guide / 测试支撑指南
 **Deliverable / 交付物**: `docs/testing/smoke_check.md` tied to `init.sh smoke`.  
-**Responsible Agent / 责任 Agent**: Agent QA 协调，测试内容由 Agent TRADING/PORTFOLIO/WEB 提供。
+**Responsible Agent / 责任 Agent**: Agent 5 协调，测试内容由 Agent 1/2/3 提供。
 
 ### Tasks / 任务
 - [ ] List minimal E2E steps (start services, API ping, pytest subset).  
@@ -116,7 +116,7 @@ The plan follows the harness practices described in [Effective harnesses for lon
 
 ## 7. Cross-Agent Responsibility Map / 跨 Agent 责任映射
 **Deliverable / 交付物**: Additional page/table inside `docs/agents/README.md`.  
-**Responsible Agent / 责任 Agent**: Agent QA。
+**Responsible Agent / 责任 Agent**: Agent 5。
 
 ### Tasks / 任务
 - [ ] Build matrix linking each harness artifact to owning Agent(s).  
@@ -135,3 +135,4 @@ The plan follows the harness practices described in [Effective harnesses for lon
   打钩前请对照进度日志确认任务完成。
 - Store all multi-agent progress tracking artifacts under `docs/project/` for easy discovery and shared context.  
   所有多 Agent 协作所需的进度追踪文档统一放置于 `docs/project/` 目录，便于集中访问与共享上下文。
+

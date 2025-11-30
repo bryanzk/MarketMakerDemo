@@ -121,7 +121,7 @@ This project has comprehensive documentation. **If you are new to the system**, 
      - 智能体工作流 - 智能体如何协作
    - **[Metrics Specification](docs/alphaloop/metrics_specification.md)**: KPIs we track
      - 指标规范 - 我们跟踪的 KPI
-   - **[Evaluation Framework](docs/alphaloop/evaluation_framework.md)**: Testing and validation
+   - **[Evaluation Framework](docs/src/ai/evaluation_framework.md)**: Testing and validation
      - 评估框架 - 测试和验证
 
 ### 📊 Quick Reference / 快速参考

@@ -8,7 +8,7 @@ Score = PnL×40% + Sharpe×30% + WinRate×20% + Confidence×10%
 ```
 
 ### Algorithm Source / 算法来源
-**Location**: `alphaloop/evaluation/evaluator.py::_score_and_rank()`
+**Location**: `src/ai/evaluation/evaluator.py::_score_and_rank()`
 
 The scoring algorithm is a **weighted composite score** designed to balance multiple performance dimensions:
 
@@ -48,9 +48,9 @@ The scoring algorithm is a **weighted composite score** designed to balance mult
   - Real performance (PnL, Sharpe) should dominate the score
 
 **Source / 来源**:
-- Prompt: `alphaloop/evaluation/prompts.py::StrategyAdvisorPrompt`
+- Prompt: `src/ai/evaluation/prompts.py::StrategyAdvisorPrompt`
 - LLM Output: JSON field `"confidence": 0.0 to 1.0`
-- Usage: `alphaloop/evaluation/evaluator.py::_score_and_rank()` line 352
+- Usage: `src/ai/evaluation/evaluator.py::_score_and_rank()` line 352
 
 ---
 
@@ -102,7 +102,7 @@ leverage=parameter_stats.leverage_median,
 
 ### How LLM Recommendations Are Generated / LLM 建议如何生成
 
-**Location**: `alphaloop/evaluation/evaluator.py::_evaluate_single()` and `alphaloop/evaluation/prompts.py`
+**Location**: `src/ai/evaluation/evaluator.py::_evaluate_single()` and `src/ai/evaluation/prompts.py`
 
 LLM 建议的生成是一个多步骤过程，从市场数据收集到最终策略参数建议。
 
@@ -140,7 +140,7 @@ flowchart TD
 
 系统收集当前市场上下文数据，包括：
 
-**Location**: `alphaloop/evaluation/schemas.py::MarketContext`
+**Location**: `src/ai/evaluation/schemas.py::MarketContext`
 
 **数据字段 / Data Fields**:
 - **价格数据 / Price Data**:
@@ -174,7 +174,7 @@ flowchart TD
 
 #### Step 2: Prompt Generation / Prompt 生成
 
-**Location**: `alphaloop/evaluation/prompts.py::StrategyAdvisorPrompt`
+**Location**: `src/ai/evaluation/prompts.py::StrategyAdvisorPrompt`
 
 系统使用模板生成结构化的 prompt：
 
@@ -266,7 +266,7 @@ Return ONLY a valid JSON object with the following structure (no markdown, no ex
 
 #### Step 3: LLM Invocation / LLM 调用
 
-**Location**: `alphaloop/evaluation/evaluator.py::_evaluate_single()`
+**Location**: `src/ai/evaluation/evaluator.py::_evaluate_single()`
 
 系统将 prompt 发送给 LLM Provider：
 
@@ -298,7 +298,7 @@ Return ONLY a valid JSON object with the following structure (no markdown, no ex
 
 #### Step 4: Response Parsing / 响应解析
 
-**Location**: `alphaloop/evaluation/evaluator.py::_parse_response()`
+**Location**: `src/ai/evaluation/evaluator.py::_parse_response()`
 
 系统解析 LLM 返回的 JSON 响应：
 
@@ -401,7 +401,7 @@ Return ONLY a valid JSON object with the following structure (no markdown, no ex
 
 ### How Simulation Works / 模拟如何工作
 
-**Location**: `alphaloop/evaluation/evaluator.py::StrategySimulator`
+**Location**: `src/ai/evaluation/evaluator.py::StrategySimulator`
 
 ### Simulation Flow Diagram / 模拟流程图
 
@@ -897,7 +897,7 @@ elif order["side"] == "sell" and order["price"] <= market_data["best_ask"]:
 #### Performance Tracking / 性能跟踪机制 (Line 940-947)
 
 **算法原理**:
-使用 `PerformanceTracker` 类（`alphaloop/market/performance.py`）跟踪：
+使用 `PerformanceTracker` 类（`src/trading/performance.py`）跟踪：
 
 1. **已实现盈亏 (Realized PnL)**:
    ```python

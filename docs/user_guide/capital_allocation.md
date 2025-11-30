@@ -255,7 +255,7 @@ Set allocation when registering strategies:
 注册策略时设置分配：
 
 ```python
-from alphaloop.portfolio.manager import PortfolioManager, StrategyStatus
+from src.portfolio.manager import PortfolioManager, StrategyStatus
 
 portfolio = PortfolioManager(total_capital=10000.0)
 
@@ -398,9 +398,9 @@ portfolio.rebalance_allocations(method="sharpe")
 
 ## 5. API Reference / API 参考
 
-See `alphaloop/portfolio/manager.py` for full API documentation.
+See `src/portfolio/manager.py` for full API documentation.
 
-完整 API 文档请参考 `alphaloop/portfolio/manager.py`。
+完整 API 文档请参考 `src/portfolio/manager.py`。
 
 ### Key Methods / 关键方法
 

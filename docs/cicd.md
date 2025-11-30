@@ -46,7 +46,7 @@ The CI/CD process is automatically triggered when:
 2. 设置Python 3.11环境 (Setup Python 3.11)
 3. 安装依赖 (Install dependencies from requirements.txt)
 4. 运行测试与覆盖率 (Run pytest with coverage)
-   - 命令: pytest --cov=alphaloop tests/
+   - 命令: pytest --cov=src tests/
    - 覆盖率阈值: 70%
 5. 上传覆盖率报告到Codecov (Upload coverage to Codecov)
 ```
@@ -88,14 +88,14 @@ Before committing code, developers should run:
 pytest
 
 # 2. 检查覆盖率 | Check coverage
-pytest --cov=alphaloop tests/
+pytest --cov=src tests/
 
 # 3. 代码格式化 | Format code
-black alphaloop
-isort alphaloop
+black src
+isort src
 
 # 4. 语法检查 | Lint code
-flake8 alphaloop
+flake8 src
 ```
 
 ### 推荐的Git工作流 | Recommended Git Workflow
@@ -109,7 +109,7 @@ git add .
 git commit -m "描述你的改动"
 
 # 3. 本地测试 | Local testing
-pytest --cov=alphaloop tests/
+pytest --cov=src tests/
 
 # 4. 推送到远程 | Push to remote
 git push origin feature/your-feature-name
@@ -169,15 +169,15 @@ pytest tests/test_specific.py -vv --tb=long
 **2. 覆盖率不足**
 ```bash
 # 生成HTML覆盖率报告 | Generate HTML coverage report
-pytest --cov=alphaloop --cov-report=html tests/
+pytest --cov=src --cov-report=html tests/
 # 在浏览器中打开 htmlcov/index.html
 ```
 
 **3. 格式问题**
 ```bash
 # 自动修复格式 | Auto-fix formatting
-black alphaloop
-isort alphaloop
+black src
+isort src
 ```
 
 ## 参考资料 | References

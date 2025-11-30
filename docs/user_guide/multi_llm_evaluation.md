@@ -56,24 +56,33 @@ Ranking based on composite score: / 根据综合评分排名：
 
 ## Usage / 使用方式
 
-### Method 1: Command Line Tool / 方式一：命令行工具
+### Method 1: Scripted CLI / 方式一：脚本式命令行
 
 ```bash
-# Run multi-LLM evaluation / 运行多 LLM 评估
-python -m alphaloop.evaluation.cli --symbol ETHUSDT
+python - <<'PY'
+from src.ai.evaluation import MultiLLMEvaluator, MarketContext
+from src.ai.llm import create_all_providers
 
-# Specify simulation steps / 指定模拟步数
-python -m alphaloop.evaluation.cli --symbol ETHUSDT --steps 1000
-
-# Use specific models only / 只使用特定模型
-python -m alphaloop.evaluation.cli --symbol ETHUSDT --providers gemini,openai
+providers = create_all_providers()
+context = MarketContext(symbol="ETHUSDT")
+evaluator = MultiLLMEvaluator(
+    providers=providers,
+    simulation_steps=500,
+    parallel=True,
+)
+results = evaluator.evaluate(context)
+print(results)
+PY
 ```
+
+- Adjust `simulation_steps`, `providers`, and other constructor arguments in the snippet above to match your scenario. / 根据需要调整上面代码中的 `simulation_steps`、`providers` 等参数。
+- For quick experiments you can wrap the snippet in your own shell script and pass parameters via environment variables. / 如需快速实验，可将上述代码封装成脚本并通过环境变量传参。
 
 ### Method 2: Python API / 方式二：Python API
 
 ```python
-from alphaloop.evaluation import MultiLLMEvaluator, MarketContext
-from alphaloop.core.llm import create_all_providers
+from src.ai.evaluation import MultiLLMEvaluator, MarketContext
+from src.ai.llm import create_all_providers
 
 # 1. Prepare market data / 准备市场数据
 context = MarketContext(
@@ -166,7 +175,7 @@ ANTHROPIC_API_KEY=your_anthropic_key
 ### Configuration File / 配置文件
 
 ```python
-# alphaloop/core/config.py
+# src/shared/config.py
 MULTI_LLM_CONFIG = {
     "simulation_steps": 500,      # Simulation steps / 模拟步数
     "parallel": True,             # Enable parallel calls / 是否并行调用
@@ -408,8 +417,8 @@ Or apply a specific provider's proposal / 或应用特定 Provider 的建议:
 ```python
 # In server.py / 在 server.py 中
 
-from alphaloop.evaluation import MultiLLMEvaluator, MarketContext, AggregatedResult
-from alphaloop.core.llm import create_all_providers
+from src.evaluation import MultiLLMEvaluator, MarketContext, AggregatedResult
+from src.core.llm import create_all_providers
 
 @app.post("/api/evaluation/run")
 async def run_evaluation(request: EvaluationRequest):

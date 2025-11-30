@@ -35,8 +35,8 @@ As the AI developer, I measure effort in **execution steps** and **complexity**,
 **总投入估算**：约 20‑30 次工具调用（大约 1‑2 个互动会话）。
 
 ### Phase 1: Infrastructure / 阶段 1：基础建设（Low）
-- **Tasks**: Create `alphaloop/core/llm.py`, update `requirements.txt`.
-  **任务**：新增 `alphaloop/core/llm.py`，更新 `requirements.txt`。
+- **Tasks**: Create `src/ai/llm.py`, update `requirements.txt`.
+  **任务**：新增 `src/ai/llm.py`，更新 `requirements.txt`。
 - **Effort**: 3‑5 tool calls.
   **投入**：3‑5 次调用。
 - **Risk**: Low – mostly boilerplate glue code.

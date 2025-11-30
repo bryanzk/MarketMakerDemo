@@ -113,7 +113,7 @@ sequenceDiagram
     4.  **If Approved**: Sets `is_running = True` and spawns a background thread (`run_bot_loop`).
         *   **如果批准**：设置 `is_running = True` 并生成后台线程 (`run_bot_loop`)。
 
-### 3. Background Execution Loop / 后台执行循环 (`alphaloop/main.py`)
+### 3. Background Execution Loop / 后台执行循环 (`src/trading/engine.py`)
 Once started, the `AlphaLoop` runs continuously in a background thread. Each cycle involves:
 一旦启动，`AlphaLoop` 将在后台线程中持续运行。每个周期包括：
 

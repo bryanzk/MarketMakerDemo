@@ -11,17 +11,17 @@
 
 | Business Function / 业务功能 | Implemented By | Source File(s) |
 |---|---|---|
-| Data ingestion & metrics / 数据采集与指标 | **Data Agent** | `alphaloop/agents/data.py` |
-| Risk validation & limits / 风控校验与限制 | **Risk Agent** | `alphaloop/agents/risk.py` |
-| Strategy analysis & proposal / 策略分析与提案 | **Quant Agent** | `alphaloop/agents/quant.py` |
-| Order execution & slippage control / 订单执行与滑点控制 | **Execution Agent** | `alphaloop/market/execution.py` (or similar) |
-| Connectivity & latency monitoring / 连接与延迟监控 | **Infrastructure Agent** | `alphaloop/core/config.py`, `alphaloop/core/logger.py` |
+| Data ingestion & metrics / 数据采集与指标 | **Data Agent** | `src/ai/agents/data.py` |
+| Risk validation & limits / 风控校验与限制 | **Risk Agent** | `src/ai/agents/risk.py` |
+| Strategy analysis & proposal / 策略分析与提案 | **Quant Agent** | `src/ai/agents/quant.py` |
+| Order execution & slippage control / 订单执行与滑点控制 | **Execution Agent** | `src/trading/execution.py` (or similar) |
+| Connectivity & latency monitoring / 连接与延迟监控 | **Infrastructure Agent** | `src/shared/config.py`, `src/shared/logger.py` |
 | QA & test coverage / QA 与测试覆盖 | **QA Agent** | `tests/` (unit & integration tests) |
 | CI/CD pipeline & Ops / CI/CD 与运维 | **Operations Agent** | `.github/workflows/ci.yml` |
 
 ## ✅ CI / Quality Gates / CI 与质量门禁
 
-- **Tests**: `pytest --cov=alphaloop` (coverage ≥ 70%). / 覆盖率 ≥ 70%。
+- **Tests**: `pytest --cov=src` (coverage ≥ 70%). / 覆盖率 ≥ 70%。
 - **Lint**: `flake8`. / 代码检查。
 - **Formatting**: `black --check`, `isort --check-only`. / 格式化检查。
 - **Badge**: CI status badge shown in `README.md`. / 在 README 中显示 CI 徽章。

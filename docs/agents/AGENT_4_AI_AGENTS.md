@@ -14,18 +14,18 @@
 
 ### 可修改
 ```
-alphaloop/agents/
+src/ai/agents/
 ├── data.py              # DataAgent - 数据处理与指标计算
 ├── quant.py             # QuantAgent - 量化分析与建议
 └── risk.py              # RiskAgent - 风险验证
 
-alphaloop/evaluation/
+src/ai/evaluation/
 ├── __init__.py
 ├── evaluator.py         # 多 LLM 评估器
 ├── prompts.py           # 评估提示词
 └── schemas.py           # 数据模式
 
-alphaloop/core/
+src/shared/
 └── llm.py               # LLM 集成
 
 tests/
@@ -42,16 +42,16 @@ docs/user_guide/
 
 ### 只读参考
 ```
-alphaloop/core/config.py      # 配置信息
-alphaloop/metrics/            # 指标定义
-alphaloop/main.py             # 了解如何被调用
+src/shared/config.py      # 配置信息
+src/shared/metrics/            # 指标定义
+src/trading/engine.py             # 了解如何被调用
 ```
 
 ## 🚫 禁止修改
 
-- `alphaloop/market/` - 属于 Agent TRADING
-- `alphaloop/strategies/` - 属于 Agent TRADING
-- `alphaloop/portfolio/` - 属于 Agent PORTFOLIO
+- `src/trading/` - 属于 Agent TRADING
+- `src/trading/strategies/` - 属于 Agent TRADING
+- `src/portfolio/` - 属于 Agent PORTFOLIO
 - `server.py` - 属于 Agent WEB
 
 ## 📋 当前任务
@@ -74,7 +74,7 @@ alphaloop/main.py             # 了解如何被调用
 
 ```python
 # QuantAgent 示例
-from alphaloop.agents.quant import QuantAgent
+from src.agents.quant import QuantAgent
 
 quant = QuantAgent()
 proposal = quant.analyze_and_propose(
@@ -84,7 +84,7 @@ proposal = quant.analyze_and_propose(
 # 返回: {"spread": 0.0025, "reason": "..."}
 
 # RiskAgent 示例
-from alphaloop.agents.risk import RiskAgent
+from src.agents.risk import RiskAgent
 
 risk = RiskAgent()
 approved, reason = risk.validate_proposal({"spread": 0.05})

@@ -41,9 +41,9 @@
   ],
   "features": ["CORE-001", "CORE-002", "CORE-003", "STRAT-001", "STRAT-002"],
   "current_implementation": {
-    "legacy_path": "alphaloop/market/",
-    "legacy_strategies": "alphaloop/strategies/",
-    "migration_status": "pending"
+    "path": "src/trading/",
+    "strategies_path": "src/trading/strategies/",
+    "migration_status": "completed"
   }
 }
 

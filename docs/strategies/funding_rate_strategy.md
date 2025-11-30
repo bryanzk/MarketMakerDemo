@@ -83,7 +83,7 @@ Result: The bot offers a slightly better price for short positions, earning the 
 ## Configuration Example / 配置示例
 
 ```python
-# In alphaloop/core/config.py
+# In src/shared/config.py
 STRATEGY_TYPE = "funding_rate_skew"
 SPREAD_PCT = 0.002      # 0.2% base spread
 SKEW_PCT = 0.0005       # 0.05% funding skew

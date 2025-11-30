@@ -14,14 +14,14 @@
 
 ### 可修改
 ```
-alphaloop/market/
+src/trading/
 ├── exchange.py          # 交易所客户端
 ├── order_manager.py     # 订单管理器
 ├── simulation.py        # 市场模拟器
 ├── performance.py       # 性能追踪
 └── risk_manager.py      # 风险管理器
 
-alphaloop/strategies/
+src/trading/strategies/
 ├── strategy.py          # FixedSpreadStrategy
 └── funding.py           # FundingRateStrategy
 
@@ -35,17 +35,17 @@ tests/
 
 ### 只读参考
 ```
-alphaloop/core/config.py  # 读取配置
-alphaloop/main.py         # 了解主循环如何调用
+src/shared/config.py  # 读取配置
+src/trading/engine.py         # 了解主循环如何调用
 ```
 
 ## 🚫 禁止修改
 
 - `server.py` - 属于 Agent WEB
 - `templates/` - 属于 Agent WEB
-- `alphaloop/portfolio/` - 属于 Agent PORTFOLIO
-- `alphaloop/agents/` - 属于 Agent AI
-- `alphaloop/evaluation/` - 属于 Agent AI
+- `src/portfolio/` - 属于 Agent PORTFOLIO
+- `src/ai/agents/` - 属于 Agent AI
+- `src/ai/evaluation/` - 属于 Agent AI
 
 ## 📋 当前任务
 
@@ -68,7 +68,7 @@ alphaloop/main.py         # 了解主循环如何调用
 
 ```python
 # 交易所客户端示例
-from alphaloop.market.exchange import BinanceClient
+from src.market.exchange import BinanceClient
 
 client = BinanceClient()
 market_data = client.fetch_market_data()

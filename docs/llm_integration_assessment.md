@@ -56,8 +56,8 @@ Adding multi-model support mainly increases infrastructure work while the agent 
 多模型支持主要增加基础设施侧工作量，智能体逻辑保持精简。
 
 ### Phase 1: Infrastructure (High) / 阶段 1：基础设施（高）
-- Create `alphaloop/core/llm/`, define `BaseLLMProvider`, implement `GeminiProvider`, optionally `OpenAIProvider`, and build `LLMFactory`.
-  新建 `alphaloop/core/llm/`，定义 `BaseLLMProvider`，实现 `GeminiProvider`（及可选的 `OpenAIProvider`），并构建 `LLMFactory`。
+- Create `src/shared/llm/`, define `BaseLLMProvider`, implement `GeminiProvider`, optionally `OpenAIProvider`, and build `LLMFactory`.
+  新建 `src/shared/llm/`，定义 `BaseLLMProvider`，实现 `GeminiProvider`（及可选的 `OpenAIProvider`），并构建 `LLMFactory`。
 - Effort: ~8‑12 tool calls.
   预计投入：约 8‑12 次工具调用。
 

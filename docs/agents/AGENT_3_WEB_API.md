@@ -26,15 +26,15 @@ tests/
 
 ### 只读参考
 ```
-alphaloop/main.py              # AlphaLoop 引擎接口
-alphaloop/portfolio/manager.py # PortfolioManager 接口
-alphaloop/portfolio/risk.py    # RiskIndicators 接口
-alphaloop/market/exchange.py   # 交易所数据接口
+src/trading/engine.py              # AlphaLoop 引擎接口
+src/portfolio/manager.py # PortfolioManager 接口
+src/portfolio/risk.py    # RiskIndicators 接口
+src/trading/exchange.py   # 交易所数据接口
 ```
 
 ## 🚫 禁止修改
 
-- `alphaloop/` 目录下的任何业务逻辑
+- `src/` 目录下的任何业务逻辑
 - 只能调用其他模块的公开接口
 
 ## 📋 当前任务

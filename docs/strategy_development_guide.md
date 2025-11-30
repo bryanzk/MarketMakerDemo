@@ -13,12 +13,12 @@ Adding a new strategy involves changes across the backend (logic), API (configur
 ## Step-by-Step Implementation / 分步实施
 
 ### 1. Create Strategy Logic / 创建策略逻辑
-Create a new file in `alphaloop/strategies/` (e.g., `my_strategy.py`) and define your strategy class.
+Create a new file in `src/trading/strategies/` (e.g., `my_strategy.py`) and define your strategy class.
 
-在 `alphaloop/strategies/` 中创建新文件（例如 `my_strategy.py`）并定义策略类。
+在 `src/trading/strategies/` 中创建新文件（例如 `my_strategy.py`）并定义策略类。
 
 ```python
-# alphaloop/strategies/my_strategy.py
+# src/trading/strategies/my_strategy.py
 
 class MyNewStrategy:
     def __init__(self):
@@ -39,23 +39,23 @@ class MyNewStrategy:
 ```
 
 ### 2. Update Configuration (Optional) / 更新配置（可选）
-If your strategy needs global configuration constants, add them to `alphaloop/core/config.py`.
+If your strategy needs global configuration constants, add them to `src/shared/config.py`.
 
-如果策略需要全局配置常量，将它们添加到 `alphaloop/core/config.py`。
+如果策略需要全局配置常量，将它们添加到 `src/shared/config.py`。
 
 ```python
-# alphaloop/core/config.py
+# src/shared/config.py
 MY_PARAM_DEFAULT = 10
 ```
 
 ### 3. Integrate with Main Loop / 集成到主循环
-Update `alphaloop/main.py` to import your strategy and handle switching.
+Update `src/trading/engine.py` to import your strategy and handle switching.
 
-更新 `alphaloop/main.py` 以导入策略并处理切换。
+更新 `src/trading/engine.py` 以导入策略并处理切换。
 
 ```python
-# alphaloop/main.py
-from alphaloop.strategies.my_strategy import MyNewStrategy
+# src/trading/engine.py
+from src.strategies.my_strategy import MyNewStrategy
 
 class AlphaLoop:
     def set_strategy(self, strategy_type):
@@ -68,12 +68,12 @@ class AlphaLoop:
 ```
 
 ### 4. Update Risk Engine / 更新风险引擎
-If your strategy introduces new parameters that need validation, update `alphaloop/agents/risk.py`.
+If your strategy introduces new parameters that need validation, update `src/ai/agents/risk.py`.
 
-如果策略引入了需要验证的新参数，更新 `alphaloop/agents/risk.py`。
+如果策略引入了需要验证的新参数，更新 `src/ai/agents/risk.py`。
 
 ```python
-# alphaloop/agents/risk.py
+# src/ai/agents/risk.py
 
 class RiskAgent:
     def validate_proposal(self, proposed_config):
@@ -93,7 +93,7 @@ Update `server.py` to expose your strategy and its parameters.
 
 ```python
 # server.py
-from alphaloop.strategies.my_strategy import MyNewStrategy
+from src.strategies.my_strategy import MyNewStrategy
 
 class ConfigUpdate(BaseModel):
     # ...

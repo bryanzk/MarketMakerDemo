@@ -6,10 +6,10 @@
 
 | Agent | 职责 | 负责目录 | 状态 |
 |-------|------|----------|------|
-| [Agent TRADING: 交易引擎](AGENT_1_TRADING_ENGINE.md) | 交易所接口、订单管理、策略 | `alphaloop/market/`, `alphaloop/strategies/` | ✅ 可启动 |
-| [Agent PORTFOLIO: 组合管理](AGENT_2_PORTFOLIO.md) | 组合管理、风险指标 | `alphaloop/portfolio/` | ✅ 可启动 |
+| [Agent TRADING: 交易引擎](AGENT_1_TRADING_ENGINE.md) | 交易所接口、订单管理、策略 | `src/trading/`, `src/trading/strategies/` | ✅ 可启动 |
+| [Agent PORTFOLIO: 组合管理](AGENT_2_PORTFOLIO.md) | 组合管理、风险指标 | `src/portfolio/` | ✅ 可启动 |
 | [Agent WEB: Web/API](AGENT_3_WEB_API.md) | FastAPI、Dashboard | `server.py`, `templates/` | ✅ 可启动 |
-| [Agent AI: AI 智能体](AGENT_4_AI_AGENTS.md) | 量化分析、评估框架 | `alphaloop/agents/`, `alphaloop/evaluation/` | ✅ 可启动 |
+| [Agent AI: AI 智能体](AGENT_4_AI_AGENTS.md) | 量化分析、评估框架 | `src/ai/agents/`, `src/ai/evaluation/` | ✅ 可启动 |
 | [Agent QA: 文档/测试](AGENT_5_DOCS_QA.md) | 文档、测试、质量 | `docs/`, `tests/` | ✅ 可启动 |
 
 ## 🚀 快速启动
@@ -70,13 +70,13 @@
 |------|-----------|
 | `server.py` | Agent WEB |
 | `templates/index.html` | Agent WEB |
-| `alphaloop/main.py` | Agent TRADING |
+| `src/trading/engine.py` | Agent TRADING |
 
 ### 🟡 需要协调修改的文件
 
 | 文件 | 修改时需通知 |
 |------|-------------|
-| `alphaloop/core/config.py` | 所有 Agent |
+| `src/shared/config.py` | 所有 Agent |
 | `requirements.txt` | 所有 Agent |
 | `pyproject.toml` | 所有 Agent |
 
@@ -120,7 +120,7 @@ pytest tests/test_*agent*.py -v         # Agent AI
 python server.py
 
 # 检查代码风格
-python -m flake8 alphaloop/
+python -m flake8 src/
 ```
 
 ## 💡 最佳实践

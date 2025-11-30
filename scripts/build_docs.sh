@@ -3,7 +3,7 @@
 
 set -e
 
-# Set PYTHONPATH to current directory so pdoc can find alphaloop module
+# Set PYTHONPATH to current directory so pdoc can find src module
 export PYTHONPATH="${PYTHONPATH}:$(pwd)"
 
 echo "🔨 Building API documentation..."
@@ -12,7 +12,7 @@ echo "🔨 Building API documentation..."
 rm -rf docs/api
 
 # Generate new docs
-pdoc alphaloop \
+pdoc src \
   --output-dir docs/api \
   --logo "https://raw.githubusercontent.com/bryanzk/MarketMakerDemo/main/docs/logo.png" \
   --logo-link "/" \

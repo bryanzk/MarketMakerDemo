@@ -42,8 +42,8 @@
   ],
   "features": ["PORT-001", "PORT-002", "RISK-001", "RISK-002"],
   "current_implementation": {
-    "legacy_path": "alphaloop/portfolio/",
-    "migration_status": "pending"
+    "path": "src/portfolio/",
+    "migration_status": "completed"
   }
 }
 

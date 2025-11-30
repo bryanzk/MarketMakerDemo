@@ -14,7 +14,7 @@
 
 ### 可修改
 ```
-alphaloop/portfolio/
+src/portfolio/
 ├── __init__.py          # 模块导出
 ├── manager.py           # PortfolioManager 核心逻辑
 ├── health.py            # 健康评分系统
@@ -33,17 +33,17 @@ docs/user_guide/
 
 ### 只读参考
 ```
-alphaloop/core/config.py      # 配置信息
-alphaloop/market/exchange.py  # 了解数据来源
+src/shared/config.py      # 配置信息
+src/trading/exchange.py  # 了解数据来源
 server.py                     # 了解 API 如何调用
 ```
 
 ## 🚫 禁止修改
 
-- `alphaloop/market/` - 属于 Agent TRADING
-- `alphaloop/strategies/` - 属于 Agent TRADING
+- `src/trading/` - 属于 Agent TRADING
+- `src/trading/strategies/` - 属于 Agent TRADING
 - `server.py` - 属于 Agent WEB（但可提供 API 接口建议）
-- `alphaloop/agents/` - 属于 Agent AI
+- `src/ai/agents/` - 属于 Agent AI
 
 ## 📋 当前任务
 
@@ -64,7 +64,7 @@ server.py                     # 了解 API 如何调用
 
 ```python
 # RiskIndicators 使用示例
-from alphaloop.portfolio.risk import RiskIndicators
+from src.portfolio.risk import RiskIndicators
 
 indicators = RiskIndicators.from_exchange_data(
     current_price=2900.0,

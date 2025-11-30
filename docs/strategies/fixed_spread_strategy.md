@@ -95,7 +95,7 @@ The strategy earns the spread when both sides are filled:
 ## Configuration Example / 配置示例
 
 ```python
-# In alphaloop/core/config.py
+# In src/shared/config.py
 STRATEGY_TYPE = "fixed_spread"
 SPREAD_PCT = 0.002  # 0.2%
 QUANTITY = 0.01     # 0.01 ETH

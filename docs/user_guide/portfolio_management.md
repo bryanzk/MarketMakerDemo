@@ -275,7 +275,7 @@ AlphaLoop 支持多个策略实例同时运行，每个策略实例拥有：
 
 ### 6.4 技术实现
 
-- 后端：`alphaloop/main.py` 中的 `AlphaLoop` 类管理多个 `StrategyInstance`
+- 后端：`src/trading/engine.py` 中的 `AlphaLoop` 类管理多个 `StrategyInstance`
 - 前端：通过 `/api/portfolio` 获取所有策略实例的状态和表现
 - 隔离机制：每个策略实例有独立的 `order_manager` 和状态追踪
 

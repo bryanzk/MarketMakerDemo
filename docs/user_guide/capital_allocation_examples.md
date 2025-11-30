@@ -15,7 +15,7 @@ This document provides practical examples of how to use the capital allocation f
 从 2 个策略开始，希望等权重分配。
 
 ```python
-from alphaloop.portfolio.manager import PortfolioManager, StrategyStatus
+from src.portfolio.manager import PortfolioManager, StrategyStatus
 
 # Initialize portfolio manager
 portfolio = PortfolioManager(total_capital=10000.0)

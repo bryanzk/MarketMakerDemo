@@ -1,0 +1,239 @@
+"""
+LLM Provider Implementations / LLM 提供者实现
+
+支持 Gemini, OpenAI, Claude 三家 LLM
+
+Owner: Agent AI
+"""
+
+import os
+from abc import ABC, abstractmethod
+from typing import List, Optional
+
+import google.generativeai as genai
+
+from src.shared.logger import setup_logger
+
+logger = setup_logger("LLMProvider")
+
+
+class LLMProvider(ABC):
+    """Abstract base class for LLM providers"""
+
+    @property
+    @abstractmethod
+    def name(self) -> str:
+        """Return the provider name for identification"""
+        pass
+
+    @abstractmethod
+    def generate(self, prompt: str) -> str:
+        """Generate response from the LLM"""
+        pass
+
+
+class GeminiProvider(LLMProvider):
+    """Google Gemini implementation of LLMProvider"""
+
+    def __init__(self, api_key: Optional[str] = None, model: str = "gemini-3-pro"):
+        """
+        Initialize Gemini Provider
+
+        Args:
+            api_key: Gemini API key (optional, will use GEMINI_API_KEY env var if not provided)
+            model: Model name. Default: "gemini-3-pro" (latest)
+        """
+        self.api_key = api_key or os.getenv("GEMINI_API_KEY")
+        if not self.api_key:
+            raise ValueError("GEMINI_API_KEY is not set")
+        genai.configure(api_key=self.api_key)
+        self.model = genai.GenerativeModel(model)
+        self._model_name = model
+
+    @property
+    def name(self) -> str:
+        return f"Gemini ({self._model_name})"
+
+    def generate(self, prompt: str) -> str:
+        try:
+            response = self.model.generate_content(prompt)
+            return response.text
+        except Exception as e:
+            if self._model_name == "gemini-3-pro" and "not found" in str(e).lower():
+                logger.warning(
+                    f"Gemini 3 Pro not available, falling back to gemini-1.5-pro: {e}"
+                )
+                self._model_name = "gemini-1.5-pro"
+                self.model = genai.GenerativeModel(self._model_name)
+                response = self.model.generate_content(prompt)
+                return response.text
+            raise RuntimeError(f"Gemini API error: {e}")
+
+
+class OpenAIProvider(LLMProvider):
+    """OpenAI GPT implementation of LLMProvider"""
+
+    def __init__(self, api_key: Optional[str] = None, model: str = "gpt-5"):
+        """
+        Initialize OpenAI Provider
+
+        Args:
+            api_key: OpenAI API key (optional, will use OPENAI_API_KEY env var if not provided)
+            model: Model name. Default: "gpt-5" (latest)
+        """
+        self.api_key = api_key or os.getenv("OPENAI_API_KEY")
+        if not self.api_key:
+            raise ValueError("OPENAI_API_KEY is not set")
+        self._model_name = model
+        try:
+            from openai import OpenAI
+
+            self.client = OpenAI(api_key=self.api_key)
+        except ImportError:
+            raise ImportError(
+                "openai package is required. Install with: pip install openai"
+            )
+
+    @property
+    def name(self) -> str:
+        return f"OpenAI ({self._model_name})"
+
+    def generate(self, prompt: str) -> str:
+        try:
+            response = self.client.chat.completions.create(
+                model=self._model_name,
+                messages=[
+                    {
+                        "role": "system",
+                        "content": "You are an expert quantitative trading analyst.",
+                    },
+                    {"role": "user", "content": prompt},
+                ],
+                temperature=0.7,
+            )
+            return response.choices[0].message.content
+        except Exception as e:
+            if self._model_name == "gpt-5" and (
+                "not found" in str(e).lower() or "invalid" in str(e).lower()
+            ):
+                logger.warning(f"GPT-5 not available, falling back to gpt-4o: {e}")
+                self._model_name = "gpt-4o"
+                response = self.client.chat.completions.create(
+                    model=self._model_name,
+                    messages=[
+                        {
+                            "role": "system",
+                            "content": "You are an expert quantitative trading analyst.",
+                        },
+                        {"role": "user", "content": prompt},
+                    ],
+                    temperature=0.7,
+                )
+                return response.choices[0].message.content
+            raise RuntimeError(f"OpenAI API error: {e}")
+
+
+class ClaudeProvider(LLMProvider):
+    """Anthropic Claude implementation of LLMProvider"""
+
+    def __init__(
+        self, api_key: Optional[str] = None, model: str = "claude-3-5-sonnet-20241022"
+    ):
+        self.api_key = api_key or os.getenv("ANTHROPIC_API_KEY")
+        if not self.api_key:
+            raise ValueError("ANTHROPIC_API_KEY is not set")
+        self._model_name = model
+        try:
+            import anthropic
+
+            self.client = anthropic.Anthropic(api_key=self.api_key)
+        except ImportError:
+            raise ImportError(
+                "anthropic package is required. Install with: pip install anthropic"
+            )
+
+    @property
+    def name(self) -> str:
+        return f"Claude ({self._model_name})"
+
+    def generate(self, prompt: str) -> str:
+        try:
+            message = self.client.messages.create(
+                model=self._model_name,
+                max_tokens=1024,
+                messages=[{"role": "user", "content": prompt}],
+                system="You are an expert quantitative trading analyst.",
+            )
+            return message.content[0].text
+        except Exception as e:
+            raise RuntimeError(f"Claude API error: {e}")
+
+
+class LLMGateway:
+    """Gateway service for interacting with LLMs"""
+
+    def __init__(self, provider: LLMProvider):
+        self.provider = provider
+
+    @property
+    def provider_name(self) -> str:
+        """Return the name of the current provider"""
+        return self.provider.name
+
+    def generate(self, prompt: str) -> str:
+        """Generate content using the configured provider"""
+        return self.provider.generate(prompt)
+
+
+def create_all_providers() -> List[LLMProvider]:
+    """
+    Create all available LLM providers based on configured API keys.
+    Returns a list of successfully initialized providers.
+    """
+    providers = []
+    errors = []
+
+    try:
+        providers.append(GeminiProvider())
+    except (ValueError, ImportError) as e:
+        errors.append(f"Gemini: {e}")
+
+    try:
+        providers.append(OpenAIProvider())
+    except (ValueError, ImportError) as e:
+        errors.append(f"OpenAI: {e}")
+
+    try:
+        providers.append(ClaudeProvider())
+    except (ValueError, ImportError) as e:
+        errors.append(f"Claude: {e}")
+
+    if not providers:
+        raise ValueError(f"No LLM providers available. Errors: {'; '.join(errors)}")
+
+    return providers
+
+
+def create_provider(provider_name: str) -> LLMProvider:
+    """
+    Create a specific LLM provider by name.
+
+    Args:
+        provider_name: "gemini", "openai", or "claude"
+
+    Returns:
+        LLMProvider instance
+    """
+    provider_name = provider_name.lower()
+
+    if provider_name == "gemini":
+        return GeminiProvider()
+    elif provider_name == "openai":
+        return OpenAIProvider()
+    elif provider_name == "claude":
+        return ClaudeProvider()
+    else:
+        raise ValueError(
+            f"Unknown provider: {provider_name}. Use 'gemini', 'openai', or 'claude'"
+        )
+

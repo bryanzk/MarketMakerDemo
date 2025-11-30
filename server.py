@@ -1,10 +1,9 @@
-import asyncio
 import logging
 import os
 import threading
 import time
 from datetime import datetime, timezone
-from typing import List, Optional
+from typing import Optional
 
 import uvicorn
 
@@ -16,20 +15,9 @@ from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 
 # Import the bot engine class
-from src.ai.evaluation import (
-    AggregatedResult,
-    EvaluationResult,
-    MarketContext,
-    MultiLLMEvaluator,
-    ParameterStatistics,
-    SimulationResult,
-    StrategyConsensus,
-    StrategyProposal,
-)
 from src.trading.engine import AlphaLoop
 from src.portfolio.manager import PortfolioManager, StrategyStatus
 from src.portfolio.risk import RiskIndicators
-from src.ai.llm import create_all_providers
 from src.trading.strategies.funding_rate import FundingRateStrategy
 from src.trading.strategies.fixed_spread import FixedSpreadStrategy
 
@@ -40,8 +28,6 @@ app = FastAPI()
 async def startup_event():
     """Initialize portfolio capital from Binance on server startup."""
     init_portfolio_capital()
-    await update_suggestion_cache(force=True)
-    asyncio.create_task(suggestion_refresh_worker())
 
 
 # Setup Templates
@@ -52,30 +38,6 @@ templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "templates"))
 bot_engine = AlphaLoop()
 bot_thread = None
 is_running = False
-
-DEFAULT_SUGGESTION = {
-    "spread": 1.0,
-    "leverage": 5,
-    "condition": "Initializing",
-    "reason": "Collecting market data...",
-}
-SUGGESTION_CACHE_TTL = 5  # seconds
-SUGGESTION_REFRESH_INTERVAL = 5  # seconds
-
-suggestion_cache = {
-    "data": DEFAULT_SUGGESTION.copy(),
-    "timestamp": 0.0,
-    "updating": False,
-}
-suggestion_cache_lock = asyncio.Lock()
-
-latest_evaluation_state = {
-    "results": [],
-    "aggregated": None,
-    "timestamp": 0.0,
-    "symbol": None,
-}
-evaluation_state_lock = asyncio.Lock()
 
 
 def get_default_exchange():
@@ -225,240 +187,6 @@ class StrategyAllocationUpdate(BaseModel):
     allocation: float  # 0-1
 
 
-class EvaluationRunRequest(BaseModel):
-    """Request payload for running multi-LLM evaluation"""
-    symbol: Optional[str] = None
-    simulation_steps: Optional[int] = 500
-    providers: Optional[List[str]] = None  # allow specifying subset in future
-
-
-class EvaluationApplyRequest(BaseModel):
-    """Request payload for applying evaluation suggestions"""
-    source: str  # "consensus" or "individual"
-    provider_name: Optional[str] = None
-    strategy_id: Optional[str] = "default"
-
-
-def _generate_suggestion():
-    """
-    Heavy-weight suggestion generation logic.
-    Runs in a worker thread to avoid blocking the event loop.
-    """
-    sharpe = 0
-    volatility = 0
-    
-    try:
-        if hasattr(bot_engine, "data") and bot_engine.data is not None:
-            if hasattr(bot_engine.data, "price_history") and len(bot_engine.data.price_history) > 1:
-                try:
-                    import numpy as np
-                    prices = np.array(bot_engine.data.price_history[-50:])
-                    if len(prices) > 1:
-                        returns = np.diff(prices) / prices[:-1]
-                        volatility = float(np.std(returns)) if len(returns) > 0 else 0
-                except Exception as e:
-                    logger.debug(f"Error calculating volatility: {e}")
-                    volatility = 0
-            
-            try:
-                if hasattr(bot_engine.data, "trade_history") and len(bot_engine.data.trade_history) > 10:
-                    import numpy as np
-                    recent_trades = bot_engine.data.trade_history[-20:]
-                    pnls = [t.get("pnl", 0) for t in recent_trades if t.get("pnl") is not None]
-                    if len(pnls) > 5:
-                        pnl_array = np.array(pnls)
-                        if np.std(pnl_array) > 0:
-                            sharpe = float(
-                                np.mean(pnl_array) / np.std(pnl_array) * np.sqrt(365 * 24 * 60)
-                            )
-            except Exception as e:
-                logger.debug(f"Error calculating quick sharpe: {e}")
-                sharpe = 0
-    except Exception as e:
-        logger.warning(f"Error calculating metrics for suggestions: {e}")
-        sharpe = 0
-        volatility = 0
-    
-    current_spread = 1.0
-    current_leverage = 5
-    
-    try:
-        if hasattr(bot_engine, "strategy") and bot_engine.strategy is not None:
-            current_spread = bot_engine.strategy.spread * 100
-            current_leverage = bot_engine.strategy.leverage
-    except Exception as e:
-        logger.warning(f"Error getting strategy config for suggestions: {e}")
-    
-    suggestion = {
-        "spread": current_spread,
-        "leverage": current_leverage,
-        "condition": "Stable",
-        "reason": "Current settings are stable.",
-    }
-    
-    if volatility > 0.005:
-        suggestion["spread"] = round(current_spread * 1.2, 2)
-        suggestion["leverage"] = max(1, current_leverage - 2)
-        suggestion["condition"] = "High Volatility"
-        suggestion["reason"] = (
-            "Market is volatile. Widening spread and reducing leverage to mitigate risk."
-        )
-    elif sharpe < 1.0 and volatility < 0.005:
-        suggestion["spread"] = round(current_spread * 1.1, 2)
-        suggestion["leverage"] = max(1, current_leverage - 1)
-        suggestion["condition"] = "Low Sharpe Ratio"
-        suggestion["reason"] = (
-            "Performance is low. Adjusting spread and leverage to improve risk-adjusted returns."
-        )
-    elif sharpe > 2.0 and volatility < 0.002:
-        suggestion["spread"] = round(current_spread * 0.9, 2)
-        suggestion["leverage"] = current_leverage + 1
-        suggestion["condition"] = "Excellent Performance"
-        suggestion["reason"] = "Strong performance with low risk. Optimizing for higher returns."
-    
-    suggestion["spread"] = max(0.01, min(1.0, suggestion["spread"]))
-    suggestion["leverage"] = max(1, min(10, suggestion["leverage"]))
-    return suggestion
-
-
-async def update_suggestion_cache(force=False):
-    async with suggestion_cache_lock:
-        if suggestion_cache["updating"]:
-            return suggestion_cache["data"]
-        suggestion_cache["updating"] = True
-    
-    try:
-        suggestion = await asyncio.to_thread(_generate_suggestion)
-    except Exception as e:
-        logger.error(f"Error generating suggestion: {e}")
-        suggestion = DEFAULT_SUGGESTION.copy()
-    finally:
-        async with suggestion_cache_lock:
-            suggestion_cache["data"] = suggestion
-            suggestion_cache["timestamp"] = time.time()
-            suggestion_cache["updating"] = False
-            return suggestion_cache["data"]
-
-
-async def suggestion_refresh_worker():
-    while True:
-        try:
-            await update_suggestion_cache(force=True)
-        except Exception as e:
-            logger.error(f"Suggestion refresh failed: {e}")
-        await asyncio.sleep(SUGGESTION_REFRESH_INTERVAL)
-
-
-def _normalize_symbol(symbol: Optional[str]) -> str:
-    """Normalize symbols like ETH/USDT:USDT -> ETHUSDT"""
-    if not symbol:
-        return "ETHUSDT"
-    cleaned = symbol.upper().replace("/", "").replace(":", "").replace("-", "")
-    return cleaned
-
-
-def _serialize_strategy_proposal(proposal: StrategyProposal) -> dict:
-    if proposal is None:
-        return {}
-    return {
-        "recommended_strategy": proposal.recommended_strategy,
-        "spread": proposal.spread,
-        "skew_factor": proposal.skew_factor,
-        "quantity": proposal.quantity,
-        "leverage": proposal.leverage,
-        "confidence": proposal.confidence,
-        "risk_level": proposal.risk_level,
-        "reasoning": proposal.reasoning,
-        "provider_name": proposal.provider_name,
-        "expected_return": proposal.expected_return,
-        "parse_success": proposal.parse_success,
-        "parse_error": proposal.parse_error,
-    }
-
-
-def _serialize_simulation(simulation: SimulationResult) -> dict:
-    if simulation is None:
-        return {}
-    return {
-        "realized_pnl": simulation.realized_pnl,
-        "total_trades": simulation.total_trades,
-        "winning_trades": simulation.winning_trades,
-        "win_rate": simulation.win_rate,
-        "sharpe_ratio": simulation.sharpe_ratio,
-        "max_drawdown": simulation.max_drawdown,
-        "simulation_steps": simulation.simulation_steps,
-    }
-
-
-def _serialize_evaluation_result(result: EvaluationResult) -> dict:
-    return {
-        "provider_name": result.provider_name,
-        "rank": result.rank,
-        "score": result.score,
-        "latency_ms": result.latency_ms,
-        "timestamp": result.timestamp.isoformat(),
-        "proposal": _serialize_strategy_proposal(result.proposal),
-        "simulation": _serialize_simulation(result.simulation),
-    }
-
-
-def _serialize_consensus(consensus: StrategyConsensus) -> dict:
-    if consensus is None:
-        return {}
-    return {
-        "consensus_strategy": consensus.consensus_strategy,
-        "consensus_level": consensus.consensus_level,
-        "consensus_ratio": consensus.consensus_ratio,
-        "consensus_count": consensus.consensus_count,
-        "total_models": consensus.total_models,
-        "strategy_votes": consensus.strategy_votes,
-        "strategy_percentages": consensus.strategy_percentages,
-        "providers_by_strategy": consensus.providers_by_strategy,
-    }
-
-
-def _serialize_parameter_stats(stats: ParameterStatistics) -> dict:
-    if stats is None:
-        return {}
-    return {
-        "spread_mean": stats.spread_mean,
-        "spread_median": stats.spread_median,
-        "spread_min": stats.spread_min,
-        "spread_max": stats.spread_max,
-        "spread_std": stats.spread_std,
-        "skew_mean": stats.skew_mean,
-        "skew_median": stats.skew_median,
-        "quantity_mean": stats.quantity_mean,
-        "quantity_median": stats.quantity_median,
-        "leverage_mean": stats.leverage_mean,
-        "leverage_median": stats.leverage_median,
-        "confidence_mean": stats.confidence_mean,
-        "confidence_min": stats.confidence_min,
-        "confidence_max": stats.confidence_max,
-    }
-
-
-def _serialize_aggregated_result(aggregated: AggregatedResult) -> dict:
-    if aggregated is None:
-        return {}
-    return {
-        "strategy_consensus": _serialize_consensus(aggregated.strategy_consensus),
-        "parameter_stats": _serialize_parameter_stats(aggregated.parameter_stats),
-        "consensus_confidence": aggregated.consensus_confidence,
-        "confidence_breakdown": aggregated.confidence_breakdown,
-        "consensus_proposal": _serialize_strategy_proposal(
-            aggregated.consensus_proposal
-        ),
-        "successful_evaluations": aggregated.successful_evaluations,
-        "failed_evaluations": aggregated.failed_evaluations,
-        "avg_pnl": aggregated.avg_pnl,
-        "avg_sharpe": aggregated.avg_sharpe,
-        "avg_win_rate": aggregated.avg_win_rate,
-        "avg_latency_ms": aggregated.avg_latency_ms,
-        "recommendation_strength": aggregated.get_recommendation_strength(),
-    }
-
-
 def _get_or_create_strategy_instance(
     desired_id: Optional[str], strategy_type: str
 ):
@@ -510,7 +238,7 @@ async def read_root(request: Request):
 
 @app.get("/evaluation", response_class=HTMLResponse)
 async def llm_trade_page(request: Request):
-    """Render dedicated LLM Trade Lab page"""
+    """Render dedicated LLM Trade Lab page / 渲染专用 LLM 交易实验室页面"""
     return templates.TemplateResponse("LLMTrade.html", {"request": request})
 
 
@@ -780,223 +508,62 @@ async def update_pair(pair: PairUpdate):
 
 @app.get("/api/suggestions")
 async def get_suggestions():
-    """
-    Return cached strategy suggestions with a guaranteed fast response (< 5 seconds).
-    Background tasks keep the cache fresh.
-    """
-    now = time.time()
-    async with suggestion_cache_lock:
-        cache_timestamp = suggestion_cache["timestamp"]
-        cache_data = suggestion_cache["data"]
-        updating = suggestion_cache["updating"]
-    
-    if cache_timestamp == 0:
-        asyncio.create_task(update_suggestion_cache(force=True))
-        return DEFAULT_SUGGESTION
-    
-    if now - cache_timestamp > SUGGESTION_CACHE_TTL and not updating:
-        asyncio.create_task(update_suggestion_cache(force=True))
-    
-    return cache_data
+    # Get metrics from DataAgent
+    metrics = bot_engine.data.calculate_metrics()
+    sharpe = metrics.get("sharpe_ratio", 0)
 
+    # Get current config
+    current_spread = (
+        bot_engine.strategy.spread * 100
+    )  # Convert back to percentage for display
+    current_leverage = bot_engine.strategy.leverage  # Assuming strategy has leverage
 
-@app.post("/api/evaluation/run")
-async def run_multi_llm_evaluation(request: EvaluationRunRequest):
-    """
-    Run multi-LLM evaluation and return both individual and aggregated results.
-    """
-    exchange = get_default_exchange()
-    if exchange is None:
-        return {"error": "Exchange not available"}
-
-    try:
-        market_data = exchange.fetch_market_data()
-    except Exception as e:
-        return {"error": f"Failed to fetch market data: {e}"}
-
-    symbol = _normalize_symbol(
-        request.symbol or market_data.get("symbol") or getattr(exchange, "symbol", None)
-    )
-
-    mid_price = float(market_data.get("mid_price") or market_data.get("mark_price") or 0) or 0.0
-    if mid_price <= 0:
-        mid_price = 2000.0
-    best_bid = float(market_data.get("best_bid") or market_data.get("bid") or mid_price * 0.999)
-    best_ask = float(market_data.get("best_ask") or market_data.get("ask") or mid_price * 1.001)
-    spread_bps = (
-        ((best_ask - best_bid) / mid_price) * 10000 if mid_price > 0 else 10.0
-    )
-    spread_bps = max(spread_bps, 0.01)
-    funding_rate = float(market_data.get("funding_rate") or 0.0)
-
-    # Estimate volatility from price history if available
-    volatility_1h = 0.01
-    volatility_24h = 0.03
-    if hasattr(bot_engine, "data") and hasattr(bot_engine.data, "price_history"):
-        price_history = bot_engine.data.price_history[-120:]
-        if len(price_history) > 1:
-            try:
-                import numpy as np
-
-                prices = np.array(price_history, dtype=float)
-                returns = np.diff(prices) / prices[:-1]
-                if len(returns) > 0:
-                    std = float(np.std(returns))
-                    volatility_1h = max(std, 0.001)
-                    volatility_24h = max(std * 1.5, 0.001)
-            except Exception:
-                pass
-
-    # Fetch account data if available
-    current_position = 0.0
-    unrealized_pnl = 0.0
-    available_balance = 0.0
-    current_leverage = 1.0
-    try:
-        account_data = exchange.fetch_account_data()
-        current_position = float(account_data.get("position_amt", 0.0))
-        unrealized_pnl = float(account_data.get("unrealizedProfit", 0.0))
-        available_balance = float(account_data.get("balance", 0.0))
-        current_leverage = float(account_data.get("leverage", 1.0))
-    except Exception:
-        pass
-
-    context = MarketContext(
-        symbol=symbol,
-        mid_price=mid_price,
-        best_bid=best_bid,
-        best_ask=best_ask,
-        spread_bps=spread_bps,
-        volatility_24h=volatility_24h,
-        volatility_1h=volatility_1h,
-        funding_rate=funding_rate,
-        funding_rate_trend=market_data.get("funding_rate_trend", "stable"),
-        current_position=current_position,
-        position_side="long" if current_position > 0 else "short" if current_position < 0 else "neutral",
-        unrealized_pnl=unrealized_pnl,
-        available_balance=available_balance,
-        current_leverage=current_leverage,
-        win_rate=0.0,
-        sharpe_ratio=0.0,
-        recent_pnl=0.0,
-    )
-
-    try:
-        providers = create_all_providers()
-    except Exception as e:
-        return {"error": f"LLM provider initialization failed: {e}"}
-
-    if request.providers:
-        desired = {p.strip().lower() for p in request.providers}
-        providers = [
-            provider
-            for provider in providers
-            if provider.name.split()[0].lower() in desired
-        ]
-        if not providers:
-            return {"error": "Requested providers are not available with current API keys"}
-
-    evaluator = MultiLLMEvaluator(
-        providers=providers,
-        simulation_steps=request.simulation_steps or 500,
-        parallel=True,
-    )
-
-    try:
-        results: List[EvaluationResult] = await asyncio.to_thread(evaluator.evaluate, context)
-        aggregated: AggregatedResult = evaluator.aggregate_results(results)
-    except Exception as e:
-        return {"error": f"Evaluation failed: {e}"}
-
-    comparison_table = MultiLLMEvaluator.generate_comparison_table(results)
-    consensus_report = MultiLLMEvaluator.generate_consensus_summary(aggregated)
-
-    response_payload = {
-        "individual_results": [_serialize_evaluation_result(r) for r in results],
-        "aggregated": _serialize_aggregated_result(aggregated),
-        "comparison_table": comparison_table,
-        "consensus_report": consensus_report,
-        "symbol": symbol,
+    # Risk-aware suggestions
+    suggestion = {
+        "spread": current_spread,
+        "leverage": current_leverage,
+        "condition": "Stable",
+        "reason": "Current settings are stable.",
     }
 
-    async with evaluation_state_lock:
-        latest_evaluation_state["results"] = results
-        latest_evaluation_state["aggregated"] = aggregated
-        latest_evaluation_state["timestamp"] = time.time()
-        latest_evaluation_state["symbol"] = symbol
+    # Check for high volatility
+    volatility = metrics.get("volatility", 0)
+    if volatility > 0.005:  # Example threshold for high volatility
+        suggestion["spread"] = round(current_spread * 1.2, 2)  # Widen spread by 20%
+        suggestion["leverage"] = max(1, current_leverage - 2)  # Reduce leverage
+        suggestion["condition"] = "High Volatility"
+        suggestion["reason"] = (
+            "Market is volatile. Widening spread and reducing leverage to mitigate risk."
+        )
 
-    return response_payload
+    # Check for low Sharpe Ratio
+    if (
+        sharpe < 1.0 and volatility < 0.005
+    ):  # Only suggest if not already adjusting for volatility
+        suggestion["spread"] = round(current_spread * 1.1, 2)  # Slightly widen spread
+        suggestion["leverage"] = max(
+            1, current_leverage - 1
+        )  # Slightly reduce leverage
+        suggestion["condition"] = "Low Sharpe Ratio"
+        suggestion["reason"] = (
+            "Performance is low. Adjusting spread and leverage to improve risk-adjusted returns."
+        )
 
+    # Check for high PnL and low risk
+    if sharpe > 2.0 and volatility < 0.002:  # Example for good performance
+        suggestion["spread"] = round(current_spread * 0.9, 2)  # Tighten spread
+        suggestion["leverage"] = current_leverage + 1  # Increase leverage
+        suggestion["condition"] = "Excellent Performance"
+        suggestion["reason"] = (
+            "Strong performance with low risk. Optimizing for higher returns."
+        )
 
-@app.post("/api/evaluation/apply")
-async def apply_evaluation_proposal(request: EvaluationApplyRequest):
-    """
-    Apply either consensus or individual model recommendations to the live strategy config.
-    """
-    async with evaluation_state_lock:
-        cached_results: List[EvaluationResult] = latest_evaluation_state.get("results", [])
-        cached_aggregated: AggregatedResult = latest_evaluation_state.get("aggregated")
+    # Ensure spread is within reasonable bounds (e.g., 0.01% to 1%)
+    suggestion["spread"] = max(0.01, min(1.0, suggestion["spread"]))
+    # Ensure leverage is within reasonable bounds (e.g., 1 to 10)
+    suggestion["leverage"] = max(1, min(10, suggestion["leverage"]))
 
-    if not cached_results or cached_aggregated is None:
-        return {"error": "No evaluation results available. Please run an evaluation first."}
-
-    proposal: Optional[StrategyProposal] = None
-    applied_provider = "Consensus"
-
-    if request.source == "consensus":
-        proposal = cached_aggregated.consensus_proposal
-    elif request.source == "individual":
-        if not request.provider_name:
-            return {"error": "provider_name is required when source='individual'"}
-        for result in cached_results:
-            if result.provider_name == request.provider_name:
-                proposal = result.proposal
-                applied_provider = result.provider_name
-                break
-        if proposal is None:
-            return {"error": f"Provider {request.provider_name} not found in last evaluation"}
-    else:
-        return {"error": "Invalid source. Use 'consensus' or 'individual'."}
-
-    if proposal is None or not proposal.parse_success:
-        return {"error": "Selected proposal is not available or failed to parse."}
-
-    strategy_type = (
-        "funding_rate"
-        if proposal.recommended_strategy.lower().startswith("funding")
-        else "fixed_spread"
-    )
-
-    config_payload = ConfigUpdate(
-        spread=proposal.spread * 100,  # convert to percentage for existing API
-        quantity=proposal.quantity,
-        strategy_type=strategy_type,
-        strategy_id=request.strategy_id,
-        skew_factor=proposal.skew_factor,
-    )
-
-    config_result = await update_config(config_payload)
-    if isinstance(config_result, dict) and config_result.get("error"):
-        return config_result
-
-    leverage_result = None
-    if proposal.leverage:
-        try:
-            leverage_target = int(round(proposal.leverage))
-            leverage_target = max(1, min(125, leverage_target))
-            leverage_result = await update_leverage(leverage_target)
-        except Exception as e:
-            leverage_result = {"error": str(e)}
-
-    return {
-        "status": "applied",
-        "source": request.source,
-        "provider": applied_provider,
-        "strategy_type": strategy_type,
-        "applied_proposal": _serialize_strategy_proposal(proposal),
-        "config_result": config_result,
-        "leverage_result": leverage_result,
-    }
+    return suggestion
 
 
 @app.get("/api/order-history")

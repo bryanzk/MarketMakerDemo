@@ -144,12 +144,7 @@ Dev Agent 按 owner 字段映射:
 | `src/portfolio/` | Agent PORTFOLIO |
 | `src/web/` | Agent WEB |
 | `src/ai/` | Agent AI |
-| `tests/unit/trading/` | Agent TRADING |
-| `tests/unit/portfolio/` | Agent PORTFOLIO |
-| `tests/unit/web/` | Agent WEB |
-| `tests/unit/ai/` | Agent AI |
-| `tests/integration/` | Agent QA |
-| `tests/smoke/` | Agent QA |
+| `tests/` | Agent QA |
 | `docs/user_guide/` | Agent QA |
 | `logs/reviews/` | Agent REVIEW |
 | `status/` | Agent PM |
@@ -171,13 +166,6 @@ Dev Agent 按 owner 字段映射:
 | `status/roadmap.json` | 只能修改自己负责步骤的 `status.*` 字段 |
 | `status/agent_requests.json` | 只能追加新请求或更新自己请求的状态 |
 | `logs/audit_trail.json` | 只能追加，不可修改历史 |
-
-### 🟠 Lint Fix Exception / Lint 修复例外
-
-- Agent QA may edit any module strictly for lint-related fixes (formatting, unused imports, whitespace) when CI/CD lint checks fail; no behavioral or logic changes are allowed.
-- 当 CI/CD 因 lint 失败被阻塞时，Agent QA 可跨模块进行仅限格式、未使用导入、空白等 lint 修复，但禁止修改业务逻辑。
-- QA must notify the owning Agent after the fix and reference the lint report in the commit or task note to keep accountability.
-- QA 在完成修复后需通知对应 Owner Agent，并在提交或任务记录中标注 lint 报告来源以便追溯。
 
 ---
 
@@ -202,17 +190,14 @@ Dev Agent 按 owner 字段映射:
 ### 禁止跳步
 - ❌ 当 `spec_defined: false` 时，不要写 Story
 - ❌ 当 `contract_defined: false` 时，不要写 Test
-- ❌ 当 `unit_test_written: false` 时，不要写 Code (**TDD 原则**)
+- ❌ 当 `test_written: false` 时，不要写 Code (**TDD 原则**)
 - ❌ 当 `code_implemented: false` 时，不要 Review
-- ❌ 当 `unit_test_passed: false` 时，不要运行冒烟测试
 
 ### TDD 原则
-**Step 5 (unit_test_written) 必须在 Step 6 (code_implemented) 之前完成**
+**Step 5 (test_written) 必须在 Step 6 (code_implemented) 之前完成**
 ```
-1. Dev Agent 先写单元测试 (测试会失败，因为代码还没写)
+1. Agent QA 先写测试 (测试会失败，因为代码还没写)
 2. Dev Agent 实现代码，目标是让测试通过
-3. Dev Agent 运行测试确认通过
-4. Agent QA 运行冒烟测试和集成测试
 ```
 
 ---
@@ -314,9 +299,9 @@ docs(trading): CORE-001 update user guide
 | Agent PM | 12 | `status/`, `logs/`, `docs/agents/` |
 | Agent PO | 1, 2, 3 | `docs/specs/`, `docs/stories/` |
 | Agent ARCH | 4 | `contracts/`, `src/shared/` |
-| Agent TRADING | 5, 6, 8 | `src/trading/`, `tests/unit/trading/` |
-| Agent PORTFOLIO | 5, 6, 8 | `src/portfolio/`, `tests/unit/portfolio/` |
-| Agent WEB | 5, 6, 8 | `src/web/`, `tests/unit/web/` |
-| Agent AI | 5, 6, 8 | `src/ai/`, `tests/unit/ai/` |
-| Agent QA | 9, 10, 11 | `tests/integration/`, `tests/smoke/`, `docs/user_guide/` |
+| Agent TRADING | 6 | `src/trading/` |
+| Agent PORTFOLIO | 6 | `src/portfolio/` |
+| Agent WEB | 6 | `src/web/` |
+| Agent AI | 6 | `src/ai/` |
+| Agent QA | 5, 11 | `tests/`, `docs/user_guide/` |
 | Agent REVIEW | 7 | `logs/reviews/` |

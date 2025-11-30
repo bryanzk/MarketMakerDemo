@@ -35,7 +35,7 @@ class GeminiProvider(LLMProvider):
     def __init__(self, api_key: Optional[str] = None, model: str = "gemini-3-pro"):
         """
         Initialize Gemini Provider
-        
+
         Args:
             api_key: Gemini API key (optional, will use GEMINI_API_KEY env var if not provided)
             model: Model name. Default: "gemini-3-pro" (latest)
@@ -59,7 +59,9 @@ class GeminiProvider(LLMProvider):
         except Exception as e:
             # If gemini-3-pro is not available, try fallback to gemini-1.5-pro
             if self._model_name == "gemini-3-pro" and "not found" in str(e).lower():
-                logger.warning(f"Gemini 3 Pro not available, falling back to gemini-1.5-pro: {e}")
+                logger.warning(
+                    f"Gemini 3 Pro not available, falling back to gemini-1.5-pro: {e}"
+                )
                 self._model_name = "gemini-1.5-pro"
                 self.model = genai.GenerativeModel(self._model_name)
                 response = self.model.generate_content(prompt)
@@ -73,7 +75,7 @@ class OpenAIProvider(LLMProvider):
     def __init__(self, api_key: Optional[str] = None, model: str = "gpt-5"):
         """
         Initialize OpenAI Provider
-        
+
         Args:
             api_key: OpenAI API key (optional, will use OPENAI_API_KEY env var if not provided)
             model: Model name. Default: "gpt-5" (latest)
@@ -113,7 +115,9 @@ class OpenAIProvider(LLMProvider):
             return response.choices[0].message.content
         except Exception as e:
             # If gpt-5 is not available, try fallback to gpt-4o
-            if self._model_name == "gpt-5" and ("not found" in str(e).lower() or "invalid" in str(e).lower()):
+            if self._model_name == "gpt-5" and (
+                "not found" in str(e).lower() or "invalid" in str(e).lower()
+            ):
                 logger.warning(f"GPT-5 not available, falling back to gpt-4o: {e}")
                 self._model_name = "gpt-4o"
                 response = self.client.chat.completions.create(

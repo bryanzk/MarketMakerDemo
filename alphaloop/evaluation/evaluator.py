@@ -767,15 +767,17 @@ class MultiLLMEvaluator:
         if agreeing_results:
             # Sort by score (highest first) and take the best model's complete parameter set
             # 按得分排序（最高优先），使用最佳模型的完整参数集
-            sorted_agreeing = sorted(agreeing_results, key=lambda r: r.score, reverse=True)
+            sorted_agreeing = sorted(
+                agreeing_results, key=lambda r: r.score, reverse=True
+            )
             best_result = sorted_agreeing[0]
             best_proposal = best_result.proposal
-            
+
             logger.info(
                 f"Consensus using complete parameter set from best model: {best_result.provider_name} "
                 f"(score: {best_result.score:.2f})"
             )
-            
+
             return StrategyProposal(
                 recommended_strategy=strategy_consensus.consensus_strategy,
                 spread=best_proposal.spread,
@@ -793,7 +795,9 @@ class MultiLLMEvaluator:
         else:
             # Fallback to median if no agreeing results (should not happen)
             # 如果没有同意的结果，回退到中位数（不应该发生）
-            logger.warning("No agreeing results found, using median parameters as fallback")
+            logger.warning(
+                "No agreeing results found, using median parameters as fallback"
+            )
             return StrategyProposal(
                 recommended_strategy=strategy_consensus.consensus_strategy,
                 spread=parameter_stats.spread_median,
@@ -910,7 +914,7 @@ class StrategySimulator:
     策略模拟器 - 用于测试策略参数
 
     基于 MarketSimulator，但允许自定义参数
-    
+
     Note: Only supports FixedSpread strategy in simulation.
     注意：模拟中仅支持 FixedSpread 策略。
     """

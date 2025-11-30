@@ -112,16 +112,16 @@ This project has comprehensive documentation. **If you are new to the system**, 
    - 强平缓冲、库存偏移、最大回撤
    - 实时风险监控
 
-13. **AlphaLoop Framework Documentation** (docs/alphaloop/)
-   - **[Framework Design](docs/alphaloop/framework_design.md)**: The "Agent-First" architecture
+13. **AlphaLoop Framework Documentation** (docs/framework/)
+   - **[Framework Design](docs/framework/framework_design.md)**: The "Agent-First" architecture
      - 框架设计 - "智能体优先"架构
-   - **[Agent Roles and Hierarchy](docs/alphaloop/agent_roles_and_hierarchy.md)**: Meet the AI agents
+   - **[Agent Roles and Hierarchy](docs/framework/agent_roles_and_hierarchy.md)**: Meet the AI agents
      - 智能体角色和层级 - 了解各个 AI 智能体
-   - **[Agent Workflows](docs/alphaloop/agent_workflows.md)**: How agents collaborate
+   - **[Agent Workflows](docs/framework/agent_workflows.md)**: How agents collaborate
      - 智能体工作流 - 智能体如何协作
-   - **[Metrics Specification](docs/alphaloop/metrics_specification.md)**: KPIs we track
+   - **[Metrics Specification](docs/framework/metrics_specification.md)**: KPIs we track
      - 指标规范 - 我们跟踪的 KPI
-   - **[Evaluation Framework](docs/src/ai/evaluation_framework.md)**: Testing and validation
+   - **[Evaluation Framework](docs/framework/evaluation_framework.md)**: Testing and validation
      - 评估框架 - 测试和验证
 
 ### 📊 Quick Reference / 快速参考

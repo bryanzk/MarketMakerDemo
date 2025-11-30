@@ -9,12 +9,12 @@ Tests for:
 """
 
 import pytest
-from src.ai.evaluation.prompts import (
+from alphaloop.evaluation.prompts import (
     MarketDiagnosisPrompt,
     RiskAdvisorPrompt,
     StrategyAdvisorPrompt,
 )
-from src.ai.evaluation.schemas import MarketContext
+from alphaloop.evaluation.schemas import MarketContext
 
 
 class TestStrategyAdvisorPrompt:
@@ -38,12 +38,8 @@ class TestStrategyAdvisorPrompt:
 
         assert "ETHUSDT" in prompt
         assert "2,500.00" in prompt or "2500" in prompt  # Formatted price
-        assert (
-            "3.50%" in prompt or "0.035" in prompt
-        )  # volatility_24h (formatted as percentage)
-        assert (
-            "0.0100%" in prompt or "0.0001" in prompt
-        )  # funding_rate (formatted as percentage)
+        assert "3.50%" in prompt or "0.035" in prompt  # volatility_24h (formatted as percentage)
+        assert "0.0100%" in prompt or "0.0001" in prompt  # funding_rate (formatted as percentage)
 
     def test_generate_includes_template_structure(self):
         """Test that generated prompt includes template structure"""
@@ -66,8 +62,8 @@ class TestStrategyAdvisorPrompt:
         assert "confidence" in prompt
         assert "JSON" in prompt or "json" in prompt
 
-    def test_generate_includes_parameter_examples(self):
-        """Test that prompt includes parameter examples for guidance"""
+    def test_generate_parameter_guidelines(self):
+        """Test that prompt includes parameter guidelines"""
         context = MarketContext(
             symbol="ETHUSDT",
             mid_price=2500.0,
@@ -82,11 +78,8 @@ class TestStrategyAdvisorPrompt:
 
         prompt = StrategyAdvisorPrompt.generate(context)
 
-        # JSON example now provides parameter guidance
-        assert '"spread": 0.01' in prompt
-        assert '"quantity": 0.1' in prompt
-        # skew_factor is now fixed at 100 for FixedSpread strategy
-        assert '"skew_factor": 100' in prompt
+        assert "0.005 to 0.03" in prompt or "0.5% to 3%" in prompt
+        assert "50 to 200" in prompt  # skew_factor range
 
 
 class TestRiskAdvisorPrompt:
@@ -214,3 +207,4 @@ class TestMarketDiagnosisPrompt:
         prompt = MarketDiagnosisPrompt.generate(context)
 
         assert "trending" in prompt or "ranging" in prompt or "volatile" in prompt
+

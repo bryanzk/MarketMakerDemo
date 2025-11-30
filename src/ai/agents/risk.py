@@ -66,4 +66,3 @@ class RiskAgent:
 
         logger.info("APPROVED")
         return True, "Approved"
-

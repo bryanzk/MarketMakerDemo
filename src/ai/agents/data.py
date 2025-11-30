@@ -77,4 +77,3 @@ class DataAgent:
         metrics = self.registry.calculate_all(data_context)
         logger.info("Calculated Metrics", extra={"extra_data": metrics})
         return metrics
-

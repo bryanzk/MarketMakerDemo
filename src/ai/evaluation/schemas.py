@@ -234,4 +234,3 @@ class AggregatedResult:
             return "moderate"
         else:
             return "weak"
-

@@ -108,4 +108,3 @@ class QuantAgent:
             return None
 
         return {"spread": new_spread}
-

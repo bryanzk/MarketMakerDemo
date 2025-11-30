@@ -105,4 +105,3 @@ Provide your market diagnosis:"""
     @classmethod
     def generate(cls, context: MarketContext) -> str:
         return cls.TEMPLATE.format(market_context=context.to_prompt_string())
-

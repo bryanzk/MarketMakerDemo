@@ -60,20 +60,20 @@ Ranking based on composite score: / 根据综合评分排名：
 
 ```bash
 # Run multi-LLM evaluation / 运行多 LLM 评估
-python -m alphaloop.evaluation.cli --symbol ETHUSDT
+python -m src.ai.evaluation.cli --symbol ETHUSDT
 
 # Specify simulation steps / 指定模拟步数
-python -m alphaloop.evaluation.cli --symbol ETHUSDT --steps 1000
+python -m src.ai.evaluation.cli --symbol ETHUSDT --steps 1000
 
 # Use specific models only / 只使用特定模型
-python -m alphaloop.evaluation.cli --symbol ETHUSDT --providers gemini,openai
+python -m src.ai.evaluation.cli --symbol ETHUSDT --providers gemini,openai
 ```
 
 ### Method 2: Python API / 方式二：Python API
 
 ```python
-from alphaloop.evaluation import MultiLLMEvaluator, MarketContext
-from alphaloop.core.llm import create_all_providers
+from src.ai.evaluation import MultiLLMEvaluator, MarketContext
+from src.ai.llm import create_all_providers
 
 # 1. Prepare market data / 准备市场数据
 context = MarketContext(
@@ -166,7 +166,7 @@ ANTHROPIC_API_KEY=your_anthropic_key
 ### Configuration File / 配置文件
 
 ```python
-# alphaloop/core/config.py
+# src/ai/config.py (if exists) or configuration in code
 MULTI_LLM_CONFIG = {
     "simulation_steps": 500,      # Simulation steps / 模拟步数
     "parallel": True,             # Enable parallel calls / 是否并行调用
@@ -408,8 +408,8 @@ Or apply a specific provider's proposal / 或应用特定 Provider 的建议:
 ```python
 # In server.py / 在 server.py 中
 
-from alphaloop.evaluation import MultiLLMEvaluator, MarketContext, AggregatedResult
-from alphaloop.core.llm import create_all_providers
+from src.ai.evaluation import MultiLLMEvaluator, MarketContext, AggregatedResult
+from src.ai.llm import create_all_providers
 
 @app.post("/api/evaluation/run")
 async def run_evaluation(request: EvaluationRequest):

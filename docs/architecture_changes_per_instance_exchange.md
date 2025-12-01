@@ -232,8 +232,8 @@ All existing tests have been updated to work with the new architecture:
 
 所有现有测试已更新以适配新架构：
 
-- Tests now mock `alphaloop.market.strategy_instance.BinanceClient` instead of `alphaloop.main.BinanceClient`
-- 测试现在 mock `alphaloop.market.strategy_instance.BinanceClient` 而不是 `alphaloop.main.BinanceClient`
+- Tests now mock `src.trading.market.strategy_instance.BinanceClient` instead of `src.trading.engine.BinanceClient`
+- 测试现在 mock `src.trading.market.strategy_instance.BinanceClient` 而不是 `src.trading.engine.BinanceClient`
 
 - Each test verifies instance-specific behavior
 - 每个测试验证实例特定的行为

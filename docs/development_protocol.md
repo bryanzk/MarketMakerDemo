@@ -10,8 +10,8 @@ This document establishes the mandatory standards for all development work on th
 
 *   **Unit Tests**: All business logic (Agents, Strategy, Risk) must have unit tests.
     *   **单元测试**：所有业务逻辑（智能体、策略、风控）必须有单元测试。
-*   **Coverage**: Aim for 100% coverage on core modules (`alphaloop.agents`, `alphaloop.strategies`, `alphaloop.market`).
-    *   **覆盖率**：核心模块（`alphaloop.agents`、`alphaloop.strategies`、`alphaloop.market`）的目标覆盖率 100%。
+*   **Coverage**: Aim for 100% coverage on core modules (`src.ai.agents`, `src.trading.strategies`, `src.trading.market`).
+    *   **覆盖率**：核心模块（`src.ai.agents`、`src.trading.strategies`、`src.trading.market`）的目标覆盖率 100%。
 *   **Execution**: Run `pytest` before every commit.
     *   **执行**：每次提交前运行 `pytest`。
 

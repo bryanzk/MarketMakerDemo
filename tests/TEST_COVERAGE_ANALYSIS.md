@@ -129,7 +129,7 @@ pytest tests/test_llm_providers.py -v
 pytest tests/test_evaluation_prompts.py -v
 
 # Generate coverage report / 生成覆盖率报告
-pytest tests/ --cov=alphaloop --cov-report=html
+pytest tests/ --cov=src --cov-report=html
 ```
 
 ---

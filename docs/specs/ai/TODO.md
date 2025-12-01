@@ -36,9 +36,9 @@ Currently, the `LLMTrade.html` Fixed Spread Strategy Control Panel displays a "S
 - 用户可能被这个无关的控制项困惑
 
 **Evidence / 证据**:
-- `alphaloop/strategies/strategy.py`: `FixedSpreadStrategy` has no `skew_factor` attribute
-- `alphaloop/evaluation/evaluator.py:271`: Comment states "skew_factor is not used for FixedSpread strategy"
-- `alphaloop/strategies/funding.py`: `FundingRateStrategy` uses `skew_factor`
+- `src/trading/strategies/fixed_spread.py`: `FixedSpreadStrategy` has no `skew_factor` attribute
+- `src/ai/evaluation/evaluator.py:271`: Comment states "skew_factor is not used for FixedSpread strategy"
+- `src/trading/strategies/funding_rate.py`: `FundingRateStrategy` uses `skew_factor`
 
 #### Solution / 解决方案
 
@@ -109,8 +109,8 @@ Currently, the `LLMTrade.html` Fixed Spread Strategy Control Panel displays a "S
 
 - `templates/LLMTrade.html` - UI template
 - `server.py` - Backend API endpoints
-- `alphaloop/strategies/strategy.py` - FixedSpreadStrategy implementation
-- `alphaloop/strategies/funding.py` - FundingRateStrategy implementation
+- `src/trading/strategies/fixed_spread.py` - FixedSpreadStrategy implementation
+- `src/trading/strategies/funding_rate.py` - FundingRateStrategy implementation
 
 ---
 
@@ -174,7 +174,7 @@ Implement plugin-based architecture with:
 
 #### Related Files / 相关文件
 
-- `alphaloop/evaluation/evaluator.py` - Core evaluator (needs refactoring)
+- `src/ai/evaluation/evaluator.py` - Core evaluator (needs refactoring)
 - `docs/specs/ai/LLM-001.md` - Specification document (to be created)
 
 ---
@@ -469,13 +469,13 @@ Implement a dual-mode evaluation system:
 
 #### Related Files / 相关文件
 
-- `alphaloop/evaluation/evaluator.py` - Core evaluator (needs extension)
-- `alphaloop/evaluation/schemas.py` - Data models (needs extension)
-- `alphaloop/market/performance.py` - PerformanceTracker (data source)
-- `alphaloop/agents/data.py` - DataAgent (data source)
+- `src/ai/evaluation/evaluator.py` - Core evaluator (needs extension)
+- `src/ai/evaluation/schemas.py` - Data models (needs extension)
+- `src/trading/performance.py` - PerformanceTracker (data source)
+- `src/ai/agents/data.py` - DataAgent (data source)
 - `server.py` - API endpoints (needs extension)
-- `alphaloop/evaluation/backtester.py` - New file (to be created)
-- `alphaloop/evaluation/tracker.py` - New file (to be created)
+- `src/ai/evaluation/backtester.py` - New file (to be created)
+- `src/ai/evaluation/tracker.py` - New file (to be created)
 
 ---
 
@@ -495,7 +495,7 @@ Implement a dual-mode evaluation system:
 - `docs/framework/evaluation_framework.md` - High-level architecture
 - `docs/specs/ai/LLM-001.md` - Feature specification (to be created)
 - `templates/LLMTrade.html` - UI implementation
-- `alphaloop/evaluation/evaluator.py` - Current evaluator implementation
+- `src/ai/evaluation/evaluator.py` - Current evaluator implementation
 
 ---
 

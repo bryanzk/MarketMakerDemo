@@ -16,7 +16,7 @@
 ```
 docs/
 ├── *.md                 # 所有文档文件
-├── alphaloop/           # 框架文档
+├── framework/           # 框架文档
 ├── strategies/          # 策略文档
 ├── user_guide/          # 用户指南
 └── agents/              # Agent 规范文档
@@ -106,7 +106,7 @@ Brief description in English.
 ### 测试编写
 ```python
 import pytest
-from alphaloop.xxx import YYY
+from src.xxx import YYY
 
 class TestYYY:
     def test_basic_functionality(self):
@@ -157,7 +157,7 @@ docs(api): 添加 API 端点说明
 pytest tests/ -v
 
 # 检查覆盖率
-pytest --cov=alphaloop tests/
+pytest --cov=src tests/
 
 # 生成文档
 python scripts/build_docs.sh

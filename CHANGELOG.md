@@ -63,14 +63,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Simulation-based strategy comparison with scoring and ranking
   - Comparison table generation for decision making
 
-- **Risk Indicators Module** (`alphaloop/portfolio/risk.py`)
+- **Risk Indicators Module** (`src/portfolio/risk.py`)
   - Liquidation Buffer calculation (US-R1)
   - Inventory Drift monitoring (US-R2)
   - Max Drawdown tracking (US-R3)
   - Overall Risk Level assessment (US-R4)
   - `GET /api/risk-indicators` API endpoint (US-R5)
 
-- **Portfolio Health Score Module** (`alphaloop/portfolio/health.py`)
+- **Portfolio Health Score Module** (`src/portfolio/health.py`)
   - Strategy health score calculation (0-100) based on:
     - Profitability (40% weight)
     - Risk-adjusted return (30% weight)
@@ -80,7 +80,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Color coding for health visualization
   - Comprehensive unit test coverage
 
-- **Per-Instance Exchange Architecture** (`alphaloop/market/strategy_instance.py`)
+- **Per-Instance Exchange Architecture** (`src/trading/market/strategy_instance.py`)
   - Each `StrategyInstance` now has its own isolated exchange connection
   - Independent data refresh (`refresh_data()`) per strategy instance
   - Per-instance symbol management (`set_symbol()`)

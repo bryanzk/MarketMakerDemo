@@ -47,10 +47,15 @@ This project has comprehensive documentation. **If you are new to the system**, 
 ### 🎯 For First-Time Readers / 初次阅读者
 
 **Start Here:**
-1. **[System Flow](docs/system_flow.md)** ⭐ **READ THIS FIRST**
+1. **[Quick Start Guide](docs/quick_start.md)** ⭐ **NEW TEAM MEMBERS START HERE**
+   - 5-minute overview of the project
+   - Module structure, workflow, and key concepts
+   - **新团队成员从这里开始** - 5 分钟项目概览
+
+2. **[System Flow](docs/system_flow.md)** ⭐ **UNDERSTAND THE SYSTEM**
    - Understand what happens when you click "Start Bot"
    - See the complete interaction flow with diagrams
-   - **从这里开始** - 了解点击"启动 Bot"后发生的事情
+   - **理解系统** - 了解点击"启动 Bot"后发生的事情
 
 2. **[Walkthrough](docs/walkthrough.md)**
    - See the system in action with real examples
@@ -66,7 +71,19 @@ This project has comprehensive documentation. **If you are new to the system**, 
 
 **After understanding the basics, dive deeper:**
 
-4. **[Trading Strategy](docs/trading_strategy.md)**
+4. **[Development Workflow](docs/development_workflow.md)** ⭐ **NEW DEVELOPERS START HERE**
+   - Complete 13-step development pipeline guide
+   - Step-by-step instructions with examples
+   - Automation tools and best practices
+   - **新开发者从这里开始** - 完整的 13 步开发流程指南
+
+5. **[Modules Overview](docs/modules_overview.md)** ⭐ **UNDERSTAND THE CODEBASE**
+   - Clear explanation of all 6 modules
+   - Module responsibilities, dependencies, and ownership
+   - Directory structure and interaction examples
+   - **理解代码库** - 清晰解释所有 6 个模块
+
+6. **[Trading Strategy](docs/trading_strategy.md)**
    - How the market-making strategy works
    - Spread calculation and order placement logic
    - 做市策略的工作原理

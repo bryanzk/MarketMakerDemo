@@ -1,143 +1,341 @@
-# 🤖 Cursor Multi-Agent 并行开发指南
+# 🤖 Multi-Agent Development Guide / 多 Agent 开发指南
 
-本文档描述如何使用多个 Cursor Chat 会话作为独立的 Agent 并行开发本项目。
+This document describes how to use multiple Cursor Chat sessions as independent Agents for parallel development.
+本文档描述如何使用多个 Cursor Chat 会话作为独立的 Agent 进行并行开发。
 
-## 📋 Agent 概览
+---
 
-| Agent | 职责 | 负责目录 | 状态 |
-|-------|------|----------|------|
-| [Agent 1: 交易引擎](AGENT_1_TRADING_ENGINE.md) | 交易所接口、订单管理、策略 | `alphaloop/market/`, `alphaloop/strategies/` | ✅ 可启动 |
-| [Agent 2: 组合管理](AGENT_2_PORTFOLIO.md) | 组合管理、风险指标 | `alphaloop/portfolio/` | ✅ 可启动 |
-| [Agent 3: Web/API](AGENT_3_WEB_API.md) | FastAPI、Dashboard | `server.py`, `templates/` | ✅ 可启动 |
-| [Agent 4: AI 智能体](AGENT_4_AI_AGENTS.md) | 量化分析、评估框架 | `alphaloop/agents/`, `alphaloop/evaluation/` | ✅ 可启动 |
-| [Agent 5: 文档/测试](AGENT_5_DOCS_QA.md) | 文档、测试、质量 | `docs/`, `tests/` | ✅ 可启动 |
+## 📋 Agent Overview / Agent 概览
 
-## 🚀 快速启动
+MarketMakerDemo uses a **9-Agent system** organized into three layers: Management, Development, and Quality.
+MarketMakerDemo 使用 **9 个 Agent 系统**，分为三层：管理层、开发层和质量层。
 
-### 步骤 1: 打开多个 Cursor Chat
+### Management Layer / 管理层
 
-在 Cursor 中按 `Cmd+L` 打开 Chat，然后点击 `+` 新建多个聊天会话。
+| Agent | Role / 角色 | Responsibilities / 职责 | Documentation |
+|-------|------------|------------------------|---------------|
+| **[Agent PM](AGENT_PM.md)** | Project Manager / 项目管理 | Progress tracking, coordination, risk management / 进度跟踪、协调、风险管理 | `AGENT_PM.md` |
+| **[Agent PO](AGENT_PO.md)** | Product Owner / 产品负责人 | Requirements, specifications, user stories / 需求、规范、用户故事 | `AGENT_PO.md` |
+| **[Agent ARCH](AGENT_ARCH.md)** | Architect / 架构师 | Interface contracts, shared platform, module design / 接口契约、共享平台、模块设计 | `AGENT_ARCH.md` |
 
-### 步骤 2: 初始化每个 Agent
+### Development Layer / 开发层
 
+| Agent | Role / 角色 | Responsibilities / 职责 | Documentation |
+|-------|------------|------------------------|---------------|
+| **[Agent TRADING](AGENT_1_TRADING_ENGINE.md)** | Trading Engine / 交易引擎 | Exchange connection, order management, strategies / 交易所连接、订单管理、策略 | `AGENT_1_TRADING_ENGINE.md` |
+| **[Agent PORTFOLIO](AGENT_2_PORTFOLIO.md)** | Portfolio Management / 组合管理 | Portfolio management, risk indicators, health monitoring / 组合管理、风险指标、健康监控 | `AGENT_2_PORTFOLIO.md` |
+| **[Agent WEB](AGENT_3_WEB_API.md)** | Web/API / Web 与 API | FastAPI services, API routes, frontend templates / FastAPI 服务、API 路由、前端模板 | `AGENT_3_WEB_API.md` |
+| **[Agent AI](AGENT_4_AI_AGENTS.md)** | AI/LLM / AI 评估层 | LLM integration, agents, evaluation framework / LLM 集成、智能体、评估框架 | `AGENT_4_AI_AGENTS.md` |
+
+### Quality Layer / 质量层
+
+| Agent | Role / 角色 | Responsibilities / 职责 | Documentation |
+|-------|------------|------------------------|---------------|
+| **[Agent QA](AGENT_5_DOCS_QA.md)** | Quality Assurance / 质量保证 | Integration tests, smoke tests, user docs, test review / 集成测试、冒烟测试、用户文档、测试审查 | `AGENT_5_DOCS_QA.md` |
+| **[Agent REVIEW](AGENT_REVIEW.md)** | Code Reviewer / 代码审查 | Code quality, best practices, security review / 代码质量、最佳实践、安全审查 | `AGENT_REVIEW.md` |
+
+---
+
+## 🚀 Quick Start / 快速启动
+
+### Step 1: Open Multiple Cursor Chat Sessions / 步骤 1：打开多个 Cursor Chat 会话
+
+In Cursor, press `Cmd+L` (Mac) or `Ctrl+L` (Windows/Linux) to open Chat, then click `+` to create new chat sessions.
+在 Cursor 中，按 `Cmd+L`（Mac）或 `Ctrl+L`（Windows/Linux）打开 Chat，然后点击 `+` 创建新的聊天会话。
+
+### Step 2: Initialize Each Agent / 步骤 2：初始化每个 Agent
+
+In each new Chat session, paste the following initialization prompt:
 在每个新的 Chat 会话中，粘贴以下初始化提示：
 
 ```
-请阅读文件 docs/agents/AGENT_X_XXX.md，了解你作为该 Agent 的职责和规范。
+请阅读文件 docs/agents/AGENT_XXX.md，了解你作为该 Agent 的职责和规范。
 从现在开始，你只负责该文件中指定的模块。
+在处理任何请求前，请先确认任务是否属于你的职责范围（见 .cursorrules）。
+如果任务不属于你，请建议用户联系正确的 Agent。
 ```
 
-将 `X_XXX` 替换为对应的 Agent 编号和名称。
+Replace `AGENT_XXX` with the specific Agent document name:
+将 `AGENT_XXX` 替换为特定的 Agent 文档名称：
 
-### 步骤 3: 开始工作
+- `AGENT_PM.md` - Project Manager
+- `AGENT_PO.md` - Product Owner
+- `AGENT_ARCH.md` - Architect
+- `AGENT_1_TRADING_ENGINE.md` - Trading Engine (or `AGENT_TRADING.md`)
+- `AGENT_2_PORTFOLIO.md` - Portfolio Management (or `AGENT_PORTFOLIO.md`)
+- `AGENT_3_WEB_API.md` - Web/API (or `AGENT_WEB.md`)
+- `AGENT_4_AI_AGENTS.md` - AI/LLM (or `AGENT_AI.md`)
+- `AGENT_5_DOCS_QA.md` - Quality Assurance (or `AGENT_QA.md`)
+- `AGENT_REVIEW.md` - Code Reviewer
 
-每个 Agent 可以独立工作于其负责的模块。
+### Step 3: Start Working / 步骤 3：开始工作
 
-## 📊 模块依赖图
+Each Agent can work independently on their assigned modules.
+每个 Agent 可以独立处理其分配的模块。
 
+---
+
+## 📊 Agent Responsibility Matrix / Agent 职责矩阵
+
+### Pipeline Steps / 流程步骤
+
+| Step | Status Field | Responsible Agent | Artifact |
+|------|-------------|-------------------|----------|
+| 1 | `spec_defined` | Agent PO | `docs/specs/{module}/{feature}.md` |
+| 2 | `story_defined` | Agent PO | `docs/stories/{module}/US-{ID}.md` |
+| 3 | `ac_defined` | Agent PO | Acceptance criteria in story |
+| 4 | `contract_defined` | Agent ARCH | `contracts/{module}.json` |
+| 5 | `unit_test_written` | Module Owner | `tests/unit/{module}/test_{feature}.py` |
+| 6 | `code_implemented` | Module Owner | `src/{module}/...` |
+| 7 | `code_reviewed` | Agent REVIEW | `logs/reviews/{feature_id}.json` |
+| 8 | `unit_test_passed` | Module Owner | pytest reports |
+| 9 | `smoke_test_passed` | Agent QA | `tests/smoke/` reports |
+| 10 | `integration_passed` | Agent QA | `tests/integration/` reports |
+| 11 | `docs_updated` | Agent QA | `docs/user_guide/{module}/...` |
+| 12 | `progress_logged` | Agent PM | `status/roadmap.json` |
+| 13 | `ci_cd_passed` | Human | GitHub Actions results |
+
+### File Ownership / 文件所有权
+
+| Directory/File | Owner Agent |
+|----------------|-------------|
+| `docs/specs/` | Agent PO |
+| `docs/stories/` | Agent PO |
+| `contracts/` | Agent ARCH |
+| `src/shared/` | Agent ARCH |
+| `src/trading/` | Agent TRADING |
+| `src/portfolio/` | Agent PORTFOLIO |
+| `src/web/` | Agent WEB |
+| `src/ai/` | Agent AI |
+| `tests/` | Agent QA (coordination) + Module Owners |
+| `docs/user_guide/` | Agent QA |
+| `logs/reviews/` | Agent REVIEW |
+| `status/` | Agent PM |
+| `docs/agents/` | Agent PM |
+
+---
+
+## ⚠️ Conflict Avoidance Rules / 冲突避免规则
+
+### 🔴 EXCLUSIVE (Exclusive Ownership) / 独占所有权
+
+Only the specified Agent can modify these files:
+只有指定的 Agent 可以修改这些文件：
+
+| File | Exclusive Owner |
+|------|----------------|
+| `docs/specs/` | Agent PO |
+| `docs/stories/` | Agent PO |
+| `contracts/` | Agent ARCH |
+| `src/shared/` | Agent ARCH |
+| `src/trading/` | Agent TRADING |
+| `src/portfolio/` | Agent PORTFOLIO |
+| `src/web/` | Agent WEB |
+| `src/ai/` | Agent AI |
+| `tests/smoke/` | Agent QA |
+| `tests/integration/` | Agent QA |
+| `docs/user_guide/` | Agent QA |
+| `logs/reviews/` | Agent REVIEW |
+| `status/` | Agent PM |
+| `docs/agents/` | Agent PM |
+
+### 🟡 COORDINATED (Requires Coordination) / 需协调
+
+Modify these files only after coordination:
+仅在协调后修改这些文件：
+
+| File | Coordination Rule |
+|------|------------------|
+| `requirements.txt` | Request in `status/agent_requests.json` |
+| `pyproject.toml` | Request in `status/agent_requests.json` |
+| `.cursorrules` | Only Agent PM can modify |
+
+### 🟢 SHARED-APPEND (Shared Append) / 共享追加
+
+These files can be appended to, but follow specific rules:
+可以追加这些文件，但需遵循特定规则：
+
+| File | Rule |
+|------|------|
+| `status/roadmap.json` | Only modify `status.*` fields for your step |
+| `status/agent_requests.json` | Only append new requests or update own requests |
+| `logs/audit_trail.json` | Append-only, cannot modify history |
+
+---
+
+## 📝 Collaboration Protocol / 协作协议
+
+### Cross-Agent Requests / 跨 Agent 请求
+
+When you need another Agent's help, create a request in `status/agent_requests.json`:
+当你需要其他 Agent 的帮助时，在 `status/agent_requests.json` 中创建请求：
+
+```json
+{
+  "id": "REQ-001",
+  "from": "Agent TRADING",
+  "to": "Agent ARCH",
+  "type": "INTERFACE",
+  "priority": "HIGH",
+  "feature": "CORE-001",
+  "description": "需要在 contracts/trading.json 中添加 cancelOrder 接口",
+  "status": "OPEN",
+  "created": "2025-11-30T10:00:00Z"
+}
 ```
-                    ┌─────────────────────┐
-                    │   Agent 5: 文档/测试  │
-                    │    (只读 + 文档)      │
-                    └─────────────────────┘
-                              ▲
-                              │ 分析
-    ┌─────────────────────────┼─────────────────────────┐
-    │                         │                         │
-    ▼                         ▼                         ▼
-┌───────────────┐     ┌───────────────┐     ┌───────────────┐
-│ Agent 1       │     │ Agent 4       │     │ Agent 2       │
-│ 交易引擎       │◄───▶│ AI 智能体     │◄───▶│ 组合管理      │
-│ market/       │     │ agents/       │     │ portfolio/    │
-│ strategies/   │     │ evaluation/   │     │               │
-└───────────────┘     └───────────────┘     └───────────────┘
-        ▲                     ▲                     ▲
-        │                     │                     │
-        └─────────────────────┼─────────────────────┘
-                              │ 调用接口
-                              ▼
-                    ┌─────────────────────┐
-                    │   Agent 3: Web/API   │
-                    │   server.py          │
-                    └─────────────────────┘
-```
 
-## ⚠️ 冲突避免规则
+**Request Types / 请求类型：**
+- `INTERFACE` - Need to add/modify interface
+- `CONFIG` - Need to modify shared configuration
+- `BLOCKER` - Blocked, needs priority handling
+- `REVIEW` - Need code review
+- `CLARIFY` - Need requirement clarification
 
-### 🔴 禁止同时修改的文件
+### Interface Change Notification / 接口变更通知
 
-| 文件 | 唯一负责者 |
-|------|-----------|
-| `server.py` | Agent 3: Web/API |
-| `templates/index.html` | Agent 3: Web/API |
-| `alphaloop/main.py` | Agent 1: 交易引擎 |
+When modifying a public interface:
+修改公共接口时：
 
-### 🟡 需要协调修改的文件
+1. Document the change in the Agent documentation
+2. 在 Agent 文档中记录变更
+2. Notify dependent Agents via `agent_requests.json`
+3. 通过 `agent_requests.json` 通知依赖的 Agent
+4. Update related documentation
+5. 更新相关文档
 
-| 文件 | 修改时需通知 |
-|------|-------------|
-| `alphaloop/core/config.py` | 所有 Agent |
-| `requirements.txt` | 所有 Agent |
-| `pyproject.toml` | 所有 Agent |
+### Shared Configuration Changes / 共享配置变更
 
-### 🟢 可以安全并行修改
+When modifying shared configuration:
+修改共享配置时：
 
-- 不同目录下的文件
-- 不同的测试文件
-- 不同的文档文件
+1. Create a request in `status/agent_requests.json`
+2. 在 `status/agent_requests.json` 中创建请求
+2. Ensure backward compatibility
+3. 确保向后兼容
+4. Update all related tests
+5. 更新所有相关测试
 
-## 📝 协作协议
+---
 
-### 接口变更通知
-
-当某个 Agent 需要修改公开接口时：
-
-1. 在对应的 Agent 文档中记录变更
-2. 通知依赖该接口的其他 Agent
-3. 同步更新相关文档
-
-### 共享配置变更
-
-修改 `config.py` 时：
-
-1. 先在 Agent 文档中说明原因
-2. 确保向后兼容
-3. 更新所有相关测试
-
-## 🔧 常用命令
+## 🔧 Common Commands / 常用命令
 
 ```bash
-# 运行所有测试
+# Run all tests
 pytest tests/ -v
 
-# 运行特定 Agent 相关测试
-pytest tests/test_exchange*.py -v       # Agent 1
-pytest tests/test_portfolio*.py -v      # Agent 2
-pytest tests/test_server*.py -v         # Agent 3
-pytest tests/test_*agent*.py -v         # Agent 4
+# Run module-specific tests
+pytest tests/unit/trading/ -v       # Agent TRADING
+pytest tests/unit/portfolio/ -v     # Agent PORTFOLIO
+pytest tests/unit/web/ -v           # Agent WEB
+pytest tests/unit/ai/ -v            # Agent AI
 
-# 启动服务器
+# Run smoke tests
+pytest tests/smoke/ -v               # Agent QA
+
+# Run integration tests
+pytest tests/integration/ -v        # Agent QA
+
+# Start server
 python server.py
 
-# 检查代码风格
-python -m flake8 alphaloop/
+# Check code style
+flake8 src/
+
+# Advance feature through pipeline
+python scripts/advance_feature.py {feature_id} {next_step}
+
+# Run audit check
+python scripts/audit_check.py
 ```
 
-## 💡 最佳实践
+---
 
-1. **开始工作前**：先拉取最新代码
-2. **修改前检查**：确认文件属于自己的职责范围
-3. **完成后测试**：运行相关测试确保无破坏
-4. **提交时注明**：使用规范的 commit 格式
+## 💡 Best Practices / 最佳实践
 
-## 📞 Agent 间通信
+1. **Before Starting Work / 开始工作前**
+   - Pull latest code
+   - 拉取最新代码
+   - Read your Agent documentation
+   - 阅读你的 Agent 文档
+   - Check `.cursorrules` for your responsibilities
+   - 检查 `.cursorrules` 了解你的职责
 
-如果需要其他 Agent 配合：
+2. **Before Modifying / 修改前**
+   - Confirm file belongs to your responsibility
+   - 确认文件属于你的职责范围
+   - Read related specifications and contracts
+   - 阅读相关规范和契约
+   - Check for dependencies
+   - 检查依赖关系
+
+3. **After Completing / 完成后**
+   - Run relevant tests
+   - 运行相关测试
+   - Use automation scripts to advance features
+   - 使用自动化脚本推进功能
+   - Update documentation if needed
+   - 如需要，更新文档
+
+4. **When Committing / 提交时**
+   - Use proper commit message format
+   - 使用适当的提交信息格式
+   - Reference feature ID if applicable
+   - 如适用，引用功能 ID
+   - Follow commit type conventions
+   - 遵循提交类型约定
+
+---
+
+## 📞 Agent Communication / Agent 间通信
+
+### Direct Communication / 直接通信
+
+If you need another Agent's help:
+如果你需要其他 Agent 的帮助：
 
 ```
-@Agent1: 请在 exchange.py 中添加 fetch_xxx 方法
-@Agent2: 请在 RiskIndicators 中添加 xxx 指标
+@Agent ARCH: 请在 contracts/trading.json 中添加 cancelOrder 接口
+@Agent QA: 请为 CORE-001 编写集成测试
+@Agent PM: CORE-001 已完成，请更新进度
 ```
 
-将请求记录在此文档或相关 Agent 文档中。
+### Request Tracking / 请求跟踪
 
+Record requests in:
+在以下位置记录请求：
+
+- `status/agent_requests.json` - Formal requests
+- `status/agent_requests.json` - 正式请求
+- Agent documentation - Informal notes
+- Agent 文档 - 非正式注释
+
+---
+
+## 📚 Related Documents / 相关文档
+
+- [Development Workflow](../development_workflow.md) - Complete 13-step pipeline
+- [Modules Overview](../modules_overview.md) - Module structure and responsibilities
+- [Development Protocol](../development_protocol.md) - Coding standards
+- [Project Manifest](../../project_manifest.json) - Project structure map
+- [Quick Start Guide](../quick_start.md) - Getting started guide
+
+---
+
+## 🎯 Agent Quick Reference / Agent 快速参考
+
+| Agent | Pipeline Steps | Owned Directories |
+|-------|---------------|-------------------|
+| Agent PM | 12 | `status/`, `logs/`, `docs/agents/` |
+| Agent PO | 1, 2, 3 | `docs/specs/`, `docs/stories/` |
+| Agent ARCH | 4 | `contracts/`, `src/shared/` |
+| Agent TRADING | 5, 6, 8 | `src/trading/` |
+| Agent PORTFOLIO | 5, 6, 8 | `src/portfolio/` |
+| Agent WEB | 5, 6, 8 | `src/web/` |
+| Agent AI | 5, 6, 8 | `src/ai/` |
+| Agent QA | 5, 9, 10, 11 | `tests/`, `docs/user_guide/` |
+| Agent REVIEW | 7 | `logs/reviews/` |
+
+---
+
+**Last Updated / 最后更新:** 2025-11-30  
+**Maintained by / 维护者:** Agent PM

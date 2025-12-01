@@ -21,6 +21,11 @@ from src.portfolio.risk import RiskIndicators
 from src.trading.strategies.funding_rate import FundingRateStrategy
 from src.trading.strategies.fixed_spread import FixedSpreadStrategy
 
+# Import evaluation modules
+from src.ai.evaluation.evaluator import MultiLLMEvaluator
+from src.ai.evaluation.schemas import MarketContext
+from src.ai import create_all_providers
+
 app = FastAPI()
 
 
@@ -185,6 +190,16 @@ class AllocationLimitsUpdate(BaseModel):
 class StrategyAllocationUpdate(BaseModel):
     """Model for updating single strategy allocation"""
     allocation: float  # 0-1
+
+
+class EvaluationRunRequest(BaseModel):
+    symbol: str
+    simulation_steps: int = 500
+
+
+class EvaluationApplyRequest(BaseModel):
+    source: str  # "consensus" or "individual"
+    provider_name: Optional[str] = None
 
 
 def _get_or_create_strategy_instance(
@@ -830,6 +845,315 @@ async def get_funding_rates():
         return result
 
     except Exception as e:
+        return {"error": str(e)}
+
+
+# ============================================================================
+# Multi-LLM Evaluation APIs
+# ============================================================================
+
+# Store last evaluation results for apply endpoint
+_last_evaluation_results = None
+_last_evaluation_aggregated = None
+
+
+@app.post("/api/evaluation/run")
+async def run_evaluation(request: EvaluationRunRequest):
+    """
+    Run multi-LLM evaluation for a trading symbol.
+    
+    运行多 LLM 评估
+    
+    Args:
+        request: EvaluationRunRequest with symbol and optional simulation_steps
+        
+    Returns:
+        {
+            "symbol": str,
+            "individual_results": List[EvaluationResult],
+            "aggregated": AggregatedResult,
+            "comparison_table": str,
+            "consensus_report": dict
+        }
+    """
+    global _last_evaluation_results, _last_evaluation_aggregated
+    
+    try:
+        # Normalize symbol (remove / and :)
+        symbol = request.symbol.upper().replace("/", "").replace(":", "")
+        
+        # Get exchange for market data
+        exchange = get_default_exchange()
+        if exchange is None:
+            return {"error": "Exchange not available"}
+        
+        # Fetch market data
+        try:
+            # Temporarily set symbol if needed
+            original_symbol = getattr(exchange, "symbol", None)
+            if hasattr(exchange, "set_symbol"):
+                exchange.set_symbol(symbol)
+            
+            market_data = exchange.fetch_market_data()
+            account_data = exchange.fetch_account_data()
+            
+            # Restore original symbol
+            if original_symbol and hasattr(exchange, "set_symbol"):
+                exchange.set_symbol(original_symbol)
+        except Exception as e:
+            return {"error": f"Failed to fetch market data: {str(e)}"}
+        
+        if not market_data:
+            return {"error": "No market data available"}
+        
+        # Build MarketContext
+        mid_price = market_data.get("mid_price", 0.0)
+        best_bid = market_data.get("best_bid", mid_price * 0.999)
+        best_ask = market_data.get("best_ask", mid_price * 1.001)
+        spread_bps = ((best_ask - best_bid) / mid_price * 10000) if mid_price > 0 else 10.0
+        
+        # Get funding rate if available
+        funding_rate = market_data.get("funding_rate", 0.0)
+        funding_rate_trend = "stable"  # Default, could be enhanced
+        
+        # Get position and account info
+        position_amt = account_data.get("position_amt", 0.0) if account_data else 0.0
+        position_side = "long" if position_amt > 0 else ("short" if position_amt < 0 else "neutral")
+        unrealized_pnl = account_data.get("unrealizedProfit", 0.0) if account_data else 0.0
+        balance = account_data.get("balance", 10000.0) if account_data else 10000.0
+        leverage = account_data.get("leverage", 1.0) if account_data else 1.0
+        
+        # Get historical performance (simplified)
+        win_rate = 0.0
+        sharpe_ratio = 0.0
+        recent_pnl = 0.0
+        if hasattr(bot_engine, "data"):
+            metrics = bot_engine.data.calculate_metrics()
+            sharpe_ratio = metrics.get("sharpe_ratio", 0.0) or 0.0
+            # Calculate win rate from trade history
+            trades = bot_engine.data.trade_history
+            if trades:
+                winning = len([t for t in trades if t.get("pnl", 0) > 0])
+                win_rate = winning / len(trades) if len(trades) > 0 else 0.0
+                recent_pnl = sum(t.get("pnl", 0) for t in trades[-10:])  # Last 10 trades
+        
+        # Estimate volatility (simplified - could be enhanced)
+        volatility_24h = 0.03  # 3% default
+        volatility_1h = 0.01   # 1% default
+        
+        context = MarketContext(
+            symbol=symbol,
+            mid_price=mid_price,
+            best_bid=best_bid,
+            best_ask=best_ask,
+            spread_bps=spread_bps,
+            volatility_24h=volatility_24h,
+            volatility_1h=volatility_1h,
+            funding_rate=funding_rate,
+            funding_rate_trend=funding_rate_trend,
+            current_position=position_amt,
+            position_side=position_side,
+            unrealized_pnl=unrealized_pnl,
+            available_balance=balance,
+            current_leverage=leverage,
+            win_rate=win_rate,
+            sharpe_ratio=sharpe_ratio,
+            recent_pnl=recent_pnl,
+        )
+        
+        # Create evaluator with all available providers
+        try:
+            providers = create_all_providers()
+        except Exception as e:
+            return {"error": f"Failed to create LLM providers: {str(e)}"}
+        
+        if not providers:
+            return {"error": "No LLM providers available. Please configure API keys."}
+        
+        evaluator = MultiLLMEvaluator(
+            providers=providers,
+            simulation_steps=request.simulation_steps,
+            parallel=True,
+        )
+        
+        # Run evaluation (in thread to avoid blocking)
+        import asyncio
+        results = await asyncio.to_thread(evaluator.evaluate, context)
+        
+        # Aggregate results
+        aggregated = evaluator.aggregate_results(results)
+        
+        # Generate comparison table and consensus report
+        comparison_table = MultiLLMEvaluator.generate_comparison_table(results)
+        consensus_report = MultiLLMEvaluator.generate_consensus_summary(aggregated)
+        
+        # Store results for apply endpoint
+        _last_evaluation_results = results
+        _last_evaluation_aggregated = aggregated
+        
+        # Convert results to dict for JSON response
+        def result_to_dict(result):
+            return {
+                "provider_name": result.provider_name,
+                "rank": result.rank,
+                "score": result.score,
+                "latency_ms": result.latency_ms,
+                "proposal": {
+                    "recommended_strategy": result.proposal.recommended_strategy,
+                    "spread": result.proposal.spread,
+                    "skew_factor": result.proposal.skew_factor,
+                    "quantity": result.proposal.quantity,
+                    "leverage": result.proposal.leverage,
+                    "confidence": result.proposal.confidence,
+                    "risk_level": result.proposal.risk_level,
+                    "reasoning": result.proposal.reasoning,
+                    "parse_success": result.proposal.parse_success,
+                },
+                "simulation": {
+                    "realized_pnl": result.simulation.realized_pnl,
+                    "total_trades": result.simulation.total_trades,
+                    "win_rate": result.simulation.win_rate,
+                    "sharpe_ratio": result.simulation.sharpe_ratio,
+                    "simulation_steps": result.simulation.simulation_steps,
+                },
+            }
+        
+        def aggregated_to_dict(agg):
+            return {
+                "strategy_consensus": {
+                    "consensus_strategy": agg.strategy_consensus.consensus_strategy,
+                    "consensus_level": agg.strategy_consensus.consensus_level,
+                    "consensus_ratio": agg.strategy_consensus.consensus_ratio,
+                    "consensus_count": agg.strategy_consensus.consensus_count,
+                    "total_models": agg.strategy_consensus.total_models,
+                    "strategy_votes": agg.strategy_consensus.strategy_votes,
+                    "strategy_percentages": agg.strategy_consensus.strategy_percentages,
+                },
+                "consensus_confidence": agg.consensus_confidence,
+                "consensus_proposal": {
+                    "recommended_strategy": agg.consensus_proposal.recommended_strategy,
+                    "spread": agg.consensus_proposal.spread,
+                    "skew_factor": agg.consensus_proposal.skew_factor,
+                    "quantity": agg.consensus_proposal.quantity,
+                    "leverage": agg.consensus_proposal.leverage,
+                    "confidence": agg.consensus_proposal.confidence,
+                    "reasoning": agg.consensus_proposal.reasoning,
+                },
+                "avg_pnl": agg.avg_pnl,
+                "avg_sharpe": agg.avg_sharpe,
+                "avg_win_rate": agg.avg_win_rate,
+                "avg_latency_ms": agg.avg_latency_ms,
+                "successful_evaluations": agg.successful_evaluations,
+                "failed_evaluations": agg.failed_evaluations,
+            }
+        
+        return {
+            "symbol": symbol,
+            "individual_results": [result_to_dict(r) for r in results],
+            "aggregated": aggregated_to_dict(aggregated),
+            "comparison_table": comparison_table,
+            "consensus_report": {"summary": consensus_report},
+        }
+        
+    except Exception as e:
+        logger.error(f"Evaluation error: {e}", exc_info=True)
+        return {"error": str(e)}
+
+
+@app.post("/api/evaluation/apply")
+async def apply_evaluation(request: EvaluationApplyRequest):
+    """
+    Apply evaluation proposal to strategy configuration.
+    
+    应用评估建议到策略配置
+    
+    Args:
+        request: EvaluationApplyRequest with source ("consensus" or "individual") 
+                 and optional provider_name
+        
+    Returns:
+        {
+            "status": "applied",
+            "applied_config": {
+                "strategy_type": str,
+                "spread": float,
+                "skew_factor": float,
+                "quantity": float,
+                "leverage": float
+            }
+        }
+    """
+    global _last_evaluation_results, _last_evaluation_aggregated
+    
+    if _last_evaluation_aggregated is None:
+        return {"error": "No evaluation results available. Please run evaluation first."}
+    
+    try:
+        proposal = None
+        
+        if request.source == "consensus":
+            proposal = _last_evaluation_aggregated.consensus_proposal
+        elif request.source == "individual":
+            if not request.provider_name:
+                return {"error": "provider_name required for individual source"}
+            
+            # Find result by provider name
+            found = False
+            for result in _last_evaluation_results:
+                if result.provider_name == request.provider_name:
+                    proposal = result.proposal
+                    found = True
+                    break
+            
+            if not found:
+                return {"error": f"Provider {request.provider_name} not found in evaluation results"}
+        else:
+            return {"error": f"Invalid source: {request.source}. Use 'consensus' or 'individual'"}
+        
+        if not proposal or not proposal.parse_success:
+            return {"error": "Invalid proposal or proposal parsing failed"}
+        
+        # Map strategy name to strategy_type
+        strategy_name = proposal.recommended_strategy
+        if strategy_name == "FixedSpread":
+            strategy_type = "fixed_spread"
+        elif strategy_name == "FundingRate":
+            strategy_type = "funding_rate"
+        else:
+            return {"error": f"Unsupported strategy: {strategy_name}"}
+        
+        # Apply configuration
+        config_update = ConfigUpdate(
+            spread=proposal.spread * 100,  # Convert to percentage
+            quantity=proposal.quantity,
+            strategy_type=strategy_type,
+            strategy_id="default",
+            skew_factor=proposal.skew_factor,
+        )
+        
+        config_result = await update_config(config_update)
+        if "error" in config_result:
+            return config_result
+        
+        # Apply leverage if provided
+        if proposal.leverage:
+            leverage_result = await update_leverage(int(proposal.leverage))
+            if "error" in leverage_result:
+                return leverage_result
+        
+        return {
+            "status": "applied",
+            "applied_config": {
+                "strategy_type": strategy_type,
+                "spread": proposal.spread,
+                "skew_factor": proposal.skew_factor,
+                "quantity": proposal.quantity,
+                "leverage": proposal.leverage,
+            },
+        }
+        
+    except Exception as e:
+        logger.error(f"Apply evaluation error: {e}", exc_info=True)
         return {"error": str(e)}
 
 

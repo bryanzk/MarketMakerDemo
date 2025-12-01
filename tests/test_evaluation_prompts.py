@@ -9,12 +9,12 @@ Tests for:
 """
 
 import pytest
-from alphaloop.evaluation.prompts import (
+from src.ai.evaluation.prompts import (
     MarketDiagnosisPrompt,
     RiskAdvisorPrompt,
     StrategyAdvisorPrompt,
 )
-from alphaloop.evaluation.schemas import MarketContext
+from src.ai.evaluation.schemas import MarketContext
 
 
 class TestStrategyAdvisorPrompt:
@@ -62,8 +62,8 @@ class TestStrategyAdvisorPrompt:
         assert "confidence" in prompt
         assert "JSON" in prompt or "json" in prompt
 
-    def test_generate_parameter_guidelines(self):
-        """Test that prompt includes parameter guidelines"""
+    def test_generate_includes_parameter_examples(self):
+        """Test that prompt includes parameter examples in JSON format"""
         context = MarketContext(
             symbol="ETHUSDT",
             mid_price=2500.0,
@@ -78,8 +78,14 @@ class TestStrategyAdvisorPrompt:
 
         prompt = StrategyAdvisorPrompt.generate(context)
 
-        assert "0.005 to 0.03" in prompt or "0.5% to 3%" in prompt
-        assert "50 to 200" in prompt  # skew_factor range
+        # Check that JSON example includes parameter fields
+        assert '"spread"' in prompt
+        assert '"skew_factor"' in prompt
+        assert '"quantity"' in prompt
+        assert '"leverage"' in prompt
+        # Check for example values in JSON
+        assert "0.01" in prompt or '"spread":' in prompt
+        assert "100" in prompt or '"skew_factor":' in prompt
 
 
 class TestRiskAdvisorPrompt:

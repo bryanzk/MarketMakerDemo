@@ -1,3 +1,4 @@
+import asyncio
 import time
 from typing import Any, Dict, List
 
@@ -351,7 +352,7 @@ def client_with_evaluation(monkeypatch):
         return func(*args, **kwargs)
 
     monkeypatch.setattr(server, "MultiLLMEvaluator", FakeEvaluator)
-    monkeypatch.setattr(server.asyncio, "to_thread", immediate_to_thread)
+    monkeypatch.setattr(asyncio, "to_thread", immediate_to_thread)
 
     strategy = DummyStrategy(spread=0.002, quantity=0.1, leverage=3)
     dummy_bot = DummyBotEngine(strategy=strategy, orders=[])

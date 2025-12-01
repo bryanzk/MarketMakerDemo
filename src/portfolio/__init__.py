@@ -11,14 +11,14 @@ Portfolio management module:
 from src.portfolio.health import (
     HEALTH_WEIGHTS,
     calculate_strategy_health,
-    get_health_status,
     get_health_color,
+    get_health_status,
 )
 from src.portfolio.manager import (
     PortfolioManager,
+    RiskLevel,
     StrategyInfo,
     StrategyStatus,
-    RiskLevel,
 )
 from src.portfolio.risk import RiskIndicators
 

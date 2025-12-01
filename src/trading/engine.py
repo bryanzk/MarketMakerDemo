@@ -20,9 +20,9 @@ from src.shared.logger import setup_logger
 from src.trading.exchange import BinanceClient
 from src.trading.order_manager import OrderManager
 from src.trading.simulation import MarketSimulator
-from src.trading.strategy_instance import StrategyInstance
 from src.trading.strategies.fixed_spread import FixedSpreadStrategy
 from src.trading.strategies.funding_rate import FundingRateStrategy
+from src.trading.strategy_instance import StrategyInstance
 
 logger = setup_logger("AlphaLoop")
 

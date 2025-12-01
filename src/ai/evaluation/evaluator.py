@@ -13,8 +13,6 @@ from typing import Dict, List, Tuple
 
 import numpy as np
 
-from src.ai.llm import LLMProvider
-from src.shared.logger import setup_logger
 from src.ai.evaluation.prompts import StrategyAdvisorPrompt
 from src.ai.evaluation.schemas import (
     AggregatedResult,
@@ -25,6 +23,8 @@ from src.ai.evaluation.schemas import (
     StrategyConsensus,
     StrategyProposal,
 )
+from src.ai.llm import LLMProvider
+from src.shared.logger import setup_logger
 from src.trading.performance import PerformanceTracker
 from src.trading.strategies.fixed_spread import FixedSpreadStrategy
 

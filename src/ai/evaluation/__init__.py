@@ -3,6 +3,11 @@
 # Owner: Agent AI
 
 from src.ai.evaluation.evaluator import MultiLLMEvaluator, StrategySimulator
+from src.ai.evaluation.prompts import (
+    MarketDiagnosisPrompt,
+    RiskAdvisorPrompt,
+    StrategyAdvisorPrompt,
+)
 from src.ai.evaluation.schemas import (
     AggregatedResult,
     EvaluationResult,
@@ -11,11 +16,6 @@ from src.ai.evaluation.schemas import (
     SimulationResult,
     StrategyConsensus,
     StrategyProposal,
-)
-from src.ai.evaluation.prompts import (
-    StrategyAdvisorPrompt,
-    RiskAdvisorPrompt,
-    MarketDiagnosisPrompt,
 )
 
 __all__ = [

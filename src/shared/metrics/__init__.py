@@ -10,9 +10,9 @@ Metrics framework:
 
 from src.shared.metrics.base import Metric
 from src.shared.metrics.definitions import (
+    FillRate,
     SharpeRatio,
     Slippage,
-    FillRate,
     TickToTradeLatency,
 )
 from src.shared.metrics.registry import MetricsRegistry

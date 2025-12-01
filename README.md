@@ -12,6 +12,9 @@ The project baseline overview is documented in [Project Baseline](docs/project_b
 It is powered by **AlphaLoop**, an agentic framework where specialized AI agents (Quant, Risk, Operations) collaborate to manage the trading business.
 它由 **AlphaLoop** 驱动，这是一个智能体框架，专门的 AI 智能体（量化、风控、运营）在此协作管理交易业务。
 
+> **Code Location / 代码位置**: The `AlphaLoop` class is implemented in [`src/trading/engine.py`](src/trading/engine.py).
+> **代码位置**：`AlphaLoop` 类实现在 [`src/trading/engine.py`](src/trading/engine.py) 中。
+
 ### 🏛️ Project Organization / 项目组织
 
 This project follows an **Agent-First Architecture** with a **9-Agent system** organized into three layers:
@@ -57,6 +60,9 @@ See [Modules Overview](docs/modules_overview.md) for detailed information.
 ## 🧠 Powered by AlphaLoop / 由 AlphaLoop 驱动
 This bot is not just a script; it's a digital organization.
 这个机器人不仅仅是一个脚本；它是一个数字组织。
+
+**Implementation / 实现位置**: The `AlphaLoop` class is defined in [`src/trading/engine.py`](src/trading/engine.py). It orchestrates multiple strategy instances and coordinates AI agents (Data, Quant, Risk) to manage the trading business.
+**实现位置**：`AlphaLoop` 类定义在 [`src/trading/engine.py`](src/trading/engine.py) 中。它协调多个策略实例并协调 AI 智能体（数据、量化、风控）来管理交易业务。
 
 ### The Core Loop / 核心循环
 1.  **Trade**: The bot executes a `FixedSpreadStrategy`.

@@ -12,6 +12,46 @@ The project baseline overview is documented in [Project Baseline](docs/project_b
 It is powered by **AlphaLoop**, an agentic framework where specialized AI agents (Quant, Risk, Operations) collaborate to manage the trading business.
 它由 **AlphaLoop** 驱动，这是一个智能体框架，专门的 AI 智能体（量化、风控、运营）在此协作管理交易业务。
 
+### 🏛️ Project Organization / 项目组织
+
+This project follows an **Agent-First Architecture** with a **9-Agent system** organized into three layers:
+本项目遵循**智能体优先架构**，采用**9-Agent 体系**，分为三层：
+
+**Management Layer / 管理层**
+- **Agent PM** - Project management, progress tracking, coordination
+- **Agent PO** - Product owner, requirements, specifications, user stories
+- **Agent ARCH** - System architect, interface contracts, shared platform
+
+**Development Layer / 开发层**
+- **Agent TRADING** - Trading engine, exchange connectivity, order management
+- **Agent PORTFOLIO** - Portfolio management, risk indicators, capital allocation
+- **Agent WEB** - Web API, FastAPI services, user interface
+- **Agent AI** - LLM integration, AI agents, evaluation framework
+
+**Quality Layer / 质量层**
+- **Agent QA** - Quality assurance, testing, documentation
+- **Agent REVIEW** - Code review, quality checks, security
+
+See [Agent Documentation](docs/agents/README.md) for details.
+详见 [Agent 文档](docs/agents/README.md)。
+
+### 📦 Module Structure / 模块结构
+
+The project is organized into **6 core modules**:
+项目组织为**6 个核心模块**：
+
+| Module | Owner | Purpose |
+|--------|-------|---------|
+| **shared** | Agent ARCH | Common utilities (config, logging, metrics) |
+| **trading** | Agent TRADING | Exchange connection, orders, strategies |
+| **portfolio** | Agent PORTFOLIO | Capital allocation, risk management |
+| **ai** | Agent AI | LLM evaluation, strategy optimization |
+| **web** | Agent WEB | REST API, user interface |
+| **qa** | Agent QA | Testing, documentation |
+
+See [Modules Overview](docs/modules_overview.md) for detailed information.
+详见 [模块概览](docs/modules_overview.md)。
+
 ---
 
 ## 🧠 Powered by AlphaLoop / 由 AlphaLoop 驱动
@@ -57,12 +97,12 @@ This project has comprehensive documentation. **If you are new to the system**, 
    - See the complete interaction flow with diagrams
    - **理解系统** - 了解点击"启动 Bot"后发生的事情
 
-2. **[Walkthrough](docs/walkthrough.md)**
+3. **[Walkthrough](docs/walkthrough.md)**
    - See the system in action with real examples
    - Verification results and proof of work
    - 查看系统运行的实际示例
 
-3. **[Architecture](docs/architecture.md)**
+4. **[Architecture](docs/architecture.md)**
    - High-level system design
    - Component relationships and data flow
    - 高层系统设计和组件关系
@@ -83,75 +123,89 @@ This project has comprehensive documentation. **If you are new to the system**, 
    - Directory structure and interaction examples
    - **理解代码库** - 清晰解释所有 6 个模块
 
-6. **[Trading Strategy](docs/trading_strategy.md)**
+7. **[Trading Strategy](docs/trading_strategy.md)**
    - How the market-making strategy works
    - Spread calculation and order placement logic
    - 做市策略的工作原理
 
-5. **[Implementation Plan](docs/implementation_plan.md)**
+8. **[Implementation Plan](docs/implementation_plan.md)**
    - Recent changes and planned features
    - Technical details of implementations
    - 最近的更改和计划功能
 
-6. **[Development Protocol](docs/development_protocol.md)**
+9. **[Development Protocol](docs/development_protocol.md)**
    - Mandatory development standards
    - Testing requirements and coverage goals
    - 强制性开发标准和测试要求
 
-7. **[CI/CD Process](docs/cicd.md)** 🆕
-   - Automated testing and deployment pipeline
-   - Quality gates and pre-commit checklist
-   - 自动化测试和部署流程
+10. **[Feature Automation Guide](docs/development_protocol_feature_automation.md)** 🆕
+    - Automated feature advancement scripts
+    - Batch operations and Git hooks
+    - 自动化功能推进脚本
+    - 批量操作和 Git 钩子
 
-8. **[Dashboard Guide](docs/dashboard.md)** 🆕
-   - Monitoring metrics and charts
-   - Professional definitions of KPIs
-   - 监控指标和图表
-   - KPI 的专业定义
+11. **[CI/CD Process](docs/cicd.md)** 🆕
+    - Automated testing and deployment pipeline
+    - Quality gates and pre-commit checklist
+    - 自动化测试和部署流程
 
-9. **[API Reference Documentation](docs/api_reference.md)** 🆕
-   - Auto-generated API docs (pdoc)
-   - Interactive API documentation (FastAPI)
-   - 自动生成的 API 文档
-   - 交互式 API 文档
+12. **[Dashboard Guide](docs/dashboard.md)** 🆕
+    - Monitoring metrics and charts
+    - Professional definitions of KPIs
+    - 监控指标和图表
+    - KPI 的专业定义
 
-10. **[Strategy Development Guide](docs/strategy_development_guide.md)** 🆕
-   - Step-by-step guide for adding new trading strategies
-   - Integration requirements and best practices
-   - 添加新交易策略的分步指南
-   - 集成要求和最佳实践
+13. **[API Reference Documentation](docs/api_reference.md)** 🆕
+    - Auto-generated API docs (pdoc)
+    - Interactive API documentation (FastAPI)
+    - 自动生成的 API 文档
+    - 交互式 API 文档
 
-11. **[Multi-LLM Evaluation Guide](docs/user_guide/multi_llm_evaluation.md)** 🆕
-   - Compare strategies from Gemini, OpenAI, and Claude
-   - Simulation-based strategy validation
-   - 多模型策略评估与比较
-   - 基于模拟的策略验证
+14. **[Strategy Development Guide](docs/strategy_development_guide.md)** 🆕
+    - Step-by-step guide for adding new trading strategies
+    - Integration requirements and best practices
+    - 添加新交易策略的分步指南
+    - 集成要求和最佳实践
 
-12. **[Risk Indicators Guide](docs/user_guide/risk_indicators.md)** 🆕
+15. **[Multi-LLM Evaluation Guide](docs/user_guide/multi_llm_evaluation.md)** 🆕
+    - Compare strategies from Gemini, OpenAI, and Claude
+    - Simulation-based strategy validation
+    - 多模型策略评估与比较
+    - 基于模拟的策略验证
 
-13. **[Error Handling Guide](docs/user_guide/error_handling.md)** 🆕
+16. **[Risk Indicators Guide](docs/user_guide/risk_indicators.md)** 🆕
+    - Liquidation Buffer, Inventory Drift, Max Drawdown
+    - Real-time risk monitoring
+    - 强平缓冲、库存偏移、最大回撤
+    - 实时风险监控
+
+17. **[Error Handling Guide](docs/user_guide/error_handling.md)** 🆕
    - Comprehensive error handling and recovery
    - Multi-strategy error isolation
    - Troubleshooting common issues
    - 全面的错误处理和恢复机制
    - 多策略错误隔离
    - 常见问题故障排除
-   - Liquidation Buffer, Inventory Drift, Max Drawdown
-   - Real-time risk monitoring
-   - 强平缓冲、库存偏移、最大回撤
-   - 实时风险监控
 
-13. **AlphaLoop Framework Documentation** (docs/alphaloop/)
-   - **[Framework Design](docs/alphaloop/framework_design.md)**: The "Agent-First" architecture
+18. **AlphaLoop Framework Documentation** (docs/framework/)
+   - **[Framework Design](docs/framework/framework_design.md)**: The "Agent-First" architecture
      - 框架设计 - "智能体优先"架构
-   - **[Agent Roles and Hierarchy](docs/alphaloop/agent_roles_and_hierarchy.md)**: Meet the AI agents
+   - **[Agent Roles and Hierarchy](docs/framework/agent_roles_and_hierarchy.md)**: Meet the AI agents
      - 智能体角色和层级 - 了解各个 AI 智能体
-   - **[Agent Workflows](docs/alphaloop/agent_workflows.md)**: How agents collaborate
+   - **[Agent Workflows](docs/framework/agent_workflows.md)**: How agents collaborate
      - 智能体工作流 - 智能体如何协作
-   - **[Metrics Specification](docs/alphaloop/metrics_specification.md)**: KPIs we track
+   - **[Metrics Specification](docs/framework/metrics_specification.md)**: KPIs we track
      - 指标规范 - 我们跟踪的 KPI
-   - **[Evaluation Framework](docs/src/ai/evaluation_framework.md)**: Testing and validation
+   - **[Evaluation Framework](docs/framework/evaluation_framework.md)**: Testing and validation
      - 评估框架 - 测试和验证
+
+19. **[Agent Documentation](docs/agents/README.md)** 🆕
+   - Complete guide to the 9-Agent system
+   - Agent responsibilities and ownership
+   - Multi-agent development workflow
+   - 9-Agent 体系完整指南
+   - Agent 职责和所有权
+   - 多 Agent 开发工作流
 
 ### 📊 Quick Reference / 快速参考
 
@@ -163,13 +217,50 @@ This project has comprehensive documentation. **If you are new to the system**, 
 ## 🚀 Quick Start / 快速开始
 
 ### Prerequisites / 先决条件
-*   Python 3.9+
+*   Python 3.11+
+*   Virtual environment (recommended)
 *   `pip install -r requirements.txt`
 
+### Project Structure / 项目结构
+```
+MarketMakerDemo/
+├── src/                    # Source code (organized by module)
+│   ├── shared/            # Shared platform (Agent ARCH)
+│   ├── trading/           # Trading engine (Agent TRADING)
+│   ├── portfolio/         # Portfolio & risk (Agent PORTFOLIO)
+│   ├── ai/                # AI & evaluation (Agent AI)
+│   └── web/               # Web & API (Agent WEB)
+├── tests/                 # Tests (organized by type)
+│   ├── unit/             # Unit tests (by module)
+│   ├── smoke/             # Smoke tests (Agent QA)
+│   └── integration/       # Integration tests (Agent QA)
+├── docs/                  # Documentation
+│   ├── agents/            # Agent documentation
+│   ├── modules/           # Module cards (JSON)
+│   ├── specs/             # Specifications (Agent PO)
+│   ├── stories/           # User stories (Agent PO)
+│   └── user_guide/        # User documentation (Agent QA)
+├── contracts/             # Interface contracts (Agent ARCH)
+├── status/                # Roadmap & progress tracking (Agent PM)
+└── scripts/               # Automation scripts
+```
+
 ### Running the Bot / 运行机器人
+
+**Option 1: Command Line / 命令行**
 ```bash
 # Launch the autonomous market maker
 python3 run.py
+```
+
+**Option 2: Web Interface / Web 界面**
+```bash
+# Start the FastAPI server
+python3 server.py
+
+# Then open in browser:
+# - Main dashboard: http://localhost:3000/
+# - LLM Trade Lab: http://localhost:3000/evaluation
 ```
 
 ### What to Watch / 观察内容
@@ -181,6 +272,8 @@ Check the logs to see the agents in action:
 ---
 
 ## 🏗️ Architecture / 架构
+
+### System Architecture / 系统架构
 
 ```mermaid
 graph TD
@@ -195,3 +288,28 @@ graph TD
     
     Config -->|Updates| Exec
 ```
+
+### Module Dependencies / 模块依赖
+
+```
+shared (base)
+  ↑
+  ├── trading
+  │     ↑
+  │     ├── portfolio
+  │     └── ai
+  │           ↑
+  │           └── web
+```
+
+### Development Pipeline / 开发流程
+
+Every feature follows a **13-step pipeline**:
+每个功能都遵循**13 步流程**：
+
+```
+Spec → Story → AC → Contract → Test → Code → Review → Unit → Smoke → Integration → Docs → Progress → CI/CD
+```
+
+See [Development Workflow](docs/development_workflow.md) for complete details.
+详见 [开发流程](docs/development_workflow.md) 了解完整详情。

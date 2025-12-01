@@ -1,0 +1,40 @@
+# Cursor workspace ignore file
+# Files and directories listed here will be excluded from Cursor's workspace indexing
+
+# Legacy alphaloop directory (migrated to src/)
+alphaloop/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Virtual environment
+venv/
+env/
+.venv
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/*.log
+
+# Test coverage
+htmlcov/
+.coverage
+.pytest_cache/
+
+# Generated documentation
+docs/api/
+

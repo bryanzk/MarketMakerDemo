@@ -25,7 +25,7 @@
           "name": "Hyperliquid Order Management / Hyperliquid 订单管理",
           "name_zh": "Hyperliquid 订单管理",
           "status": "IN_PROGRESS",
-          "current_step": "code_reviewed",
+          "current_step": "progress_logged",
           "branch": "feat/US-CORE-004-B-hyperliquid-orders",
           "sync_source": "docs/modules/trading.json",
           "step_status": {
@@ -36,7 +36,12 @@
             "plan_approved": true,
             "unit_test_written": true,
             "code_implemented": true,
-            "code_reviewed": true
+            "code_reviewed": true,
+            "unit_test_passed": true,
+            "smoke_test_passed": true,
+            "integration_passed": true,
+            "docs_updated": true,
+            "progress_logged": true
           }
         },
         {

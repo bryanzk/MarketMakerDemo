@@ -58,10 +58,17 @@
           "id": "US-API-004",
           "name": "Hyperliquid LLM Evaluation Support / Hyperliquid LLM 评估支持",
           "name_zh": "Hyperliquid LLM 评估支持",
-          "status": "TODO",
-          "current_step": "spec_defined",
+          "status": "IN_PROGRESS",
+          "current_step": "plan_approved",
           "branch": "feat/US-API-004",
-          "sync_source": "docs/modules/web.json"
+          "sync_source": "docs/modules/web.json",
+          "step_status": {
+            "spec_defined": true,
+            "story_defined": true,
+            "ac_defined": true,
+            "contract_defined": true,
+            "plan_approved": true
+          }
         },
         {
           "id": "US-UI-004",

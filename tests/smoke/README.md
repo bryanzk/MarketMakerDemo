@@ -43,3 +43,19 @@ US-CORE-004-A 冒烟测试：Hyperliquid 连接与认证
 pytest tests/smoke/test_hyperliquid_connection.py -v
 ```
 
+### `test_hyperliquid_orders.py`
+Smoke tests for US-CORE-004-B: Hyperliquid Order Management  
+US-CORE-004-B 冒烟测试：Hyperliquid 订单管理
+
+**Coverage / 覆盖范围:**
+- AC-1: Limit order placement / 限价单下单
+- AC-3: Order cancellation / 订单取消
+- AC-6: Open orders query / 未成交订单查询
+- Order methods existence / 订单方法存在性
+- Interface compatibility / 接口兼容性
+
+**Run specific test / 运行特定测试:**
+```bash
+pytest tests/smoke/test_hyperliquid_orders.py -v
+```
+

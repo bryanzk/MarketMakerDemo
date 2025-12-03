@@ -1,7 +1,46 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "version": "2.0.0",
-  "last_synced": "2025-11-30",
+  "project": "MarketMakerDemo",
+  "last_synced": "2025-12-01",
+  "epics": [
+    {
+      "id": "EPIC-02",
+      "name": "Hyperliquid Exchange Integration / Hyperliquid 交易所集成",
+      "name_zh": "Hyperliquid 交易所集成",
+      "status": "IN_PROGRESS",
+      "module_id": "trading",
+      "stories": [
+        {
+          "id": "US-CORE-004-A",
+          "name": "Hyperliquid Connection and Authentication / Hyperliquid 连接与认证",
+          "name_zh": "Hyperliquid 连接与认证",
+          "status": "TODO",
+          "current_step": "spec_defined",
+          "branch": "pending",
+          "sync_source": "docs/modules/trading.json"
+        },
+        {
+          "id": "US-CORE-004-B",
+          "name": "Hyperliquid Order Management / Hyperliquid 订单管理",
+          "name_zh": "Hyperliquid 订单管理",
+          "status": "TODO",
+          "current_step": "spec_defined",
+          "branch": "pending",
+          "sync_source": "docs/modules/trading.json"
+        },
+        {
+          "id": "US-CORE-004-C",
+          "name": "Hyperliquid Position and Balance Tracking / Hyperliquid 仓位与余额追踪",
+          "name_zh": "Hyperliquid 仓位与余额追踪",
+          "status": "TODO",
+          "current_step": "spec_defined",
+          "branch": "pending",
+          "sync_source": "docs/modules/trading.json"
+        }
+      ]
+    }
+  ],
   "features": [
     {"id": "CORE-001", "module_id": "trading", "current_step": "spec_defined", "sync_source": "docs/modules/trading.json"},
     {"id": "CORE-002", "module_id": "trading", "current_step": "spec_defined", "sync_source": "docs/modules/trading.json"},
@@ -25,7 +64,7 @@
     {"id": "TEST-002", "module_id": "qa", "current_step": "spec_defined", "sync_source": "docs/modules/qa.json"},
     {"id": "DOC-001", "module_id": "qa", "current_step": "spec_defined", "sync_source": "docs/modules/qa.json"}
   ],
-  "notes": "Feature states are defined inside module cards; roadmap keeps lightweight pointers only."
+  "notes": "Epics contain multiple stories. Features without epics are standalone. Feature states are defined inside module cards; roadmap keeps lightweight pointers only."
 }
 
 

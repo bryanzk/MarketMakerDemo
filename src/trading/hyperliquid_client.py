@@ -357,7 +357,7 @@ class HyperliquidClient:
             # Check if requests module is mocked (for test compatibility)
             # 检查 requests 模块是否被 mock（用于测试兼容性）
             try:
-                from unittest.mock import Mock, MagicMock
+                from unittest.mock import MagicMock, Mock
 
                 # Check if requests.post is a Mock object (indicating it's been patched)
                 is_mocked = (

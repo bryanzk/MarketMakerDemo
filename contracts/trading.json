@@ -4,60 +4,197 @@
   "version": "1.0.0",
   "description": "Trading engine interface contracts / 交易引擎接口契约",
   "owner": "Agent ARCH",
-  "last_updated": "2025-11-30",
+  "last_updated": "2025-12-01",
   "readonly_for": ["Agent TRADING", "Agent PORTFOLIO", "Agent WEB", "Agent AI", "Agent QA"],
   "interfaces": {
     "ExchangeClient": {
-      "description": "Exchange connection and data fetching / 交易所连接与数据获取",
+      "description": "Base exchange client interface / 交易所客户端基础接口",
       "methods": {
-        "connect": {
-          "description": "Establish connection to exchange",
+        "__init__": {
+          "description": "Initialize exchange client with API credentials",
           "params": {
-            "api_key": "string",
-            "api_secret": "string",
-            "testnet": "boolean"
+            "api_key": "string (optional)",
+            "api_secret": "string (optional)",
+            "testnet": "boolean (optional)"
           },
-          "returns": "boolean",
-          "raises": ["ConnectionError", "AuthenticationError"]
+          "returns": "void",
+          "raises": []
         },
-        "fetch_market_data": {
-          "description": "Fetch current market data for symbol",
+        "set_symbol": {
+          "description": "Update the trading symbol",
           "params": {
             "symbol": "string"
           },
+          "returns": "boolean",
+          "raises": ["SymbolNotFoundError"]
+        },
+        "get_leverage": {
+          "description": "Get current leverage for the symbol",
+          "params": {},
+          "returns": "integer",
+          "raises": ["ConnectionError"]
+        },
+        "set_leverage": {
+          "description": "Set leverage for the symbol",
+          "params": {
+            "leverage": "integer"
+          },
+          "returns": "boolean",
+          "raises": ["ConnectionError", "InvalidLeverageError"]
+        },
+        "get_max_leverage": {
+          "description": "Get maximum leverage for the symbol",
+          "params": {},
+          "returns": "integer",
+          "raises": ["ConnectionError"]
+        },
+        "get_symbol_limits": {
+          "description": "Get trading limits for the symbol",
+          "params": {},
           "returns": {
-            "mid_price": "float",
+            "minQty": "float",
+            "maxQty": "float",
+            "stepSize": "float",
+            "minNotional": "float"
+          },
+          "raises": []
+        },
+        "fetch_market_data": {
+          "description": "Fetch current market data (order book, mid price, tick/step sizes)",
+          "params": {},
+          "returns": {
             "best_bid": "float",
             "best_ask": "float",
-            "volume_24h": "float",
-            "funding_rate": "float"
+            "mid_price": "float",
+            "timestamp": "integer",
+            "tick_size": "float",
+            "step_size": "float"
           },
           "raises": ["ConnectionError", "SymbolNotFoundError"]
         },
-        "fetch_account_balance": {
-          "description": "Fetch account balance",
+        "fetch_funding_rate": {
+          "description": "Fetch funding rate for current symbol",
           "params": {},
-          "returns": {
-            "total": "float",
-            "available": "float",
-            "margin_used": "float"
-          },
+          "returns": "float",
           "raises": ["ConnectionError"]
         },
-        "fetch_position": {
-          "description": "Fetch current position for symbol",
+        "fetch_funding_rate_for_symbol": {
+          "description": "Fetch funding rate for specific symbol",
           "params": {
             "symbol": "string"
           },
+          "returns": "float",
+          "raises": ["ConnectionError", "SymbolNotFoundError"]
+        },
+        "fetch_bulk_funding_rates": {
+          "description": "Fetch funding rates for multiple symbols",
+          "params": {
+            "symbols": "array of string"
+          },
+          "returns": "dict[string, float]",
+          "raises": ["ConnectionError"]
+        },
+        "fetch_ticker_stats": {
+          "description": "Fetch 24h ticker statistics",
+          "params": {},
           "returns": {
-            "symbol": "string",
-            "side": "string (LONG|SHORT|NONE)",
-            "size": "float",
-            "entry_price": "float",
-            "unrealized_pnl": "float",
-            "liquidation_price": "float"
+            "percentage": "float",
+            "quoteVolume": "float"
           },
           "raises": ["ConnectionError"]
+        },
+        "fetch_account_data": {
+          "description": "Fetch position and balance data (primary method for account information)",
+          "params": {},
+          "returns": {
+            "position_amt": "float",
+            "entry_price": "float",
+            "balance": "float",
+            "available_balance": "float",
+            "liquidation_price": "float"
+          },
+          "raises": ["ConnectionError"],
+          "notes": "This is the primary method for fetching account data. Position information can be extracted from position_amt, entry_price, and liquidation_price fields. Balance information is in balance and available_balance fields."
+        },
+        "fetch_open_orders": {
+          "description": "Fetch all open orders for the symbol",
+          "params": {},
+          "returns": "array of Order objects",
+          "raises": ["ConnectionError"]
+        },
+        "place_orders": {
+          "description": "Place a batch of orders",
+          "params": {
+            "orders": "array of OrderRequest"
+          },
+          "returns": "array of Order objects",
+          "raises": ["InsufficientBalanceError", "InvalidOrderError", "NetworkError"]
+        },
+        "cancel_orders": {
+          "description": "Cancel multiple orders by order IDs",
+          "params": {
+            "order_ids": "array of string"
+          },
+          "returns": "void",
+          "raises": ["OrderNotFoundError", "NetworkError"]
+        },
+        "cancel_all_orders": {
+          "description": "Cancel all open orders for the symbol",
+          "params": {},
+          "returns": "void",
+          "raises": ["ConnectionError"]
+        },
+        "fetch_realized_pnl": {
+          "description": "Fetch total realized PnL from transaction history",
+          "params": {
+            "start_time": "integer (optional, timestamp in milliseconds)"
+          },
+          "returns": "float",
+          "raises": ["ConnectionError"]
+        },
+        "fetch_commission": {
+          "description": "Fetch total trading commission/fees",
+          "params": {
+            "start_time": "integer (optional, timestamp in milliseconds)"
+          },
+          "returns": "float",
+          "raises": ["ConnectionError"]
+        },
+        "fetch_pnl_and_fees": {
+          "description": "Fetch both realized PnL and commission fees",
+          "params": {
+            "start_time": "integer (optional, timestamp in milliseconds)"
+          },
+          "returns": {
+            "realized_pnl": "float",
+            "commission": "float",
+            "net_pnl": "float"
+          },
+          "raises": ["ConnectionError"]
+        }
+      }
+    },
+    "BinanceClient": {
+      "description": "Binance Futures exchange client / 币安期货交易所客户端",
+      "extends": "ExchangeClient",
+      "implementation": "src/trading/exchange.py#BinanceClient"
+    },
+    "HyperliquidClient": {
+      "description": "Hyperliquid exchange client / Hyperliquid 交易所客户端",
+      "extends": "ExchangeClient",
+      "implementation": "src/trading/hyperliquid_client.py#HyperliquidClient",
+      "notes": "Must implement same interface as BinanceClient for seamless integration. Connection and authentication should be handled in __init__ method, consistent with BinanceClient pattern. / 必须实现与 BinanceClient 相同的接口以实现无缝集成。连接和认证应在 __init__ 方法中处理，与 BinanceClient 模式保持一致。",
+      "methods": {
+        "__init__": {
+          "description": "Initialize Hyperliquid client with API credentials and environment. Establishes connection and authenticates during initialization, consistent with BinanceClient pattern.",
+          "params": {
+            "api_key": "string (optional, from HYPERLIQUID_API_KEY env var)",
+            "api_secret": "string (optional, from HYPERLIQUID_API_SECRET env var)",
+            "testnet": "boolean (optional, from HYPERLIQUID_TESTNET env var)"
+          },
+          "returns": "void",
+          "raises": ["ConnectionError", "AuthenticationError"],
+          "notes": "Connects to testnet.hyperliquid.xyz if testnet=true, else api.hyperliquid.xyz. Connection and authentication are performed during initialization, not in a separate connect() method, to maintain interface consistency with BinanceClient."
         }
       }
     },

@@ -44,3 +44,24 @@ US-CORE-004-A 集成测试：Hyperliquid 连接与认证
 pytest tests/integration/test_hyperliquid_integration.py -v
 ```
 
+### `test_hyperliquid_orders_integration.py`
+Integration tests for US-CORE-004-B: Hyperliquid Order Management  
+US-CORE-004-B 集成测试：Hyperliquid 订单管理
+
+**Coverage / 覆盖范围:**
+- AC-10: OrderManager integration / OrderManager 集成
+- Complete order sync flow / 完整订单同步流程
+- StrategyInstance order management / StrategyInstance 订单管理
+- Complete order lifecycle / 完整订单生命周期
+- Order error handling / 订单错误处理
+
+**Test Classes / 测试类:**
+1. `TestHyperliquidOrderManagerIntegration` - OrderManager 集成测试
+2. `TestHyperliquidStrategyInstanceOrderIntegration` - StrategyInstance 订单集成测试
+3. `TestHyperliquidOrderWorkflowIntegration` - 订单工作流集成测试
+
+**Run specific test / 运行特定测试:**
+```bash
+pytest tests/integration/test_hyperliquid_orders_integration.py -v
+```
+

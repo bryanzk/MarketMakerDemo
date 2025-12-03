@@ -104,7 +104,7 @@
           "raises": ["ConnectionError"]
         },
         "fetch_account_data": {
-          "description": "Fetch position and balance data",
+          "description": "Fetch position and balance data (primary method for account information)",
           "params": {},
           "returns": {
             "position_amt": "float",
@@ -113,32 +113,8 @@
             "available_balance": "float",
             "liquidation_price": "float"
           },
-          "raises": ["ConnectionError"]
-        },
-        "fetch_account_balance": {
-          "description": "Fetch account balance (alias for fetch_account_data)",
-          "params": {},
-          "returns": {
-            "total": "float",
-            "available": "float",
-            "margin_used": "float"
-          },
-          "raises": ["ConnectionError"]
-        },
-        "fetch_position": {
-          "description": "Fetch current position for symbol",
-          "params": {
-            "symbol": "string (optional)"
-          },
-          "returns": {
-            "symbol": "string",
-            "side": "string (LONG|SHORT|NONE)",
-            "size": "float",
-            "entry_price": "float",
-            "unrealized_pnl": "float",
-            "liquidation_price": "float"
-          },
-          "raises": ["ConnectionError"]
+          "raises": ["ConnectionError"],
+          "notes": "This is the primary method for fetching account data. Position information can be extracted from position_amt, entry_price, and liquidation_price fields. Balance information is in balance and available_balance fields."
         },
         "fetch_open_orders": {
           "description": "Fetch all open orders for the symbol",
@@ -207,25 +183,18 @@
       "description": "Hyperliquid exchange client / Hyperliquid 交易所客户端",
       "extends": "ExchangeClient",
       "implementation": "src/trading/hyperliquid_client.py#HyperliquidClient",
-      "notes": "Must implement same interface as BinanceClient for seamless integration / 必须实现与 BinanceClient 相同的接口以实现无缝集成",
+      "notes": "Must implement same interface as BinanceClient for seamless integration. Connection and authentication should be handled in __init__ method, consistent with BinanceClient pattern. / 必须实现与 BinanceClient 相同的接口以实现无缝集成。连接和认证应在 __init__ 方法中处理，与 BinanceClient 模式保持一致。",
       "methods": {
         "__init__": {
-          "description": "Initialize Hyperliquid client with API credentials and environment",
+          "description": "Initialize Hyperliquid client with API credentials and environment. Establishes connection and authenticates during initialization, consistent with BinanceClient pattern.",
           "params": {
             "api_key": "string (optional, from HYPERLIQUID_API_KEY env var)",
             "api_secret": "string (optional, from HYPERLIQUID_API_SECRET env var)",
             "testnet": "boolean (optional, from HYPERLIQUID_TESTNET env var)"
           },
           "returns": "void",
-          "raises": [],
-          "notes": "Connects to testnet.hyperliquid.xyz if testnet=true, else api.hyperliquid.xyz"
-        },
-        "connect": {
-          "description": "Establish connection to Hyperliquid and authenticate",
-          "params": {},
-          "returns": "boolean",
           "raises": ["ConnectionError", "AuthenticationError"],
-          "notes": "Uses API key and signature-based authentication"
+          "notes": "Connects to testnet.hyperliquid.xyz if testnet=true, else api.hyperliquid.xyz. Connection and authentication are performed during initialization, not in a separate connect() method, to maintain interface consistency with BinanceClient."
         }
       }
     },

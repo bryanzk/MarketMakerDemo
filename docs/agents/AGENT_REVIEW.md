@@ -474,7 +474,7 @@ review(web): UI-003 code review - security issues found
 
 ## 📚 Related Documents / 相关文档
 
-- [Development Workflow](../development_workflow.md) - Complete 13-step pipeline
+- [Development Workflow](../development_workflow.md) - Complete 17-step pipeline
 - [Development Protocol](../development_protocol.md) - Coding standards
 - [Modules Overview](../modules_overview.md) - Module structure
 

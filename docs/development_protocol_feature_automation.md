@@ -56,7 +56,7 @@ python scripts/advance_feature.py <feature_id> <new_step> [OPTIONS]
 
 **Arguments:**
 - `feature_id`: Feature ID (e.g., `CORE-001`, `API-002`)
-- `new_step`: 新步骤名称（必须是 13 步流程中的一步）
+- `new_step`: 新步骤名称（必须是 17 步流程中的一步）
 
 **Options:**
 - `--pr <number>`: PR 编号（如 `#123`）
@@ -260,7 +260,7 @@ Run: python scripts/advance_feature.py CORE-001 code_implemented --pr "#123" --b
 ❌ Invalid step: invalid_step_name
 ```
 
-**Solution:** 检查步骤名称是否在 13 步流程中。使用 `--help` 查看有效步骤列表。
+**Solution:** 检查步骤名称是否在 17 步流程中。使用 `--help` 查看有效步骤列表。
 
 ### Error: Audit check failed
 

@@ -86,33 +86,51 @@
     "readonly_policy": "Only Agent PM may edit manifest and progress JSON / 仅 Agent PM 可修改 manifest 与 progress JSON"
   },
   "pipeline": {
-    "description": "13-step pipeline with JSON checkpoints / 基于 JSON 的 13 步流程",
+    "description": "17-step pipeline with JSON checkpoints and 2 human approval gates / 基于 JSON 的 17 步流程，包含 2 个人工批准门禁",
+    "phases": [
+      {"phase": 1, "name": "Plan", "steps": [1, 2, 3, 4], "description": "需求定义和批准 / Requirements definition and approval"},
+      {"phase": 2, "name": "Design", "steps": [5], "description": "接口契约定义 / Interface contract definition"},
+      {"phase": 3, "name": "Dev", "steps": [6, 7], "description": "测试驱动开发 / Test-driven development"},
+      {"phase": 4, "name": "Quality", "steps": [8, 9], "description": "代码格式检查和安全检查 / Code formatting and security check"},
+      {"phase": 5, "name": "Review", "steps": [10], "description": "代码审查 / Code review"},
+      {"phase": 6, "name": "Test", "steps": [11, 12, 13], "description": "单元测试、冒烟测试、集成测试 / Unit, smoke, and integration tests"},
+      {"phase": 7, "name": "Docs & Ops", "steps": [14, 15, 16, 17], "description": "文档更新、进度记录、CI/CD 检查、发布批准 / Documentation, progress logging, CI/CD checks, release approval"}
+    ],
     "steps": [
-      {"step": 1, "field": "spec_defined", "agent": "Agent PO", "artifact": "docs/specs/{module}/{feature}.md"},
-      {"step": 2, "field": "story_defined", "agent": "Agent PO", "artifact": "docs/stories/{module}/US-{ID}.md"},
-      {"step": 3, "field": "ac_defined", "agent": "Agent PO", "artifact": "Acceptance criteria inside story / 用户故事内的验收标准"},
-      {"step": 4, "field": "contract_defined", "agent": "Agent ARCH", "artifact": "contracts/{module}.json"},
-      {"step": 5, "field": "unit_test_written", "agent": "Module Owner", "artifact": "tests/unit/{module}/test_{feature}.py"},
-      {"step": 6, "field": "code_implemented", "agent": "Module Owner", "artifact": "src/{module}/"},
-      {"step": 7, "field": "code_reviewed", "agent": "Agent REVIEW", "artifact": "logs/reviews/{feature}.json"},
-      {"step": 8, "field": "unit_test_passed", "agent": "Module Owner", "artifact": "pytest reports"},
-      {"step": 9, "field": "smoke_test_passed", "agent": "Agent QA", "artifact": "tests/smoke/ reports"},
-      {"step": 10, "field": "integration_passed", "agent": "Agent QA", "artifact": "tests/integration/ reports"},
-      {"step": 11, "field": "docs_updated", "agent": "Agent QA", "artifact": "docs/user_guide/{module}/"},
-      {"step": 12, "field": "progress_logged", "agent": "Agent PM", "artifact": "status/roadmap.json"},
-      {"step": 13, "field": "ci_cd_passed", "agent": "Human Reviewer", "artifact": "GitHub Actions results"}
+      {"step": 1, "phase": "Plan", "field": "spec_defined", "agent": "Agent PO", "artifact": "docs/specs/{module}/{feature}.md"},
+      {"step": 2, "phase": "Plan", "field": "story_defined", "agent": "Agent PO", "artifact": "docs/stories/{module}/US-{ID}.md"},
+      {"step": 3, "phase": "Plan", "field": "ac_defined", "agent": "Agent PO", "artifact": "Acceptance criteria inside story / 用户故事内的验收标准"},
+      {"step": 4, "phase": "Plan", "field": "plan_approved", "agent": "Human", "artifact": "🛑 STOP GATE - 等待批准 / Approval gate", "is_gate": true},
+      {"step": 5, "phase": "Design", "field": "contract_defined", "agent": "Agent ARCH", "artifact": "contracts/{module}.json"},
+      {"step": 6, "phase": "Dev", "field": "unit_test_written", "agent": "Dev Agent (按 owner)", "artifact": "tests/unit/{module}/test_{feature}.py", "notes": "TDD: Red"},
+      {"step": 7, "phase": "Dev", "field": "code_implemented", "agent": "Dev Agent (按 owner)", "artifact": "src/{module}/...", "notes": "TDD: Green"},
+      {"step": 8, "phase": "Quality", "field": "lint_passed", "agent": "Dev Agent + Tool", "artifact": "Linter 报告 / Linter report"},
+      {"step": 9, "phase": "Quality", "field": "security_check_passed", "agent": "Dev Agent + Tool", "artifact": "安全扫描报告 / Security scan report"},
+      {"step": 10, "phase": "Review", "field": "code_reviewed", "agent": "Agent REVIEW", "artifact": "logs/reviews/{feature_id}.json"},
+      {"step": 11, "phase": "Test", "field": "unit_test_passed", "agent": "Dev Agent (按 owner)", "artifact": "pytest 报告 / pytest reports"},
+      {"step": 12, "phase": "Test", "field": "smoke_test_passed", "agent": "Agent QA", "artifact": "冒烟测试报告 / Smoke test reports"},
+      {"step": 13, "phase": "Test", "field": "integration_passed", "agent": "Agent QA", "artifact": "集成测试报告 / Integration test reports"},
+      {"step": 14, "phase": "Docs & Ops", "field": "docs_updated", "agent": "Agent QA", "artifact": "docs/user_guide/{module}/..."},
+      {"step": 15, "phase": "Docs & Ops", "field": "progress_logged", "agent": "Agent PM", "artifact": "status/roadmap.json"},
+      {"step": 16, "phase": "Docs & Ops", "field": "ci_cd_passed", "agent": "Automated", "artifact": "GitHub Actions 结果 / GitHub Actions results"},
+      {"step": 17, "phase": "Docs & Ops", "field": "release_approved", "agent": "Human", "artifact": "🛑 STOP GATE - 等待发布批准 / Release approval gate", "is_gate": true}
     ]
   },
   "naming_conventions": {
     "module_id": "Use lowercase identifiers (e.g., trading, ai)",
     "feature_id": "{CATEGORY}-{NUMBER} (e.g., CORE-001, API-002)",
+    "user_story_id": "US-{CATEGORY}-{NUMBER} (e.g., US-CORE-001)",
     "event_id": "E-YYYY-NNNN for progress events",
-    "branch": "feature/{feature_id}-{slug}",
-    "commit": "<type>(<scope>): <description>"
+    "branch": "feat/{US-ID}-{short_slug} or feature/{feature_id}-{slug}",
+    "branch_note": "Git automation uses feat/{US-ID}-{short_slug} format",
+    "commit": "<type>(<scope>): <description> (ref #{US-ID})",
+    "commit_types": ["feat", "fix", "docs", "refactor", "test", "chore", "spec", "story", "contract", "review", "progress"],
+    "commit_scopes": ["trading", "portfolio", "web", "ai", "shared", "progress"]
   },
   "readonly": true,
-  "last_updated": "2025-11-30",
-  "maintained_by": "Agent PM"
+  "last_updated": "2025-12-01",
+  "maintained_by": "Agent PM",
+  "version_notes": "Updated to 17-step pipeline with 2 human approval gates, aligned with .cursorrules"
 }
 
 

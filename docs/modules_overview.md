@@ -483,7 +483,7 @@ cat docs/modules/portfolio.json
 
 ## 📖 Related Documents / 相关文档
 
-- [Development Workflow](development_workflow.md) - 13-step pipeline
+- [Development Workflow](development_workflow.md) - 17-step pipeline
 - [Project Manifest](../project_manifest.json) - Complete project structure
 - [Development Protocol](development_protocol.md) - Coding standards
 - [Agent Documentation](agents/README.md) - Agent responsibilities

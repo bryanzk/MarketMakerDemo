@@ -16,7 +16,7 @@
 ### 管理层 / Management Layer
 | Agent | 角色 | 职责 | 上下文文档 |
 |-------|------|------|-----------|
-| **Agent PM** | 项目管理 | 进度跟踪、协调沟通、风险管理 | `docs/agents/AGENT_PM.md` |
+| **Agent PM** | 项目管理 | 进度跟踪、协调沟通、风险管理、项目治理、审计日志 | `docs/agents/AGENT_PM.md` |
 | **Agent PO** | 产品负责人 | 需求规格、用户故事、验收标准 | `docs/agents/AGENT_PO.md` |
 | **Agent ARCH** | 架构师 | 接口契约、模块设计、共享代码 | `docs/agents/AGENT_ARCH.md` |
 
@@ -201,6 +201,7 @@ Dev Agent 按 owner 字段映射:
 | `status/` | Agent PM |
 | `logs/audit_trail.json` | Agent PM |
 | `docs/agents/` | Agent PM |
+| `project_manifest.json` | Agent PM |
 
 ### 🟡 COORDINATED (需协调) - 修改需发起请求
 
@@ -208,7 +209,7 @@ Dev Agent 按 owner 字段映射:
 |------|---------|
 | `requirements.txt` | 在 `status/agent_requests.json` 发起 CONFIG 请求 |
 | `pyproject.toml` | 在 `status/agent_requests.json` 发起 CONFIG 请求 |
-| `.cursorrules` | 仅 Agent PM 可修改 |
+| `.cursorrules` | 仅 Agent PM 可修改（项目治理规则文件） |
 
 ### 🟢 SHARED-APPEND (共享追加)
 
@@ -390,7 +391,7 @@ docs(trading): CORE-001 update user guide
 
 | Agent | 负责步骤 | 负责目录 | Notes / 备注 |
 |-------|---------|---------|-------------|
-| Agent PM | 15 | `status/`, `logs/`, `docs/agents/` | |
+| Agent PM | 15 | `status/`, `logs/`, `docs/agents/`, `.cursorrules` | 进度跟踪、协调沟通、风险管理、项目治理 |
 | Agent PO | 1, 2, 3 | `docs/specs/`, `docs/stories/` | |
 | Human | 4, 17 | — | 🛑 STOP GATES |
 | Agent ARCH | 5 | `contracts/`, `src/shared/` | |

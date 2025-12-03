@@ -37,8 +37,8 @@ This guide helps new team members understand MarketMakerDemo in 5 minutes.
 
 ## 🔄 Development Workflow / 开发流程
 
-Every feature follows a **13-step pipeline**:
-每个功能都遵循 **13 步流程**：
+Every feature follows a **17-step pipeline** (7 phases with 2 human approval gates):
+每个功能都遵循 **17 步流程**（7 个阶段，包含 2 个人工批准门禁）：
 
 ```
 Spec → Story → AC → Contract → Test → Code → Review → Unit → Smoke → Integration → Docs → Progress → CI/CD
@@ -198,8 +198,8 @@ MarketMakerDemo/
    - **[快速入门](quick_start.md)** ← 您在这里
 
 2. **[Development Workflow](development_workflow.md)**
-   - Understand the 13-step pipeline
-   - 理解 13 步流程
+   - Understand the 17-step pipeline
+   - 理解 17 步流程
 
 3. **[Modules Overview](modules_overview.md)**
    - Learn about all 6 modules

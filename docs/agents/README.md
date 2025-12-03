@@ -79,21 +79,25 @@ Each Agent can work independently on their assigned modules.
 
 ### Pipeline Steps / 流程步骤
 
-| Step | Status Field | Responsible Agent | Artifact |
-|------|-------------|-------------------|----------|
-| 1 | `spec_defined` | Agent PO | `docs/specs/{module}/{feature}.md` |
-| 2 | `story_defined` | Agent PO | `docs/stories/{module}/US-{ID}.md` |
-| 3 | `ac_defined` | Agent PO | Acceptance criteria in story |
-| 4 | `contract_defined` | Agent ARCH | `contracts/{module}.json` |
-| 5 | `unit_test_written` | Module Owner | `tests/unit/{module}/test_{feature}.py` |
-| 6 | `code_implemented` | Module Owner | `src/{module}/...` |
-| 7 | `code_reviewed` | Agent REVIEW | `logs/reviews/{feature_id}.json` |
-| 8 | `unit_test_passed` | Module Owner | pytest reports |
-| 9 | `smoke_test_passed` | Agent QA | `tests/smoke/` reports |
-| 10 | `integration_passed` | Agent QA | `tests/integration/` reports |
-| 11 | `docs_updated` | Agent QA | `docs/user_guide/{module}/...` |
-| 12 | `progress_logged` | Agent PM | `status/roadmap.json` |
-| 13 | `ci_cd_passed` | Human | GitHub Actions results |
+| Step | Phase | Status Field | Responsible Agent | Artifact | Notes |
+|------|------|-------------|-------------------|----------|------|
+| 1 | Plan | `spec_defined` | Agent PO | `docs/specs/{module}/{feature}.md` | |
+| 2 | Plan | `story_defined` | Agent PO | `docs/stories/{module}/US-{ID}.md` | |
+| 3 | Plan | `ac_defined` | Agent PO | Acceptance criteria in story | |
+| 4 | Plan | `plan_approved` | Human | 🛑 STOP GATE | **NEW** |
+| 5 | Design | `contract_defined` | Agent ARCH | `contracts/{module}.json` | |
+| 6 | Dev | `unit_test_written` | Dev Agent (按 owner) | `tests/unit/{module}/test_{feature}.py` | TDD: Red |
+| 7 | Dev | `code_implemented` | Dev Agent (按 owner) | `src/{module}/...` | TDD: Green |
+| 8 | Quality | `lint_passed` | Dev Agent + Tool | Linter 报告 | **NEW** |
+| 9 | Quality | `security_check_passed` | Dev Agent + Tool | 安全扫描报告 | **NEW** |
+| 10 | Review | `code_reviewed` | Agent REVIEW | `logs/reviews/{feature_id}.json` | |
+| 11 | Test | `unit_test_passed` | Dev Agent (按 owner) | pytest 报告 | |
+| 12 | Test | `smoke_test_passed` | Agent QA | `tests/smoke/` reports | |
+| 13 | Test | `integration_passed` | Agent QA | `tests/integration/` reports | |
+| 14 | Docs | `docs_updated` | Agent QA | `docs/user_guide/{module}/...` | |
+| 15 | Ops | `progress_logged` | Agent PM | `status/roadmap.json` | |
+| 16 | Ops | `ci_cd_passed` | Automated | GitHub Actions 结果 | |
+| 17 | Ops | `release_approved` | Human | 🛑 STOP GATE | **NEW** |
 
 ### File Ownership / 文件所有权
 
@@ -313,7 +317,7 @@ Record requests in:
 
 ## 📚 Related Documents / 相关文档
 
-- [Development Workflow](../development_workflow.md) - Complete 13-step pipeline
+- [Development Workflow](../development_workflow.md) - Complete 17-step pipeline
 - [Modules Overview](../modules_overview.md) - Module structure and responsibilities
 - [Development Protocol](../development_protocol.md) - Coding standards
 - [Project Manifest](../../project_manifest.json) - Project structure map

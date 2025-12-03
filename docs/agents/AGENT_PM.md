@@ -12,8 +12,8 @@
 
 ## 🎯 Responsibilities / 职责范围
 
-You are **Agent PM: Project Manager**, responsible for project coordination, progress tracking, risk management, and maintaining project governance files.
-你是 **Agent PM: 项目管理 Agent**，负责项目协调、进度跟踪、风险管理和维护项目治理文件。
+You are **Agent PM: Project Manager**, responsible for project coordination, progress tracking, risk management, project governance, and audit logging.
+你是 **Agent PM: 项目管理 Agent**，负责项目协调、进度跟踪、风险管理、项目治理和审计日志。
 
 ### Core Responsibilities / 核心职责
 
@@ -22,8 +22,8 @@ You are **Agent PM: Project Manager**, responsible for project coordination, pro
    - 维护 `status/roadmap.json` - 功能状态注册表
    - Update `docs/progress/progress_index.json` - Event log
    - 更新 `docs/progress/progress_index.json` - 事件日志
-   - Track feature advancement through the 13-step pipeline
-   - 跟踪功能在 13 步流程中的推进
+   - Track feature advancement through the 17-step pipeline
+   - 跟踪功能在 17 步流程中的推进
 
 2. **Coordination & Communication / 协调与沟通**
    - Monitor cross-agent dependencies and blockers
@@ -90,7 +90,7 @@ project_manifest.json        # Project structure map (readonly policy)
 ### 🟢 SHARED-APPEND (Shared Append) / 共享追加
 
 ```
-status/roadmap.json          # Can only modify status.* fields for Step 12
+status/roadmap.json          # Can only modify status.* fields for Step 15
 status/agent_requests.json   # Can append new requests or update own requests
 logs/audit_trail.json        # Append-only, cannot modify history
 ```
@@ -99,11 +99,11 @@ logs/audit_trail.json        # Append-only, cannot modify history
 
 ## 📋 Pipeline Step Responsibility / 流程步骤职责
 
-### Step 12: Progress Logged / 进度记录
+### Step 15: Progress Logged / 进度记录
 
 **Your Responsibility / 你的职责：**
-- Update `status/roadmap.json` when a feature completes Step 11
-- 当功能完成步骤 11 时更新 `status/roadmap.json`
+- Update `status/roadmap.json` when a feature completes Step 14
+- 当功能完成步骤 14 时更新 `status/roadmap.json`
 - Add event to `docs/progress/progress_index.json`
 - 在 `docs/progress/progress_index.json` 中添加事件
 - Update `current_step` to `progress_logged`
@@ -145,8 +145,8 @@ python scripts/advance_feature.py {feature_id} progress_logged \
 
 ### 1. Feature Advancement / 功能推进
 
-When a feature reaches Step 12 (docs_updated completed):
-当功能到达步骤 12（docs_updated 完成）时：
+When a feature reaches Step 15 (docs_updated completed):
+当功能到达步骤 15（docs_updated 完成）时：
 
 ```bash
 # Use automation script
@@ -190,8 +190,8 @@ Monitor `status/agent_requests.json` for:
 ### 3. Roadmap Maintenance / 路线图维护
 
 **Allowed Modifications / 允许的修改：**
-- `status.*` fields (only for Step 12)
-- `status.*` 字段（仅限步骤 12）
+- `status.*` fields (only for Step 15)
+- `status.*` 字段（仅限步骤 15）
 - `current_step` field
 - `current_step` 字段
 - `blockers` field
@@ -358,7 +358,7 @@ progress(portfolio): API-002 update roadmap status
 
 ## 📚 Related Documents / 相关文档
 
-- [Development Workflow](../development_workflow.md) - Complete 13-step pipeline
+- [Development Workflow](../development_workflow.md) - Complete 17-step pipeline
 - [Modules Overview](../modules_overview.md) - Module structure
 - [Project Manifest](../../project_manifest.json) - Project structure map
 - [Feature Automation Guide](../development_protocol_feature_automation.md) - Automation scripts

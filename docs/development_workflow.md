@@ -1,24 +1,37 @@
 # Development Workflow / 开发流程
 
-This document provides a clear, step-by-step guide to the 13-step development pipeline used in MarketMakerDemo.
-本文档提供了 MarketMakerDemo 项目中使用的 13 步开发流程的清晰分步指南。
+This document provides a clear, step-by-step guide to the 17-step development pipeline used in MarketMakerDemo.
+本文档提供了 MarketMakerDemo 项目中使用的 17 步开发流程的清晰分步指南。
 
 ---
 
 ## 📋 Overview / 概览
 
-Every feature in MarketMakerDemo follows a **13-step pipeline** from specification to production deployment. Each step has a responsible Agent and produces specific artifacts.
-MarketMakerDemo 中的每个功能都遵循从规范到生产部署的 **13 步流程**。每个步骤都有负责的 Agent 并产生特定的产物。
+Every feature in MarketMakerDemo follows a **17-step pipeline** from specification to production deployment. The workflow is divided into 7 phases with 2 human approval gates (Steps 4, 17). Each step has a responsible Agent and produces specific artifacts.
+MarketMakerDemo 中的每个功能都遵循从规范到生产部署的 **17 步流程**。流程分为 7 个阶段，包含 2 个人工批准门禁（步骤 4, 17）。每个步骤都有负责的 Agent 并产生特定的产物。
 
 ### Quick Reference / 快速参考
 
 ```
-Spec → Story → AC → Contract → Test → Code → Review → Unit → Smoke → Integration → Docs → Progress → CI/CD
+Plan: Spec → Story → AC → [APPROVAL] → Design: Contract → 
+Dev: Test(Red) → Code(Green) → Quality: Lint → Security → 
+Review → Test: Unit → Smoke → Integration → 
+Docs: Docs → Progress → CI/CD → [RELEASE]
 ```
+
+### Phase Organization / 阶段划分
+
+1. **Phase 1: Plan (规划)** - Steps 1-4 - 需求定义和批准 / Requirements definition and approval
+2. **Phase 2: Design (设计)** - Step 5 - 接口契约定义 / Interface contract definition
+3. **Phase 3: Dev (开发 - TDD)** - Steps 6-7 - 测试驱动开发 / Test-driven development
+4. **Phase 4: Quality (静态质量)** - Steps 8-9 - 代码格式检查和安全检查 / Code formatting and security check
+5. **Phase 5: Review (审查)** - Step 10 - 代码审查 / Code review
+6. **Phase 6: Test (动态测试)** - Steps 11-13 - 单元测试、冒烟测试、集成测试 / Unit, smoke, and integration tests
+7. **Phase 7: Docs & Ops (文档与交付)** - Steps 14-17 - 文档更新、进度记录、CI/CD 检查、发布批准 / Documentation, progress logging, CI/CD checks, release approval
 
 ---
 
-## 🔄 The 13-Step Pipeline / 13 步流程
+## 🔄 The 17-Step Pipeline / 17 步流程
 
 ### Step 1: Spec Defined / 规范定义
 **Agent:** Agent PO  
@@ -86,7 +99,28 @@ So that trading can continue without manual intervention.
 
 ---
 
-### Step 4: Contract Defined / 接口契约定义
+### Step 4: Plan Approved / 计划批准 🛑 STOP GATE
+**Agent:** Human  
+**Artifact:** Approval confirmation / 批准确认  
+**Status Field:** `plan_approved`
+
+**What happens / 发生什么：**
+- Human reviewer approves the plan (spec, story, AC)
+- 人工审查员批准计划（规范、用户故事、验收标准）
+- This is a **STOP GATE** - development cannot proceed without approval
+- 这是一个**停止门禁** - 未经批准，开发无法继续进行
+
+**Approval Criteria / 批准标准：**
+- ✅ Specification is complete and clear
+- ✅ 规范完整且清晰
+- ✅ User story follows format and includes personas
+- ✅ 用户故事遵循格式并包含角色
+- ✅ Acceptance criteria are testable and measurable
+- ✅ 验收标准可测试且可衡量
+
+---
+
+### Step 5: Contract Defined / 接口契约定义
 **Agent:** Agent ARCH  
 **Artifact:** `contracts/{module}.json`  
 **Status Field:** `contract_defined`
@@ -141,8 +175,8 @@ def test_exchange_connection():
 **What happens / 发生什么：**
 - Developer implements the feature to make tests pass (green phase)
 - 开发者实现功能以使测试通过（绿色阶段）
-- Code must follow the contract defined in Step 4
-- 代码必须遵循步骤 4 中定义的契约
+- Code must follow the contract defined in Step 5
+- 代码必须遵循步骤 5 中定义的契约
 
 **Example / 示例：**
 ```python
@@ -154,7 +188,58 @@ class ExchangeClient:
 
 ---
 
-### Step 7: Code Reviewed / 代码审查
+### Step 8: Lint Passed / 代码格式检查通过
+**Agent:** Dev Agent + Tool  
+**Artifact:** Linter report / Linter 报告  
+**Status Field:** `lint_passed`
+
+**What happens / 发生什么：**
+- Code formatting and style checks are performed
+- 执行代码格式和风格检查
+- Uses tools like flake8, black, isort
+- 使用 flake8、black、isort 等工具
+
+**Command / 命令：**
+```bash
+flake8 src/{module}/
+black --check src/{module}/
+isort --check src/{module}/
+```
+
+**Requirements / 要求：**
+- ✅ All linting errors must be fixed
+- ✅ 必须修复所有 linting 错误
+- ✅ Code follows PEP 8 style guide
+- ✅ 代码遵循 PEP 8 风格指南
+
+---
+
+### Step 9: Security Check Passed / 安全检查通过
+**Agent:** Dev Agent + Tool  
+**Artifact:** Security scan report / 安全扫描报告  
+**Status Field:** `security_check_passed`
+
+**What happens / 发生什么：**
+- Security vulnerability scanning is performed
+- 执行安全漏洞扫描
+- Checks for common security issues (SQL injection, XSS, etc.)
+- 检查常见安全问题（SQL 注入、XSS 等）
+
+**Command / 命令：**
+```bash
+bandit -r src/{module}/
+safety check
+```
+
+**Requirements / 要求：**
+- ✅ No critical or high-severity vulnerabilities
+- ✅ 无严重或高危漏洞
+- ✅ All security issues must be addressed
+- ✅ 必须解决所有安全问题
+
+---
+
+### Step 10: Code Reviewed / 代码审查
 **Agent:** Agent REVIEW  
 **Artifact:** `logs/reviews/{feature}.json`  
 **Status Field:** `code_reviewed`
@@ -178,7 +263,7 @@ class ExchangeClient:
 
 ---
 
-### Step 8: Unit Test Passed / 单元测试通过
+### Step 11: Unit Test Passed / 单元测试通过
 **Agent:** Module Owner  
 **Artifact:** pytest reports  
 **Status Field:** `unit_test_passed`
@@ -196,7 +281,7 @@ pytest tests/unit/{module}/test_{feature}.py --cov=src/{module}
 
 ---
 
-### Step 9: Smoke Test Passed / 冒烟测试通过
+### Step 12: Smoke Test Passed / 冒烟测试通过
 **Agent:** Agent QA  
 **Artifact:** `tests/smoke/` reports  
 **Status Field:** `smoke_test_passed`
@@ -217,7 +302,7 @@ def test_smoke_exchange_connection():
 
 ---
 
-### Step 10: Integration Test Passed / 集成测试通过
+### Step 13: Integration Test Passed / 集成测试通过
 **Agent:** Agent QA  
 **Artifact:** `tests/integration/` reports  
 **Status Field:** `integration_passed`
@@ -240,7 +325,7 @@ def test_integration_trading_flow():
 
 ---
 
-### Step 11: Docs Updated / 文档更新
+### Step 14: Docs Updated / 文档更新
 **Agent:** Agent QA  
 **Artifact:** `docs/user_guide/{module}/...`  
 **Status Field:** `docs_updated`
@@ -264,7 +349,7 @@ client.connect(api_key, api_secret)
 
 ---
 
-### Step 12: Progress Logged / 进度记录
+### Step 15: Progress Logged / 进度记录
 **Agent:** Agent PM  
 **Artifact:** `status/roadmap.json`  
 **Status Field:** `progress_logged`
@@ -282,22 +367,46 @@ python scripts/advance_feature.py CORE-001 progress_logged
 
 ---
 
-### Step 13: CI/CD Passed / CI/CD 通过
-**Agent:** Human Reviewer  
-**Artifact:** GitHub Actions results  
+### Step 16: CI/CD Passed / CI/CD 通过
+**Agent:** Automated  
+**Artifact:** GitHub Actions results / GitHub Actions 结果  
 **Status Field:** `ci_cd_passed`
 
 **What happens / 发生什么：**
-- Human reviews GitHub Actions CI/CD results
-- 人工审查 GitHub Actions CI/CD 结果
-- Ensures all automated checks pass
-- 确保所有自动化检查通过
+- Automated CI/CD pipeline runs all checks
+- 自动化 CI/CD 管道运行所有检查
+- All automated checks must pass
+- 所有自动化检查必须通过
 
 **Checks / 检查：**
 - ✅ Linting (flake8, black, isort)
+- ✅ Security scanning
 - ✅ Unit tests
 - ✅ Integration tests
 - ✅ Code coverage
+
+---
+
+### Step 17: Release Approved / 发布批准 🛑 STOP GATE
+**Agent:** Human  
+**Artifact:** Release approval confirmation / 发布批准确认  
+**Status Field:** `release_approved`
+
+**What happens / 发生什么：**
+- Human reviewer approves the feature for release
+- 人工审查员批准功能发布
+- This is a **STOP GATE** - feature cannot be released without approval
+- 这是一个**停止门禁** - 未经批准，功能无法发布
+
+**Approval Criteria / 批准标准：**
+- ✅ All tests pass
+- ✅ 所有测试通过
+- ✅ Documentation is complete
+- ✅ 文档完整
+- ✅ Code review is approved
+- ✅ 代码审查已批准
+- ✅ CI/CD pipeline passed
+- ✅ CI/CD 管道通过
 
 ---
 
@@ -332,35 +441,52 @@ python scripts/advance_feature.py CORE-001 code_implemented \
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                   13-Step Development Pipeline                  │
-│                     13 步开发流程                               │
+│                   17-Step Development Pipeline                   │
+│                     17 步开发流程                                │
+│          (7 Phases with 2 Human Approval Gates)                 │
+│          (7 个阶段，包含 2 个人工批准门禁)                      │
 └─────────────────────────────────────────────────────────────────┘
 
+Phase 1: Plan (规划)
 Step 1: Spec Defined (Agent PO)
    ↓
 Step 2: Story Defined (Agent PO)
    ↓
 Step 3: AC Defined (Agent PO)
    ↓
-Step 4: Contract Defined (Agent ARCH)
+Step 4: Plan Approved (Human) 🛑 STOP GATE
    ↓
-Step 5: Unit Test Written (Module Owner) ← TDD: Write tests first
+Phase 2: Design (设计)
+Step 5: Contract Defined (Agent ARCH)
    ↓
-Step 6: Code Implemented (Module Owner) ← TDD: Make tests pass
+Phase 3: Dev (开发 - TDD)
+Step 6: Unit Test Written (Dev Agent) ← TDD: Red - Write tests first
    ↓
-Step 7: Code Reviewed (Agent REVIEW)
+Step 7: Code Implemented (Dev Agent) ← TDD: Green - Make tests pass
    ↓
-Step 8: Unit Test Passed (Module Owner)
+Phase 4: Quality (静态质量)
+Step 8: Lint Passed (Dev Agent + Tool)
    ↓
-Step 9: Smoke Test Passed (Agent QA)
+Step 9: Security Check Passed (Dev Agent + Tool)
    ↓
-Step 10: Integration Passed (Agent QA)
+Phase 5: Review (审查)
+Step 10: Code Reviewed (Agent REVIEW)
    ↓
-Step 11: Docs Updated (Agent QA)
+Phase 6: Test (动态测试)
+Step 11: Unit Test Passed (Dev Agent)
    ↓
-Step 12: Progress Logged (Agent PM)
+Step 12: Smoke Test Passed (Agent QA)
    ↓
-Step 13: CI/CD Passed (Human)
+Step 13: Integration Passed (Agent QA)
+   ↓
+Phase 7: Docs & Ops (文档与交付)
+Step 14: Docs Updated (Agent QA)
+   ↓
+Step 15: Progress Logged (Agent PM)
+   ↓
+Step 16: CI/CD Passed (Automated)
+   ↓
+Step 17: Release Approved (Human) 🛑 STOP GATE
    ↓
 ✅ Feature Complete / 功能完成
 ```
@@ -370,18 +496,28 @@ Step 13: CI/CD Passed (Human)
 ## ⚠️ Important Rules / 重要规则
 
 ### 1. No Skipping Steps / 禁止跳步
-- ❌ Cannot write code before tests (Step 6 before Step 5)
-- ❌ 不能在测试之前编写代码（步骤 6 在步骤 5 之前）
-- ❌ Cannot review before implementation (Step 7 before Step 6)
-- ❌ 不能在实现之前审查（步骤 7 在步骤 6 之前）
+- ❌ Cannot write code before tests (Step 7 before Step 6)
+- ❌ 不能在测试之前编写代码（步骤 7 在步骤 6 之前）
+- ❌ Cannot review before implementation (Step 10 before Step 7)
+- ❌ 不能在实现之前审查（步骤 10 在步骤 7 之前）
+- ❌ Cannot proceed without plan approval (Step 5 before Step 4)
+- ❌ 未经计划批准不能继续（步骤 5 在步骤 4 之前）
+- ❌ Cannot release without approval (Step 17 is required)
+- ❌ 未经批准不能发布（步骤 17 是必需的）
 
 ### 2. TDD Principle / TDD 原则
-- **Always write tests first** (Step 5)
-- **始终先编写测试**（步骤 5）
-- Then implement code to pass tests (Step 6)
-- 然后实现代码以使测试通过（步骤 6）
+- **Always write tests first** (Step 6 - Red Phase)
+- **始终先编写测试**（步骤 6 - 红色阶段）
+- Then implement code to pass tests (Step 7 - Green Phase)
+- 然后实现代码以使测试通过（步骤 7 - 绿色阶段）
 
-### 3. Agent Responsibilities / Agent 职责
+### 3. Human Approval Gates / 人工批准门禁
+- **Step 4: Plan Approved** - Must be approved before design phase
+- **步骤 4：计划批准** - 必须在设计阶段之前获得批准
+- **Step 17: Release Approved** - Must be approved before release
+- **步骤 17：发布批准** - 必须在发布之前获得批准
+
+### 4. Agent Responsibilities / Agent 职责
 - Each step has a specific responsible Agent
 - 每个步骤都有特定的负责 Agent
 - Do not modify files outside your responsibility
@@ -423,7 +559,7 @@ Step 13: CI/CD Passed (Human)
 
 ---
 
-**Last Updated / 最后更新:** 2025-11-30  
+**Last Updated / 最后更新:** 2025-12-01  
 **Maintained by / 维护者:** Agent PM
 
 

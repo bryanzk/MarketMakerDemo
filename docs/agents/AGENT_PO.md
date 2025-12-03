@@ -456,7 +456,7 @@ spec(portfolio): API-002 add capital allocation specification
 
 ## 📚 Related Documents / 相关文档
 
-- [Development Workflow](../development_workflow.md) - Complete 13-step pipeline
+- [Development Workflow](../development_workflow.md) - Complete 17-step pipeline
 - [Modules Overview](../modules_overview.md) - Module structure
 - [Project Manifest](../../project_manifest.json) - Project structure map
 

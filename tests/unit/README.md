@@ -10,6 +10,8 @@ tests/unit/
 ├── trading/          # Trading engine tests / 交易引擎测试 (Agent TRADING)
 │   ├── test_exchange_connection.py
 │   ├── test_order_manager.py
+│   ├── test_hyperliquid_connection.py
+│   ├── test_hyperliquid_orders.py
 │   └── ...
 ├── portfolio/        # Portfolio tests / 组合管理测试 (Agent PORTFOLIO)
 │   ├── test_capital_allocation.py
@@ -18,6 +20,7 @@ tests/unit/
 ├── web/              # Web/API tests / Web/API 测试 (Agent WEB)
 │   ├── test_bot_control_api.py
 │   ├── test_portfolio_api.py
+│   ├── test_hyperliquid_llm_evaluation.py
 │   └── ...
 └── ai/               # AI/LLM tests / AI/LLM 测试 (Agent AI)
     ├── test_multi_llm_evaluator.py
@@ -48,6 +51,9 @@ pytest tests/unit/trading/ -v
 pytest tests/unit/portfolio/ -v
 pytest tests/unit/web/ -v
 pytest tests/unit/ai/ -v
+
+# Run specific feature tests / 运行特定功能测试
+pytest tests/unit/web/test_hyperliquid_llm_evaluation.py -v
 ```
 
 ## TDD Workflow / TDD 工作流

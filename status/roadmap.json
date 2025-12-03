@@ -53,6 +53,24 @@
           "current_step": "spec_defined",
           "branch": "pending",
           "sync_source": "docs/modules/trading.json"
+        },
+        {
+          "id": "US-API-004",
+          "name": "Hyperliquid LLM Evaluation Support / Hyperliquid LLM 评估支持",
+          "name_zh": "Hyperliquid LLM 评估支持",
+          "status": "TODO",
+          "current_step": "spec_defined",
+          "branch": "feat/US-API-004",
+          "sync_source": "docs/modules/web.json"
+        },
+        {
+          "id": "US-UI-004",
+          "name": "Dedicated Hyperliquid Trading Page / 专用 Hyperliquid 交易页面",
+          "name_zh": "专用 Hyperliquid 交易页面",
+          "status": "TODO",
+          "current_step": "spec_defined",
+          "branch": "pending",
+          "sync_source": "docs/modules/web.json"
         }
       ]
     }

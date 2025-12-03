@@ -15,8 +15,8 @@
           "id": "US-CORE-004-A",
           "name": "Hyperliquid Connection and Authentication / Hyperliquid 连接与认证",
           "name_zh": "Hyperliquid 连接与认证",
-          "status": "IN_PROGRESS",
-          "current_step": "progress_logged",
+          "status": "DONE",
+          "current_step": "ci_cd_passed",
           "branch": "feat/US-CORE-004-A-hyperliquid-connection",
           "sync_source": "docs/modules/trading.json"
         },

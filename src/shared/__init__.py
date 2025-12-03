@@ -11,6 +11,9 @@ Shared utilities:
 from src.shared.config import (
     API_KEY,
     API_SECRET,
+    HYPERLIQUID_API_KEY,
+    HYPERLIQUID_API_SECRET,
+    HYPERLIQUID_TESTNET,
     LEVERAGE,
     LOG_LEVEL,
     MAX_POSITION,
@@ -27,9 +30,14 @@ from src.shared.logger import JsonFormatter, setup_logger
 from src.shared.utils import round_step_size, round_tick_size
 
 __all__ = [
-    # Config
+    # Config - Binance
     "API_KEY",
     "API_SECRET",
+    # Config - Hyperliquid
+    "HYPERLIQUID_API_KEY",
+    "HYPERLIQUID_API_SECRET",
+    "HYPERLIQUID_TESTNET",
+    # Config - Trading Parameters
     "SYMBOL",
     "QUANTITY",
     "SPREAD_PCT",

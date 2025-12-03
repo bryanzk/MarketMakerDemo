@@ -18,9 +18,14 @@ try:
 except PermissionError as e:
     logging.warning("Could not load .env file due to permission error: %s", e)
 
-# API Credentials
+# API Credentials - Binance
 API_KEY = os.getenv("BINANCE_API_KEY")
 API_SECRET = os.getenv("BINANCE_API_SECRET")
+
+# API Credentials - Hyperliquid
+HYPERLIQUID_API_KEY = os.getenv("HYPERLIQUID_API_KEY")
+HYPERLIQUID_API_SECRET = os.getenv("HYPERLIQUID_API_SECRET")
+HYPERLIQUID_TESTNET = os.getenv("HYPERLIQUID_TESTNET", "false").lower() == "true"
 
 # Trading Parameters
 SYMBOL = "ETH/USDT:USDT"  # Trading pair (CCXT Unified format for linear swap)

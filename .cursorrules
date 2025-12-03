@@ -36,27 +36,73 @@
 
 ---
 
-## 📋 开发流程 (13 Steps)
+## 📋 开发流程 (17 Steps / 17 步)
+
+**Note / 说明**: 流程分为 7 个阶段，包含 2 个人工批准门禁（Steps 4, 17）
+The workflow is divided into 7 phases with 2 human approval gates (Steps 4, 17)
 
 ```
-Spec → Story → AC → Contract → Test → Code → Review → Unit → Smoke → Integration → Docs → Progress → CI/CD
+Plan: Spec → Story → AC → [APPROVAL] → Design: Contract → 
+Dev: Test(Red) → Code(Green) → Quality: Lint → Security → 
+Review → Test: Unit → Smoke → Integration → 
+Docs: Docs → Progress → CI/CD → [RELEASE]
 ```
 
-| Step | 状态字段 | 负责 Agent | 产出物 |
-|------|---------|-----------|--------|
-| 1 | `spec_defined` | Agent PO | `docs/specs/{module}/{feature}.md` |
-| 2 | `story_defined` | Agent PO | `docs/stories/{module}/US-{ID}.md` |
-| 3 | `ac_defined` | Agent PO | AC 写入 Story 文件 |
-| 4 | `contract_defined` | Agent ARCH | `contracts/{module}.json` |
-| 5 | `unit_test_written` | Dev Agent (按 owner) | `tests/unit/{module}/test_{feature}.py` |
-| 6 | `code_implemented` | Dev Agent (按 owner) | `src/{module}/...` |
-| 7 | `code_reviewed` | Agent REVIEW | `logs/reviews/{feature_id}.json` |
-| 8 | `unit_test_passed` | Dev Agent (按 owner) | 运行 pytest 并确认通过 |
-| 9 | `smoke_test_passed` | Agent QA | 运行冒烟测试脚本 |
-| 10 | `integration_passed` | Agent QA | 运行集成测试套件 |
-| 11 | `docs_updated` | Agent QA | `docs/user_guide/{module}/...` |
-| 12 | `progress_logged` | Agent PM | `status/roadmap.json` |
-| 13 | `ci_cd_passed` | Human | 查看 GitHub Actions 结果 |
+| Step | Phase | 状态字段 | 负责 Agent | 产出物 | Notes / 备注 |
+|------|------|---------|-----------|--------|-------------|
+| 1 | Plan | `spec_defined` | Agent PO | `docs/specs/{module}/{feature}.md` | |
+| 2 | Plan | `story_defined` | Agent PO | `docs/stories/{module}/US-{ID}.md` | |
+| 3 | Plan | `ac_defined` | Agent PO | AC 写入 Story 文件 | |
+| 4 | Plan | `plan_approved` | Human | 🛑 STOP GATE - 等待批准 | **NEW** |
+| 5 | Design | `contract_defined` | Agent ARCH | `contracts/{module}.json` | |
+| 6 | Dev | `unit_test_written` | Dev Agent (按 owner) | `tests/unit/{module}/test_{feature}.py` | TDD: Red |
+| 7 | Dev | `code_implemented` | Dev Agent (按 owner) | `src/{module}/...` | TDD: Green |
+| 8 | Quality | `lint_passed` | Dev Agent + Tool | Linter 报告 | **NEW** |
+| 9 | Quality | `security_check_passed` | Dev Agent + Tool | 安全扫描报告 | **NEW** |
+| 10 | Review | `code_reviewed` | Agent REVIEW | `logs/reviews/{feature_id}.json` | |
+| 11 | Test | `unit_test_passed` | Dev Agent (按 owner) | pytest 报告 | |
+| 12 | Test | `smoke_test_passed` | Agent QA | 冒烟测试报告 | |
+| 13 | Test | `integration_passed` | Agent QA | 集成测试报告 | |
+| 14 | Docs | `docs_updated` | Agent QA | `docs/user_guide/{module}/...` | |
+| 15 | Ops | `progress_logged` | Agent PM | `status/roadmap.json` | |
+| 16 | Ops | `ci_cd_passed` | Automated | GitHub Actions 结果 | |
+| 17 | Ops | `release_approved` | Human | 🛑 STOP GATE - 等待发布批准 | **NEW** |
+
+### 阶段划分 / Phase Organization
+
+开发流程分为 7 个阶段，每个阶段有明确的职责：
+The workflow is divided into 7 phases, each with clear responsibilities:
+
+1. **Phase 1: Plan (规划)** - Steps 1-4
+   - 需求定义和批准 / Requirements definition and approval
+   - 包含人工批准门禁 / Includes human approval gate
+
+2. **Phase 2: Design (设计)** - Step 5
+   - 接口契约定义 / Interface contract definition
+
+3. **Phase 3: Dev (开发 - TDD)** - Steps 6-7
+   - 测试驱动开发 / Test-driven development
+   - Red Phase: 先写测试 / Write tests first
+   - Green Phase: 实现代码使测试通过 / Implement code to pass tests
+
+4. **Phase 4: Quality (静态质量)** - Steps 8-9
+   - 代码格式检查 / Code formatting check (Lint)
+   - 安全检查 / Security check
+   - 工具辅助步骤 / Tool-assisted steps
+
+5. **Phase 5: Review (审查)** - Step 10
+   - 代码审查 / Code review
+
+6. **Phase 6: Test (动态测试)** - Steps 11-13
+   - 单元测试 / Unit tests
+   - 冒烟测试 / Smoke tests
+   - 集成测试 / Integration tests
+
+7. **Phase 7: Docs & Ops (文档与交付)** - Steps 14-17
+   - 文档更新 / Documentation
+   - 进度记录 / Progress logging
+   - CI/CD 检查 / CI/CD checks
+   - 发布批准 / Release approval (人工门禁 / Human gate)
 
 ---
 
@@ -73,18 +119,23 @@ Spec → Story → AC → Contract → Test → Code → Review → Unit → Smo
 根据 `status/roadmap.json` 中 Feature 的 `current_step` 和 `owner` 自动识别：
 
 ```
-current_step: spec_defined       → Agent PO
-current_step: story_defined      → Agent PO
-current_step: ac_defined         → Agent PO
-current_step: contract_defined   → Agent ARCH
-current_step: unit_test_written  → Dev Agent (按 owner)
-current_step: code_implemented   → Dev Agent (按 owner)
-current_step: code_reviewed      → Agent REVIEW
-current_step: unit_test_passed   → Dev Agent (按 owner)
-current_step: smoke_test_passed  → Agent QA
-current_step: integration_passed → Agent QA
-current_step: docs_updated       → Agent QA
-current_step: progress_logged    → Agent PM
+current_step: spec_defined          → Agent PO
+current_step: story_defined         → Agent PO
+current_step: ac_defined            → Agent PO
+current_step: plan_approved         → Human (🛑 STOP GATE)  # NEW
+current_step: contract_defined       → Agent ARCH
+current_step: unit_test_written     → Dev Agent (按 owner)
+current_step: code_implemented      → Dev Agent (按 owner)
+current_step: lint_passed           → Dev Agent + Tool  # NEW
+current_step: security_check_passed → Dev Agent + Tool  # NEW
+current_step: code_reviewed         → Agent REVIEW
+current_step: unit_test_passed      → Dev Agent (按 owner)
+current_step: smoke_test_passed     → Agent QA
+current_step: integration_passed    → Agent QA
+current_step: docs_updated          → Agent QA
+current_step: progress_logged       → Agent PM
+current_step: ci_cd_passed          → Automated
+current_step: release_approved      → Human (🛑 STOP GATE)  # NEW
 
 Dev Agent 按 owner 字段映射:
   owner: "trading"   → Agent TRADING
@@ -189,15 +240,22 @@ Dev Agent 按 owner 字段映射:
 
 ### 禁止跳步
 - ❌ 当 `spec_defined: false` 时，不要写 Story
+- ❌ 当 `story_defined: false` 时，不要写 AC
+- ❌ 当 `ac_defined: false` 时，不要进行 Plan Approval
+- ❌ 当 `plan_approved: false` 时，不要定义 Contract (**NEW**)
 - ❌ 当 `contract_defined: false` 时，不要写 Test
-- ❌ 当 `test_written: false` 时，不要写 Code (**TDD 原则**)
-- ❌ 当 `code_implemented: false` 时，不要 Review
+- ❌ 当 `unit_test_written: false` 时，不要写 Code (**TDD 原则**)
+- ❌ 当 `code_implemented: false` 时，不要进行 Lint 检查
+- ❌ 当 `lint_passed: false` 时，不要进行 Security 检查 (**NEW**)
+- ❌ 当 `security_check_passed: false` 时，不要 Review (**NEW**)
+- ❌ 当 `code_reviewed: false` 时，不要运行测试
+- ❌ 当 `ci_cd_passed: false` 时，不要批准发布 (**NEW**)
 
 ### TDD 原则
-**Step 5 (test_written) 必须在 Step 6 (code_implemented) 之前完成**
+**Step 6 (unit_test_written) 必须在 Step 7 (code_implemented) 之前完成**
 ```
-1. Agent QA 先写测试 (测试会失败，因为代码还没写)
-2. Dev Agent 实现代码，目标是让测试通过
+1. Dev Agent 先写测试 (测试会失败，因为代码还没写) - **Red Phase**
+2. Dev Agent 实现代码，目标是让测试通过 - **Green Phase**
 ```
 
 ---
@@ -265,6 +323,42 @@ docs(trading): CORE-001 update user guide
 
 ---
 
+## 🛠️ Git 自动化策略 / Git Automation Rules
+
+**Rule / 规则**: 严禁直接在 `main` 分支修改代码。所有工作必须在 Feature 分支完成。
+**Rule**: Never modify code directly on `main` branch. All work must be done on Feature branches.
+
+### 分支命名规范 / Branch Naming Convention
+
+- **Format / 格式**: `feat/{US-ID}-{short_slug}`
+- **Example / 示例**: `feat/US-101-user-login`
+
+### 分支创建规则 / Branch Creation Rules
+
+- **Source / 源分支**: Always create new branches from updated `main`.
+- **源分支**: 始终从最新的 `main` 分支创建新分支。
+
+### 提交消息规范 / Commit Message Convention
+
+- **Format / 格式**: `type(scope): subject (ref #{US-ID})`
+- **Example / 示例**: `feat(auth): add password validation (ref #US-101)`
+
+### Agent 操作指南 / Agent Operation Guide
+
+1. **Before Start / 开始前**:
+   - 运行 `git checkout main && git pull` 确保基准最新
+   - Run `git checkout main && git pull` to ensure baseline is up-to-date
+
+2. **Create Branch / 创建分支**:
+   - 运行 `git checkout -b feat/{US-ID}-{slug}`
+   - Run `git checkout -b feat/{US-ID}-{slug}`
+
+3. **On Finish / 完成后**:
+   - 等待 CI 通过后，提示用户进行 Squash Merge
+   - After CI passes, prompt user to perform Squash Merge
+
+---
+
 ## 🔄 跨 Agent 请求协议
 
 当需要其他 Agent 配合时，在 `status/agent_requests.json` 中添加请求：
@@ -294,14 +388,16 @@ docs(trading): CORE-001 update user guide
 
 ## 💡 Agent 快速参考
 
-| Agent | 负责步骤 | 负责目录 |
-|-------|---------|---------|
-| Agent PM | 12 | `status/`, `logs/`, `docs/agents/` |
-| Agent PO | 1, 2, 3 | `docs/specs/`, `docs/stories/` |
-| Agent ARCH | 4 | `contracts/`, `src/shared/` |
-| Agent TRADING | 6 | `src/trading/` |
-| Agent PORTFOLIO | 6 | `src/portfolio/` |
-| Agent WEB | 6 | `src/web/` |
-| Agent AI | 6 | `src/ai/` |
-| Agent QA | 5, 11 | `tests/`, `docs/user_guide/` |
-| Agent REVIEW | 7 | `logs/reviews/` |
+| Agent | 负责步骤 | 负责目录 | Notes / 备注 |
+|-------|---------|---------|-------------|
+| Agent PM | 15 | `status/`, `logs/`, `docs/agents/` | |
+| Agent PO | 1, 2, 3 | `docs/specs/`, `docs/stories/` | |
+| Human | 4, 17 | — | 🛑 STOP GATES |
+| Agent ARCH | 5 | `contracts/`, `src/shared/` | |
+| Agent TRADING | 6, 7, 8, 9, 11 | `src/trading/` | Steps 8-9 with tools |
+| Agent PORTFOLIO | 6, 7, 8, 9, 11 | `src/portfolio/` | Steps 8-9 with tools |
+| Agent WEB | 6, 7, 8, 9, 11 | `src/web/` | Steps 8-9 with tools |
+| Agent AI | 6, 7, 8, 9, 11 | `src/ai/` | Steps 8-9 with tools |
+| Agent QA | 12, 13, 14 | `tests/`, `docs/user_guide/` | |
+| Agent REVIEW | 10 | `logs/reviews/` | |
+| Automated | 16 | — | CI/CD pipeline |

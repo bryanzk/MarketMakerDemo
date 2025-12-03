@@ -5,15 +5,34 @@
     {
       "id": "E-2025-0001",
       "type": "framework_update",
-      "feature_ids": ["CORE-001", "API-001"],
-      "modules": ["trading", "web"],
+      "feature_ids": [
+        "CORE-001",
+        "API-001"
+      ],
+      "modules": [
+        "trading",
+        "web"
+      ],
       "summary": "Initial migration to src/ layout and FastAPI shell",
       "author": "Agent PM",
       "timestamp": "2025-11-25T00:00:00Z",
       "notes": "Baseline event imported from legacy tracker"
+    },
+    {
+      "id": "E-2025-0002",
+      "type": "story_step_advanced",
+      "feature_ids": [
+        "US-CORE-004-A"
+      ],
+      "modules": [
+        "trading"
+      ],
+      "summary": "US-CORE-004-A plan approved by human reviewer",
+      "summary_zh": "US-CORE-004-A 计划已由人工审查员批准",
+      "author": "Agent PM",
+      "timestamp": "2025-12-03T19:40:32.202614+00:00",
+      "notes": "Step 5 (plan_approved) completed. Human reviewer approved the plan after contract definition.",
+      "step": "plan_approved"
     }
   ]
 }
-
-
-

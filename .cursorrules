@@ -36,10 +36,10 @@
 
 ---
 
-## 📋 开发流程 (13 Steps)
+## 📋 开发流程 (14 Steps)
 
 ```
-Spec → Story → AC → Contract → Test → Code → Review → Unit → Smoke → Integration → Docs → Progress → CI/CD
+Spec → Story → AC → Contract → Plan Approval → Test → Code → Review → Unit → Smoke → Integration → Docs → Progress → CI/CD
 ```
 
 | Step | 状态字段 | 负责 Agent | 产出物 |
@@ -48,15 +48,16 @@ Spec → Story → AC → Contract → Test → Code → Review → Unit → Smo
 | 2 | `story_defined` | Agent PO | `docs/stories/{module}/US-{ID}.md` |
 | 3 | `ac_defined` | Agent PO | AC 写入 Story 文件 |
 | 4 | `contract_defined` | Agent ARCH | `contracts/{module}.json` |
-| 5 | `unit_test_written` | Dev Agent (按 owner) | `tests/unit/{module}/test_{feature}.py` |
-| 6 | `code_implemented` | Dev Agent (按 owner) | `src/{module}/...` |
-| 7 | `code_reviewed` | Agent REVIEW | `logs/reviews/{feature_id}.json` |
-| 8 | `unit_test_passed` | Dev Agent (按 owner) | 运行 pytest 并确认通过 |
-| 9 | `smoke_test_passed` | Agent QA | 运行冒烟测试脚本 |
-| 10 | `integration_passed` | Agent QA | 运行集成测试套件 |
-| 11 | `docs_updated` | Agent QA | `docs/user_guide/{module}/...` |
-| 12 | `progress_logged` | Agent PM | `status/roadmap.json` |
-| 13 | `ci_cd_passed` | Human | 查看 GitHub Actions 结果 |
+| 5 | `plan_approved` | Human | 人工审查并批准计划 🛑 STOP GATE |
+| 6 | `unit_test_written` | Dev Agent (按 owner) | `tests/unit/{module}/test_{feature}.py` |
+| 7 | `code_implemented` | Dev Agent (按 owner) | `src/{module}/...` |
+| 8 | `code_reviewed` | Agent REVIEW | `logs/reviews/{feature_id}.json` |
+| 9 | `unit_test_passed` | Dev Agent (按 owner) | 运行 pytest 并确认通过 |
+| 10 | `smoke_test_passed` | Agent QA | 运行冒烟测试脚本 |
+| 11 | `integration_passed` | Agent QA | 运行集成测试套件 |
+| 12 | `docs_updated` | Agent QA | `docs/user_guide/{module}/...` |
+| 13 | `progress_logged` | Agent PM | `status/roadmap.json` |
+| 14 | `ci_cd_passed` | Human | 查看 GitHub Actions 结果 |
 
 ---
 
@@ -77,6 +78,7 @@ current_step: spec_defined       → Agent PO
 current_step: story_defined      → Agent PO
 current_step: ac_defined         → Agent PO
 current_step: contract_defined   → Agent ARCH
+current_step: plan_approved      → Human (人工审查) 🛑 STOP GATE
 current_step: unit_test_written  → Dev Agent (按 owner)
 current_step: code_implemented   → Dev Agent (按 owner)
 current_step: code_reviewed      → Agent REVIEW
@@ -296,12 +298,13 @@ docs(trading): CORE-001 update user guide
 
 | Agent | 负责步骤 | 负责目录 |
 |-------|---------|---------|
-| Agent PM | 12 | `status/`, `logs/`, `docs/agents/` |
+| Agent PM | 13 | `status/`, `logs/`, `docs/agents/` |
 | Agent PO | 1, 2, 3 | `docs/specs/`, `docs/stories/` |
 | Agent ARCH | 4 | `contracts/`, `src/shared/` |
-| Agent TRADING | 6 | `src/trading/` |
-| Agent PORTFOLIO | 6 | `src/portfolio/` |
-| Agent WEB | 6 | `src/web/` |
-| Agent AI | 6 | `src/ai/` |
-| Agent QA | 5, 11 | `tests/`, `docs/user_guide/` |
-| Agent REVIEW | 7 | `logs/reviews/` |
+| Agent TRADING | 7 | `src/trading/` |
+| Agent PORTFOLIO | 7 | `src/portfolio/` |
+| Agent WEB | 7 | `src/web/` |
+| Agent AI | 7 | `src/ai/` |
+| Agent QA | 6, 12 | `tests/`, `docs/user_guide/` |
+| Agent REVIEW | 8 | `logs/reviews/` |
+| Human | 5, 14 | 计划批准、CI/CD 审查 |

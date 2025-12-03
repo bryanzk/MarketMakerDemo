@@ -16,7 +16,7 @@
           "name": "Hyperliquid Connection and Authentication / Hyperliquid 连接与认证",
           "name_zh": "Hyperliquid 连接与认证",
           "status": "TODO",
-          "current_step": "spec_defined",
+          "current_step": "plan_approved",
           "branch": "pending",
           "sync_source": "docs/modules/trading.json"
         },

@@ -5,6 +5,7 @@
   "description": "Trading engine interface contracts / 交易引擎接口契约",
   "owner": "Agent ARCH",
   "last_updated": "2025-12-01",
+  "last_updated_by": "Agent ARCH",
   "readonly_for": ["Agent TRADING", "Agent PORTFOLIO", "Agent WEB", "Agent AI", "Agent QA"],
   "interfaces": {
     "ExchangeClient": {
@@ -122,6 +123,33 @@
           "returns": "array of Order objects",
           "raises": ["ConnectionError"]
         },
+        "fetch_order": {
+          "description": "Fetch order status by order ID",
+          "params": {
+            "order_id": "string"
+          },
+          "returns": {
+            "order_id": "string",
+            "symbol": "string",
+            "side": "string (BUY|SELL)",
+            "type": "string (LIMIT|MARKET)",
+            "quantity": "float",
+            "price": "float",
+            "status": "string (open|filled|cancelled)",
+            "filled_qty": "float",
+            "timestamp": "integer"
+          },
+          "raises": ["ConnectionError", "OrderNotFoundError"]
+        },
+        "fetch_orders_history": {
+          "description": "Fetch order history (filled, cancelled, or open orders)",
+          "params": {
+            "limit": "integer (optional, default: 100)",
+            "start_time": "integer (optional, timestamp in milliseconds)"
+          },
+          "returns": "array of Order objects",
+          "raises": ["ConnectionError"]
+        },
         "place_orders": {
           "description": "Place a batch of orders",
           "params": {
@@ -183,7 +211,7 @@
       "description": "Hyperliquid exchange client / Hyperliquid 交易所客户端",
       "extends": "ExchangeClient",
       "implementation": "src/trading/hyperliquid_client.py#HyperliquidClient",
-      "notes": "Must implement same interface as BinanceClient for seamless integration. Connection and authentication should be handled in __init__ method, consistent with BinanceClient pattern. / 必须实现与 BinanceClient 相同的接口以实现无缝集成。连接和认证应在 __init__ 方法中处理，与 BinanceClient 模式保持一致。",
+      "notes": "Must implement same interface as BinanceClient for seamless integration. Connection and authentication should be handled in __init__ method, consistent with BinanceClient pattern. All order management methods (place_orders, cancel_orders, fetch_order, fetch_orders_history, etc.) must be implemented to support US-CORE-004-B requirements. / 必须实现与 BinanceClient 相同的接口以实现无缝集成。连接和认证应在 __init__ 方法中处理，与 BinanceClient 模式保持一致。所有订单管理方法（place_orders, cancel_orders, fetch_order, fetch_orders_history 等）必须实现以支持 US-CORE-004-B 需求。",
       "methods": {
         "__init__": {
           "description": "Initialize Hyperliquid client with API credentials and environment. Establishes connection and authenticates during initialization, consistent with BinanceClient pattern.",
@@ -196,6 +224,19 @@
           "raises": ["ConnectionError", "AuthenticationError"],
           "notes": "Connects to testnet.hyperliquid.xyz if testnet=true, else api.hyperliquid.xyz. Connection and authentication are performed during initialization, not in a separate connect() method, to maintain interface consistency with BinanceClient."
         }
+      },
+      "order_methods_requirements": {
+        "description": "Order management methods required for US-CORE-004-B / US-CORE-004-B 所需的订单管理方法",
+        "required_methods": [
+          "place_orders(orders) - Place batch of limit/market orders",
+          "cancel_orders(order_ids) - Cancel multiple orders",
+          "cancel_all_orders() - Cancel all open orders",
+          "fetch_order(order_id) - Get order status by ID",
+          "fetch_open_orders() - Get all open orders",
+          "fetch_orders_history(limit, start_time) - Get order history"
+        ],
+        "error_handling": "Must map Hyperliquid-specific errors to standard exceptions (InsufficientFunds, InvalidOrder, OrderNotFound) with bilingual error messages / 必须将 Hyperliquid 特定错误映射到标准异常（余额不足、无效订单、订单未找到），并提供双语错误消息",
+        "order_format": "Must convert between Hyperliquid API format and internal Order format for consistency with Binance / 必须在 Hyperliquid API 格式和内部 Order 格式之间转换，以与 Binance 保持一致"
       }
     },
     "OrderManager": {

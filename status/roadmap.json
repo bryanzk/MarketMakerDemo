@@ -26,7 +26,7 @@
           "name_zh": "Hyperliquid 订单管理",
           "status": "TODO",
           "current_step": "spec_defined",
-          "branch": "pending",
+          "branch": "feat/US-CORE-004-B-hyperliquid-orders",
           "sync_source": "docs/modules/trading.json"
         },
         {

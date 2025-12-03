@@ -123,6 +123,24 @@
       "ci_cd_status": "PASSED",
       "test_job": "PASSED",
       "lint_job": "PASSED"
+    },
+    {
+      "id": "E-2025-0008",
+      "type": "story_step_advanced",
+      "feature_ids": [
+        "US-CORE-004-B"
+      ],
+      "modules": [
+        "trading"
+      ],
+      "summary": "US-CORE-004-B progress logged",
+      "summary_zh": "US-CORE-004-B 进度已记录",
+      "author": "Agent PM",
+      "timestamp": "2025-12-03T23:04:22.206170+00:00",
+      "notes": "Step 13 (progress_logged) completed. All progress information has been updated in status/roadmap.json. Story is at 92.9% completion (13/14 steps).",
+      "step": "progress_logged",
+      "branch": "feat/US-CORE-004-B-hyperliquid-orders",
+      "completion_percentage": 92.9
     }
   ]
 }

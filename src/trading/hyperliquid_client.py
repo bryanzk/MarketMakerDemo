@@ -1178,10 +1178,7 @@ class HyperliquidClient:
         elif "err" in status:
             # Order error - raise appropriate exception
             error_text = status.get("err", "Unknown error")
-            error_msg = (
-                f"Order rejected: {error_text}. "
-                f"订单被拒绝: {error_text}。"
-            )
+            error_msg = f"Order rejected: {error_text}. " f"订单被拒绝: {error_text}。"
 
             # Map common errors
             if "insufficient" in error_text.lower() or "balance" in error_text.lower():

@@ -33,6 +33,75 @@
       "timestamp": "2025-12-03T19:40:32.202614+00:00",
       "notes": "Step 5 (plan_approved) completed. Human reviewer approved the plan after contract definition.",
       "step": "plan_approved"
+    },
+    {
+      "id": "E-2025-0003",
+      "type": "story_step_advanced",
+      "feature_ids": [
+        "US-CORE-004-A"
+      ],
+      "modules": [
+        "trading"
+      ],
+      "summary": "US-CORE-004-A unit tests passed",
+      "summary_zh": "US-CORE-004-A 单元测试通过",
+      "author": "Agent PM",
+      "timestamp": "2025-12-03T21:29:45.479820+00:00",
+      "notes": "Step 9 (unit_test_passed) completed. All unit tests in tests/unit/trading/test_hyperliquid_connection.py passed successfully.",
+      "step": "unit_test_passed",
+      "branch": "feat/US-CORE-004-A-hyperliquid-connection"
+    },
+    {
+      "id": "E-2025-0004",
+      "type": "story_step_advanced",
+      "feature_ids": [
+        "US-CORE-004-A"
+      ],
+      "modules": [
+        "trading"
+      ],
+      "summary": "US-CORE-004-A smoke tests passed",
+      "summary_zh": "US-CORE-004-A 冒烟测试通过",
+      "author": "Agent QA",
+      "timestamp": "2025-12-03T21:34:44.236657+00:00",
+      "notes": "Step 10 (smoke_test_passed) completed. Smoke tests passed successfully for HyperliquidClient connection and authentication.",
+      "step": "smoke_test_passed",
+      "branch": "feat/US-CORE-004-A-hyperliquid-connection"
+    },
+    {
+      "id": "E-2025-0005",
+      "type": "story_step_advanced",
+      "feature_ids": [
+        "US-CORE-004-A"
+      ],
+      "modules": [
+        "trading"
+      ],
+      "summary": "US-CORE-004-A integration tests passed",
+      "summary_zh": "US-CORE-004-A 集成测试通过",
+      "author": "Agent QA",
+      "timestamp": "2025-12-03T21:38:32.114353+00:00",
+      "notes": "Step 11 (integration_passed) completed. Integration tests passed successfully for HyperliquidClient connection and authentication.",
+      "step": "integration_passed",
+      "branch": "feat/US-CORE-004-A-hyperliquid-connection"
+    },
+    {
+      "id": "E-2025-0006",
+      "type": "story_step_advanced",
+      "feature_ids": [
+        "US-CORE-004-A"
+      ],
+      "modules": [
+        "trading"
+      ],
+      "summary": "US-CORE-004-A progress logged",
+      "summary_zh": "US-CORE-004-A 进度已记录",
+      "author": "Agent PM",
+      "timestamp": "2025-12-03T21:42:42.797457+00:00",
+      "notes": "Step 13 (progress_logged) completed. All progress information has been updated in status/roadmap.json. Story is at 92.9% completion (13/14 steps).",
+      "step": "progress_logged",
+      "branch": "feat/US-CORE-004-A-hyperliquid-connection",
+      "completion_percentage": 92.9
     }
   ]
 }

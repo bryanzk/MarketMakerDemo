@@ -25,13 +25,14 @@
           "name": "Hyperliquid Order Management / Hyperliquid 订单管理",
           "name_zh": "Hyperliquid 订单管理",
           "status": "TODO",
-          "current_step": "ac_defined",
+          "current_step": "contract_defined",
           "branch": "feat/US-CORE-004-B-hyperliquid-orders",
           "sync_source": "docs/modules/trading.json",
           "step_status": {
             "spec_defined": true,
             "story_defined": true,
-            "ac_defined": true
+            "ac_defined": true,
+            "contract_defined": true
           }
         },
         {

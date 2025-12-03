@@ -25,4 +25,21 @@ pytest tests/smoke/ -v
 3. Core functionality works / 核心功能正常
 4. No critical errors / 无严重错误
 
+## Test Files / 测试文件
+
+### `test_hyperliquid_connection.py`
+Smoke tests for US-CORE-004-A: Hyperliquid Connection and Authentication  
+US-CORE-004-A 冒烟测试：Hyperliquid 连接与认证
+
+**Coverage / 覆盖范围:**
+- AC-1: Client initialization / 客户端初始化
+- AC-2: Authentication success / 认证成功
+- AC-3: Authentication failure handling / 认证失败处理
+- AC-4: Testnet connection / 测试网连接
+- AC-5: Connection health / 连接健康状态
+
+**Run specific test / 运行特定测试:**
+```bash
+pytest tests/smoke/test_hyperliquid_connection.py -v
+```
 

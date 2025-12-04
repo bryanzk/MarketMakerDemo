@@ -65,3 +65,25 @@ US-CORE-004-B 集成测试：Hyperliquid 订单管理
 pytest tests/integration/test_hyperliquid_orders_integration.py -v
 ```
 
+### `test_hyperliquid_llm_evaluation_integration.py`
+Integration tests for US-API-004: Hyperliquid LLM Evaluation Support  
+US-API-004 集成测试：Hyperliquid LLM 评估支持
+
+**Coverage / 覆盖范围:**
+- AC-1, AC-3: Complete evaluation flow with Hyperliquid / 使用 Hyperliquid 的完整评估流程
+- AC-3, AC-4: Hyperliquid market data in LLM context / LLM 上下文中的 Hyperliquid 市场数据
+- AC-2: Response format consistency for Hyperliquid / Hyperliquid 响应格式一致性
+- AC-5: Error handling integration for Hyperliquid / Hyperliquid 错误处理集成
+- MultiLLMEvaluator with HyperliquidClient integration / MultiLLMEvaluator 与 HyperliquidClient 集成
+- AC-3: Apply LLM suggestions to Hyperliquid / 将 LLM 建议应用到 Hyperliquid
+
+**Test Classes / 测试类:**
+1. `TestHyperliquidLLMEvaluationAPIIntegration` - API 集成测试
+2. `TestHyperliquidLLMEvaluatorIntegration` - MultiLLMEvaluator 集成测试
+3. `TestHyperliquidLLMApplyIntegration` - 应用建议集成测试
+
+**Run specific test / 运行特定测试:**
+```bash
+pytest tests/integration/test_hyperliquid_llm_evaluation_integration.py -v
+```
+

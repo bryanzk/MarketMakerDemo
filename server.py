@@ -55,6 +55,153 @@ def get_default_exchange():
         return default_instance.exchange
     return None
 
+
+def get_exchange_by_name(exchange_name: str):
+    """
+    Get exchange client by name (binance or hyperliquid).
+    
+    根据名称获取交易所客户端（binance 或 hyperliquid）。
+    
+    Args:
+        exchange_name: "binance" or "hyperliquid"
+        
+    Returns:
+        Exchange client instance or None if not found/connected
+    """
+    from src.trading.hyperliquid_client import HyperliquidClient
+    from src.trading.exchange import BinanceClient
+    
+    if exchange_name == "hyperliquid":
+        # Look for HyperliquidClient in strategy instances
+        # 在策略实例中查找 HyperliquidClient
+        if hasattr(bot_engine, "strategy_instances") and bot_engine.strategy_instances:
+            try:
+                for instance in bot_engine.strategy_instances.values():
+                    if hasattr(instance, "use_real_exchange") and instance.use_real_exchange:
+                        if hasattr(instance, "exchange") and instance.exchange is not None:
+                            if isinstance(instance.exchange, HyperliquidClient):
+                                if hasattr(instance.exchange, "is_connected") and instance.exchange.is_connected:
+                                    return instance.exchange
+            except (TypeError, AttributeError):
+                # Handle case where bot_engine is a Mock in tests
+                # 处理测试中 bot_engine 是 Mock 的情况
+                pass
+        
+        # If not found in instances, try to create a new one
+        # 如果在实例中未找到，尝试创建新的
+        try:
+            hyperliquid_client = HyperliquidClient()
+            if hasattr(hyperliquid_client, "is_connected") and hyperliquid_client.is_connected:
+                return hyperliquid_client
+        except Exception as e:
+            logger.debug(f"Failed to create HyperliquidClient: {e}")
+        
+        return None
+    
+    elif exchange_name == "binance":
+        # For binance, use get_default_exchange which is usually BinanceClient
+        # 对于 binance，使用 get_default_exchange，通常是 BinanceClient
+        # This maintains compatibility with existing tests and code
+        # 这保持了与现有测试和代码的兼容性
+        return get_default_exchange()
+    
+    else:
+        # Invalid exchange name, return None
+        # 无效的交易所名称，返回 None
+        return None
+
+
+def _validate_exchange_parameter(exchange: str) -> tuple[bool, Optional[dict]]:
+    """
+    Validate exchange parameter / 验证交易所参数
+    
+    Args:
+        exchange: Exchange name to validate
+        
+    Returns:
+        Tuple of (is_valid, error_response)
+        - is_valid: True if valid, False otherwise
+        - error_response: Error response dict if invalid, None if valid
+    """
+    exchange_name = exchange.lower()
+    if exchange_name not in ["binance", "hyperliquid"]:
+        return False, {
+            "error": (
+                f"Invalid exchange parameter: {exchange}. "
+                f"Must be 'binance' or 'hyperliquid'. "
+                f"无效的交易所参数：{exchange}。必须是 'binance' 或 'hyperliquid'。"
+            )
+        }
+    return True, None
+
+
+def _check_exchange_connection(
+    exchange_name: str, exchange: Optional[object], error_format: str = "error"
+) -> tuple[bool, Optional[dict], Optional[int]]:
+    """
+    Check exchange connection status / 检查交易所连接状态
+    
+    Args:
+        exchange_name: Exchange name ("binance" or "hyperliquid")
+        exchange: Exchange client instance or None
+        error_format: Response format ("error" for run endpoint, "status" for apply endpoint)
+        
+    Returns:
+        Tuple of (is_connected, error_response, status_code)
+        - is_connected: True if connected, False otherwise
+        - error_response: Error response dict if not connected, None if connected
+        - status_code: HTTP status code (503 for service unavailable)
+    """
+    if exchange is None:
+        if exchange_name == "hyperliquid":
+            error_msg = (
+                "Hyperliquid exchange not connected. "
+                "Please connect to Hyperliquid first. / "
+                "Hyperliquid 交易所未连接。请先连接到 Hyperliquid。"
+            )
+            if error_format == "status":
+                return False, {"status": "error", "error": error_msg}, 503
+            else:
+                return False, {"error": error_msg}, 503
+        else:
+            error_msg = "Exchange not available / 交易所不可用"
+            if error_format == "status":
+                return False, {"status": "error", "error": error_msg}, None
+            else:
+                return False, {"error": error_msg}, None
+    
+    # For Hyperliquid, check is_connected attribute
+    # 对于 Hyperliquid，检查 is_connected 属性
+    if exchange_name == "hyperliquid":
+        from src.trading.hyperliquid_client import HyperliquidClient
+        
+        if isinstance(exchange, HyperliquidClient) and not exchange.is_connected:
+            error_msg = (
+                "Hyperliquid exchange not connected. "
+                "Please connect to Hyperliquid first. / "
+                "Hyperliquid 交易所未连接。请先连接到 Hyperliquid。"
+            )
+            if error_format == "status":
+                return False, {"status": "error", "error": error_msg}, 503
+            else:
+                return False, {"error": error_msg}, 503
+    
+    return True, None, None
+
+
+def _format_symbol_with_exchange(symbol: str, exchange_name: str) -> str:
+    """
+    Format symbol with exchange name for LLM context / 为 LLM 上下文格式化带交易所名称的交易对
+    
+    Args:
+        symbol: Trading symbol
+        exchange_name: Exchange name ("binance" or "hyperliquid")
+        
+    Returns:
+        Formatted symbol string with exchange name
+    """
+    return f"{symbol} ({exchange_name.upper()})"
+
 # Portfolio Manager for multi-strategy management
 # Initial capital will be fetched from Binance on startup
 portfolio_manager = PortfolioManager(total_capital=10000.0)  # Default fallback
@@ -195,11 +342,13 @@ class StrategyAllocationUpdate(BaseModel):
 class EvaluationRunRequest(BaseModel):
     symbol: str
     simulation_steps: int = 500
+    exchange: str = "binance"  # "binance" or "hyperliquid"
 
 
 class EvaluationApplyRequest(BaseModel):
     source: str  # "consensus" or "individual"
     provider_name: Optional[str] = None
+    exchange: str = "binance"  # "binance" or "hyperliquid"
 
 
 def _get_or_create_strategy_instance(
@@ -255,6 +404,12 @@ async def read_root(request: Request):
 async def llm_trade_page(request: Request):
     """Render dedicated LLM Trade Lab page / 渲染专用 LLM 交易实验室页面"""
     return templates.TemplateResponse("LLMTrade.html", {"request": request})
+
+
+@app.get("/hyperliquid", response_class=HTMLResponse)
+async def hyperliquid_trade_page(request: Request):
+    """Render dedicated Hyperliquid Trading page / 渲染专用 Hyperliquid 交易页面"""
+    return templates.TemplateResponse("HyperliquidTrade.html", {"request": request})
 
 
 @app.get("/api/debug/balance")
@@ -865,29 +1020,47 @@ async def run_evaluation(request: EvaluationRunRequest):
     运行多 LLM 评估
     
     Args:
-        request: EvaluationRunRequest with symbol and optional simulation_steps
+        request: EvaluationRunRequest with symbol, optional simulation_steps, and exchange parameter
         
     Returns:
         {
             "symbol": str,
+            "exchange": str,
             "individual_results": List[EvaluationResult],
             "aggregated": AggregatedResult,
             "comparison_table": str,
-            "consensus_report": dict
+            "consensus_report": dict,
+            "market_data": dict
         }
     """
     global _last_evaluation_results, _last_evaluation_aggregated
     
     try:
+        # Validate exchange parameter
+        # 验证交易所参数
+        is_valid, validation_error = _validate_exchange_parameter(request.exchange)
+        if not is_valid:
+            return validation_error
+        
+        exchange_name = request.exchange.lower()
+        
         # Normalize symbol (remove / and :)
         symbol = request.symbol.upper().replace("/", "").replace(":", "")
         
-        # Get exchange for market data
-        exchange = get_default_exchange()
-        if exchange is None:
-            return {"error": "Exchange not available"}
+        # Get exchange client by name
+        # 根据名称获取交易所客户端
+        exchange = get_exchange_by_name(exchange_name)
+        
+        # Check exchange connection
+        # 检查交易所连接
+        is_connected, connection_error, status_code = _check_exchange_connection(
+            exchange_name, exchange, error_format="error"
+        )
+        if not is_connected:
+            return connection_error, status_code if status_code else 400
         
         # Fetch market data
+        # 获取市场数据
         try:
             # Temporarily set symbol if needed
             original_symbol = getattr(exchange, "symbol", None)
@@ -901,22 +1074,26 @@ async def run_evaluation(request: EvaluationRunRequest):
             if original_symbol and hasattr(exchange, "set_symbol"):
                 exchange.set_symbol(original_symbol)
         except Exception as e:
-            return {"error": f"Failed to fetch market data: {str(e)}"}
+            error_msg = f"Failed to fetch market data: {str(e)} / 获取市场数据失败：{str(e)}"
+            return {"error": error_msg}
         
         if not market_data:
-            return {"error": "No market data available"}
+            return {"error": "No market data available / 无可用市场数据"}
         
         # Build MarketContext
+        # 构建市场上下文
         mid_price = market_data.get("mid_price", 0.0)
         best_bid = market_data.get("best_bid", mid_price * 0.999)
         best_ask = market_data.get("best_ask", mid_price * 1.001)
         spread_bps = ((best_ask - best_bid) / mid_price * 10000) if mid_price > 0 else 10.0
         
         # Get funding rate if available
+        # 获取资金费率（如果可用）
         funding_rate = market_data.get("funding_rate", 0.0)
         funding_rate_trend = "stable"  # Default, could be enhanced
         
         # Get position and account info
+        # 获取仓位和账户信息
         position_amt = account_data.get("position_amt", 0.0) if account_data else 0.0
         position_side = "long" if position_amt > 0 else ("short" if position_amt < 0 else "neutral")
         unrealized_pnl = account_data.get("unrealizedProfit", 0.0) if account_data else 0.0
@@ -924,6 +1101,7 @@ async def run_evaluation(request: EvaluationRunRequest):
         leverage = account_data.get("leverage", 1.0) if account_data else 1.0
         
         # Get historical performance (simplified)
+        # 获取历史绩效（简化版）
         win_rate = 0.0
         sharpe_ratio = 0.0
         recent_pnl = 0.0
@@ -938,11 +1116,18 @@ async def run_evaluation(request: EvaluationRunRequest):
                 recent_pnl = sum(t.get("pnl", 0) for t in trades[-10:])  # Last 10 trades
         
         # Estimate volatility (simplified - could be enhanced)
+        # 估算波动率（简化版 - 可以增强）
         volatility_24h = 0.03  # 3% default
         volatility_1h = 0.01   # 1% default
         
+        # Add exchange information to symbol for LLM context
+        # 在 symbol 中添加交易所信息以供 LLM 上下文使用
+        # This ensures the LLM knows which exchange the evaluation is for
+        # 这确保 LLM 知道评估是针对哪个交易所的
+        symbol_with_exchange = _format_symbol_with_exchange(symbol, exchange_name)
+        
         context = MarketContext(
-            symbol=symbol,
+            symbol=symbol_with_exchange,  # Include exchange name in symbol for LLM context
             mid_price=mid_price,
             best_bid=best_bid,
             best_ask=best_ask,
@@ -1047,12 +1232,25 @@ async def run_evaluation(request: EvaluationRunRequest):
                 "failed_evaluations": agg.failed_evaluations,
             }
         
+        # Prepare market_data for response
+        # 准备响应中的市场数据
+        response_market_data = {
+            "symbol": symbol,
+            "mid_price": mid_price,
+            "best_bid": best_bid,
+            "best_ask": best_ask,
+            "funding_rate": funding_rate,
+            "spread_bps": spread_bps,
+        }
+        
         return {
             "symbol": symbol,
+            "exchange": exchange_name,
             "individual_results": [result_to_dict(r) for r in results],
             "aggregated": aggregated_to_dict(aggregated),
             "comparison_table": comparison_table,
             "consensus_report": {"summary": consensus_report},
+            "market_data": response_market_data,
         }
         
     except Exception as e:
@@ -1068,34 +1266,63 @@ async def apply_evaluation(request: EvaluationApplyRequest):
     应用评估建议到策略配置
     
     Args:
-        request: EvaluationApplyRequest with source ("consensus" or "individual") 
-                 and optional provider_name
+        request: EvaluationApplyRequest with source ("consensus" or "individual"), 
+                 optional provider_name, and exchange parameter
         
     Returns:
         {
-            "status": "applied",
+            "status": "success" or "error",
             "applied_config": {
                 "strategy_type": str,
                 "spread": float,
                 "skew_factor": float,
                 "quantity": float,
                 "leverage": float
-            }
+            },
+            "exchange": str,
+            "message": str (bilingual: English and Chinese)
         }
     """
     global _last_evaluation_results, _last_evaluation_aggregated
     
+    # Validate exchange parameter
+    # 验证交易所参数
+    is_valid, validation_error = _validate_exchange_parameter(request.exchange)
+    if not is_valid:
+        return {
+            "status": "error",
+            "error": validation_error.get("error", "Invalid exchange parameter / 无效的交易所参数")
+        }
+    
+    exchange_name = request.exchange.lower()
+    
     if _last_evaluation_aggregated is None:
-        return {"error": "No evaluation results available. Please run evaluation first."}
+        return {
+            "status": "error",
+            "error": "No evaluation results available. Please run evaluation first. / 没有可用的评估结果。请先运行评估。"
+        }
     
     try:
+        # Check exchange connection if hyperliquid
+        # 如果是 hyperliquid，检查交易所连接
+        if exchange_name == "hyperliquid":
+            exchange = get_exchange_by_name(exchange_name)
+            is_connected, connection_error, status_code = _check_exchange_connection(
+                exchange_name, exchange, error_format="status"
+            )
+            if not is_connected:
+                return connection_error, status_code if status_code else 400
+        
         proposal = None
         
         if request.source == "consensus":
             proposal = _last_evaluation_aggregated.consensus_proposal
         elif request.source == "individual":
             if not request.provider_name:
-                return {"error": "provider_name required for individual source"}
+                return {
+                    "status": "error",
+                    "error": "provider_name required for individual source / 个人来源需要 provider_name"
+                }
             
             # Find result by provider name
             found = False
@@ -1106,23 +1333,37 @@ async def apply_evaluation(request: EvaluationApplyRequest):
                     break
             
             if not found:
-                return {"error": f"Provider {request.provider_name} not found in evaluation results"}
+                return {
+                    "status": "error",
+                    "error": f"Provider {request.provider_name} not found in evaluation results / 在评估结果中未找到提供商 {request.provider_name}"
+                }
         else:
-            return {"error": f"Invalid source: {request.source}. Use 'consensus' or 'individual'"}
+            return {
+                "status": "error",
+                "error": f"Invalid source: {request.source}. Use 'consensus' or 'individual'. / 无效的来源：{request.source}。使用 'consensus' 或 'individual'。"
+            }
         
         if not proposal or not proposal.parse_success:
-            return {"error": "Invalid proposal or proposal parsing failed"}
+            return {
+                "status": "error",
+                "error": "Invalid proposal or proposal parsing failed / 无效的建议或建议解析失败"
+            }
         
         # Map strategy name to strategy_type
+        # 将策略名称映射到 strategy_type
         strategy_name = proposal.recommended_strategy
         if strategy_name == "FixedSpread":
             strategy_type = "fixed_spread"
         elif strategy_name == "FundingRate":
             strategy_type = "funding_rate"
         else:
-            return {"error": f"Unsupported strategy: {strategy_name}"}
+            return {
+                "status": "error",
+                "error": f"Unsupported strategy: {strategy_name} / 不支持的策略：{strategy_name}"
+            }
         
         # Apply configuration
+        # 应用配置
         config_update = ConfigUpdate(
             spread=proposal.spread * 100,  # Convert to percentage
             quantity=proposal.quantity,
@@ -1133,16 +1374,32 @@ async def apply_evaluation(request: EvaluationApplyRequest):
         
         config_result = await update_config(config_update)
         if "error" in config_result:
-            return config_result
+            return {
+                "status": "error",
+                "error": config_result.get("error", "Failed to apply configuration / 应用配置失败"),
+                "exchange": exchange_name,
+            }
         
         # Apply leverage if provided
+        # 如果提供了杠杆，应用杠杆
         if proposal.leverage:
             leverage_result = await update_leverage(int(proposal.leverage))
             if "error" in leverage_result:
-                return leverage_result
+                return {
+                    "status": "error",
+                    "error": leverage_result.get("error", "Failed to apply leverage / 应用杠杆失败"),
+                    "exchange": exchange_name,
+                }
+        
+        # Success message in bilingual format
+        # 双语格式的成功消息
+        success_message = (
+            f"Configuration applied successfully to {exchange_name.upper()} exchange. / "
+            f"配置已成功应用到 {exchange_name.upper()} 交易所。"
+        )
         
         return {
-            "status": "applied",
+            "status": "success",
             "applied_config": {
                 "strategy_type": strategy_type,
                 "spread": proposal.spread,
@@ -1150,11 +1407,17 @@ async def apply_evaluation(request: EvaluationApplyRequest):
                 "quantity": proposal.quantity,
                 "leverage": proposal.leverage,
             },
+            "exchange": exchange_name,
+            "message": success_message,
         }
         
     except Exception as e:
         logger.error(f"Apply evaluation error: {e}", exc_info=True)
-        return {"error": str(e)}
+        return {
+            "status": "error",
+            "error": f"Apply evaluation error: {str(e)} / 应用评估错误：{str(e)}",
+            "exchange": exchange_name,
+        }
 
 
 # ============================================================================

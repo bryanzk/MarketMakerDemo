@@ -120,6 +120,12 @@
 **When** 请求失败  
 **Then** 我应该收到清晰的中英文错误消息，系统应该优雅地处理错误
 
+## UI Implementation Note / UI 实现说明
+
+**Note / 说明**: UI display requirements for Hyperliquid position and balance tracking are covered in **US-UI-004** (Dedicated Hyperliquid Trading Page). This user story (US-CORE-004-C) focuses on the backend API functionality for position and balance tracking.
+
+**注意 / 注意**: Hyperliquid 仓位和余额追踪的 UI 显示需求在 **US-UI-004**（专用 Hyperliquid 交易页面）中涵盖。此用户故事（US-CORE-004-C）专注于仓位和余额追踪的后端 API 功能。
+
 ## Technical Notes / 技术备注
 
 ### Implementation Details / 实现细节
@@ -174,9 +180,10 @@
 
 ## Related / 相关
 
-- Spec: `docs/specs/trading/CORE-004.md` (to be created)
+- Spec: `docs/specs/trading/CORE-004.md`
 - Feature: `CORE-004` (Hyperliquid Exchange Integration)
 - Epic: `EPIC-02` (Hyperliquid Exchange Integration)
+- UI Story: `US-UI-004` (Dedicated Hyperliquid Trading Page - contains UI requirements)
 - Tests: `tests/unit/trading/test_hyperliquid_positions.py` (to be created)
 - Contract: `contracts/trading.json#HyperliquidClient#PositionMethods` (to be created)
 - Depends on: `US-CORE-004-A` (requires connection to be working)

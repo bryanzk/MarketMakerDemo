@@ -236,3 +236,6 @@ class TestHyperliquidOrderManagementSmoke:
         # fetch_open_orders should return list
         assert hasattr(client, "fetch_open_orders")
 
+
+
+

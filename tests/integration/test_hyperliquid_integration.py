@@ -337,3 +337,6 @@ class TestHyperliquidErrorHandlingIntegration:
         error_msg = str(exc_info.value)
         assert len(error_msg) > 0
 
+
+
+

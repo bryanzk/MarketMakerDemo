@@ -344,6 +344,7 @@ class TestHyperliquidClientTestnetMainnet:
         {
             "HYPERLIQUID_API_KEY": "test_key",
             "HYPERLIQUID_API_SECRET": "test_secret",
+            "HYPERLIQUID_TESTNET": "",  # Explicitly set to empty to test default behavior
         },
         clear=False,
     )

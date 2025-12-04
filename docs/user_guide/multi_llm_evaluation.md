@@ -499,8 +499,35 @@ FixedSpread: ████████         33% (1 vote)
 
 ---
 
+## Exchange Support / 交易所支持
+
+The Multi-LLM Evaluation API supports multiple exchanges:
+
+多 LLM 评估 API 支持多个交易所：
+
+- **Binance** (default): See this guide for general usage
+- **Hyperliquid**: See [Hyperliquid LLM Evaluation Guide](./hyperliquid_llm_evaluation.md) for Hyperliquid-specific usage
+- **Binance**（默认）：查看本指南了解一般用法
+- **Hyperliquid**：查看 [Hyperliquid LLM 评估指南](./hyperliquid_llm_evaluation.md) 了解 Hyperliquid 特定用法
+
+To use Hyperliquid, simply set `exchange="hyperliquid"` in the API request:
+
+要使用 Hyperliquid，只需在 API 请求中设置 `exchange="hyperliquid"`：
+
+```bash
+curl -X POST http://localhost:8000/api/evaluation/run \
+  -H "Content-Type: application/json" \
+  -d '{
+    "symbol": "ETH/USDT:USDT",
+    "exchange": "hyperliquid"
+  }'
+```
+
+---
+
 ## Next Steps / 下一步
 
 - See [User Stories](./user_stories_multi_llm.md) for specific use cases / 查看 [用户故事](./user_stories_multi_llm.md) 了解具体使用场景
+- See [Hyperliquid LLM Evaluation Guide](./hyperliquid_llm_evaluation.md) for Hyperliquid-specific usage / 查看 [Hyperliquid LLM 评估指南](./hyperliquid_llm_evaluation.md) 了解 Hyperliquid 特定用法
 - See [API Reference](../api_reference.md) for detailed interfaces / 查看 [API 文档](../api_reference.md) 了解详细接口
 - See [Strategy Development Guide](../strategy_development_guide.md) for custom strategies / 查看 [策略开发指南](../strategy_development_guide.md) 自定义策略

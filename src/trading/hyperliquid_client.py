@@ -537,12 +537,16 @@ class HyperliquidClient:
         try:
             # Convert symbol format (e.g., "ETH/USDT:USDT" -> "ETH")
             # 转换交易对格式（例如，"ETH/USDT:USDT" -> "ETH"）
-            symbol_base = self.symbol.split("/")[0] if "/" in self.symbol else self.symbol.split(":")[0] if ":" in self.symbol else self.symbol
-            
+            symbol_base = (
+                self.symbol.split("/")[0]
+                if "/" in self.symbol
+                else self.symbol.split(":")[0] if ":" in self.symbol else self.symbol
+            )
+
             # Hyperliquid uses coin name without /USDT suffix
             # Hyperliquid 使用币种名称，不带 /USDT 后缀
             coin = symbol_base.replace("USDT", "").replace("/", "").replace(":", "")
-            
+
             # Fetch orderbook from Hyperliquid API
             # 从 Hyperliquid API 获取订单簿
             # Hyperliquid uses /info endpoint with "l2Book" type
@@ -551,28 +555,30 @@ class HyperliquidClient:
                 "type": "l2Book",
                 "coin": coin,
             }
-            
+
             response = self._make_request(
                 method="POST",
                 endpoint="/info",
                 data=query_payload,
                 public=True,  # Orderbook is public data
             )
-            
+
             if not response:
-                logger.warning("No response when fetching market data / 获取市场数据时无响应")
+                logger.warning(
+                    "No response when fetching market data / 获取市场数据时无响应"
+                )
                 return None
-            
+
             # Parse orderbook response
             # 解析订单簿响应
             best_bid = None
             best_ask = None
             mid_price = None
-            
+
             if isinstance(response, dict):
                 # Try different response formats
                 # 尝试不同的响应格式
-                
+
                 # Format 1: {"levels": {"bids": [[price, size], ...], "asks": [[price, size], ...]}}
                 # 格式 1: {"levels": {"bids": [[价格, 数量], ...], "asks": [[价格, 数量], ...]}}
                 if "levels" in response:
@@ -585,7 +591,7 @@ class HyperliquidClient:
                         # 格式 2: {"levels": [[价格, 数量], ...]} - 单个数组
                         bids = levels if isinstance(levels, list) else []
                         asks = []
-                
+
                 # Format 3: Direct bids/asks in response
                 # 格式 3: 响应中直接包含 bids/asks
                 elif "bids" in response or "asks" in response:
@@ -594,7 +600,7 @@ class HyperliquidClient:
                 else:
                     bids = []
                     asks = []
-                
+
                 # Get best bid and ask (first level)
                 # 获取最佳买价和卖价（第一档）
                 if bids and len(bids) > 0:
@@ -602,13 +608,13 @@ class HyperliquidClient:
                         best_bid = float(bids[0][0])
                     elif isinstance(bids[0], (int, float)):
                         best_bid = float(bids[0])
-                
+
                 if asks and len(asks) > 0:
                     if isinstance(asks[0], (list, tuple)) and len(asks[0]) > 0:
                         best_ask = float(asks[0][0])
                     elif isinstance(asks[0], (int, float)):
                         best_ask = float(asks[0])
-            
+
             # If we have both bid and ask, calculate mid price
             # 如果我们有买价和卖价，计算中间价
             if best_bid and best_ask:
@@ -626,7 +632,7 @@ class HyperliquidClient:
                         data=mids_payload,
                         public=True,
                     )
-                    
+
                     if mids_response and isinstance(mids_response, dict):
                         # allMids returns {coin: mid_price} or {"mid_prices": {coin: mid_price}}
                         # allMids 返回 {币种: 中间价} 或 {"mid_prices": {币种: 中间价}}
@@ -642,22 +648,28 @@ class HyperliquidClient:
                                 if not best_ask:
                                     best_ask = mid_price * 1.0005
                             else:
-                                logger.warning(f"Mid price not found for {coin} in allMids response / 在 allMids 响应中未找到 {coin} 的中间价")
+                                logger.warning(
+                                    f"Mid price not found for {coin} in allMids response / 在 allMids 响应中未找到 {coin} 的中间价"
+                                )
                         else:
-                            logger.warning(f"Unexpected allMids response format / 意外的 allMids 响应格式")
+                            logger.warning(
+                                f"Unexpected allMids response format / 意外的 allMids 响应格式"
+                            )
                 except Exception as e:
                     logger.debug(f"Failed to fetch mid price from allMids: {e}")
-                
+
                 # If still no mid price, return None
                 # 如果仍然没有中间价，返回 None
                 if not mid_price:
-                    logger.warning(f"Failed to fetch market data for {coin} / 获取 {coin} 的市场数据失败")
+                    logger.warning(
+                        f"Failed to fetch market data for {coin} / 获取 {coin} 的市场数据失败"
+                    )
                     return None
-            
+
             # Fetch funding rate
             # 获取资金费率
             funding_rate = self.fetch_funding_rate()
-            
+
             # Return market data
             # 返回市场数据
             return {
@@ -669,7 +681,7 @@ class HyperliquidClient:
                 "tick_size": None,  # Will be populated from symbol limits if needed
                 "step_size": None,  # Will be populated from symbol limits if needed
             }
-                
+
         except Exception as e:
             logger.error(f"Error fetching market data: {e}", exc_info=True)
             return None

@@ -395,7 +395,20 @@ class HyperliquidClient:
             return {"status": "ok"}
 
         except requests.exceptions.HTTPError as e:
-            if e.response.status_code == 401:
+            # Handle rate limiting (429 Too Many Requests)
+            # 处理速率限制（429 请求过多）
+            if e.response.status_code == 429:
+                error_msg = (
+                    f"Rate limit exceeded. Too many requests to Hyperliquid API. "
+                    f"Please wait before making more requests. "
+                    f"速率限制已超出。对 Hyperliquid API 的请求过多。请稍后再试。"
+                )
+                logger.warning(error_msg)
+                # Don't raise exception, return None to allow retry logic
+                # 不抛出异常，返回 None 以允许重试逻辑
+                self.last_api_error = error_msg
+                return None
+            elif e.response.status_code == 401:
                 error_msg = (
                     f"Authentication failed. Invalid API credentials. "
                     f"Error: {str(e)}. "
@@ -622,16 +635,62 @@ class HyperliquidClient:
                 # Get best bid and ask (first level)
                 # 获取最佳买价和卖价（第一档）
                 if bids and len(bids) > 0:
-                    if isinstance(bids[0], (list, tuple)) and len(bids[0]) > 0:
-                        best_bid = float(bids[0][0])
-                    elif isinstance(bids[0], (int, float)):
-                        best_bid = float(bids[0])
+                    try:
+                        bid_value = bids[0]
+                        # Handle different formats: [price, size], {price: ..., size: ...}, or direct number
+                        # 处理不同格式：[价格, 数量], {price: ..., size: ...}，或直接数字
+                        if isinstance(bid_value, (list, tuple)) and len(bid_value) > 0:
+                            # Extract price from [price, size] format
+                            # 从 [价格, 数量] 格式中提取价格
+                            price_value = bid_value[0]
+                            if isinstance(price_value, (int, float, str)):
+                                best_bid = float(price_value)
+                            elif isinstance(price_value, dict):
+                                # Handle dict format like {"price": ..., "size": ...}
+                                # 处理字典格式，如 {"price": ..., "size": ...}
+                                best_bid = float(price_value.get("price", price_value.get("px", 0)))
+                            else:
+                                logger.warning(f"Unexpected bid format: {type(price_value)} / 意外的买价格式: {type(price_value)}")
+                        elif isinstance(bid_value, (int, float, str)):
+                            best_bid = float(bid_value)
+                        elif isinstance(bid_value, dict):
+                            # Handle dict format directly
+                            # 直接处理字典格式
+                            best_bid = float(bid_value.get("price", bid_value.get("px", bid_value.get("bid", 0))))
+                        else:
+                            logger.warning(f"Unexpected bid format: {type(bid_value)} / 意外的买价格式: {type(bid_value)}")
+                    except (ValueError, TypeError, KeyError) as e:
+                        logger.error(f"Error parsing bid price: {e} / 解析买价错误: {e}")
+                        best_bid = None
 
                 if asks and len(asks) > 0:
-                    if isinstance(asks[0], (list, tuple)) and len(asks[0]) > 0:
-                        best_ask = float(asks[0][0])
-                    elif isinstance(asks[0], (int, float)):
-                        best_ask = float(asks[0])
+                    try:
+                        ask_value = asks[0]
+                        # Handle different formats: [price, size], {price: ..., size: ...}, or direct number
+                        # 处理不同格式：[价格, 数量], {price: ..., size: ...}，或直接数字
+                        if isinstance(ask_value, (list, tuple)) and len(ask_value) > 0:
+                            # Extract price from [price, size] format
+                            # 从 [价格, 数量] 格式中提取价格
+                            price_value = ask_value[0]
+                            if isinstance(price_value, (int, float, str)):
+                                best_ask = float(price_value)
+                            elif isinstance(price_value, dict):
+                                # Handle dict format like {"price": ..., "size": ...}
+                                # 处理字典格式，如 {"price": ..., "size": ...}
+                                best_ask = float(price_value.get("price", price_value.get("px", 0)))
+                            else:
+                                logger.warning(f"Unexpected ask format: {type(price_value)} / 意外的卖价格式: {type(price_value)}")
+                        elif isinstance(ask_value, (int, float, str)):
+                            best_ask = float(ask_value)
+                        elif isinstance(ask_value, dict):
+                            # Handle dict format directly
+                            # 直接处理字典格式
+                            best_ask = float(ask_value.get("price", ask_value.get("px", ask_value.get("ask", 0))))
+                        else:
+                            logger.warning(f"Unexpected ask format: {type(ask_value)} / 意外的卖价格式: {type(ask_value)}")
+                    except (ValueError, TypeError, KeyError) as e:
+                        logger.error(f"Error parsing ask price: {e} / 解析卖价错误: {e}")
+                        best_ask = None
 
             # If we have both bid and ask, calculate mid price
             # 如果我们有买价和卖价，计算中间价
@@ -656,15 +715,31 @@ class HyperliquidClient:
                         # allMids 返回 {币种: 中间价} 或 {"mid_prices": {币种: 中间价}}
                         mid_prices = mids_response.get("mid_prices", mids_response)
                         if isinstance(mid_prices, dict):
-                            mid_price = mid_prices.get(coin)
-                            if mid_price:
-                                mid_price = float(mid_price)
-                                # Estimate bid/ask from mid price (assume 0.1% spread)
-                                # 从中间价估算买价/卖价（假设 0.1% 价差）
-                                if not best_bid:
-                                    best_bid = mid_price * 0.9995
-                                if not best_ask:
-                                    best_ask = mid_price * 1.0005
+                            mid_price_value = mid_prices.get(coin)
+                            if mid_price_value:
+                                try:
+                                    # Handle different formats: number, string, or dict
+                                    # 处理不同格式：数字、字符串或字典
+                                    if isinstance(mid_price_value, (int, float, str)):
+                                        mid_price = float(mid_price_value)
+                                    elif isinstance(mid_price_value, dict):
+                                        # Handle dict format like {"mid": ...}
+                                        # 处理字典格式，如 {"mid": ...}
+                                        mid_price = float(mid_price_value.get("mid", mid_price_value.get("price", 0)))
+                                    else:
+                                        logger.warning(f"Unexpected mid_price format: {type(mid_price_value)} / 意外的中间价格式: {type(mid_price_value)}")
+                                        mid_price = None
+                                    
+                                    if mid_price:
+                                        # Estimate bid/ask from mid price (assume 0.1% spread)
+                                        # 从中间价估算买价/卖价（假设 0.1% 价差）
+                                        if not best_bid:
+                                            best_bid = mid_price * 0.9995
+                                        if not best_ask:
+                                            best_ask = mid_price * 1.0005
+                                except (ValueError, TypeError) as e:
+                                    logger.error(f"Error parsing mid_price: {e} / 解析中间价错误: {e}")
+                                    mid_price = None
                             else:
                                 logger.warning(
                                     f"Mid price not found for {coin} in allMids response / 在 allMids 响应中未找到 {coin} 的中间价"

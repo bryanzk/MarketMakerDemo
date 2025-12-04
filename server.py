@@ -553,12 +553,16 @@ async def get_hyperliquid_status():
             return {
                 "error": "Hyperliquid exchange not connected / Hyperliquid 交易所未连接",
                 "connected": False,
+                "testnet": False,  # Default to mainnet if not connected
             }
         
         if not exchange.is_connected:
+            # Return testnet status even if not connected
+            testnet_status = exchange.testnet if hasattr(exchange, "testnet") else False
             return {
                 "error": "Hyperliquid exchange not connected / Hyperliquid 交易所未连接",
                 "connected": False,
+                "testnet": testnet_status,
             }
         
         # Fetch account data
@@ -583,6 +587,7 @@ async def get_hyperliquid_status():
         status = {
             "connected": True,
             "exchange": "hyperliquid",
+            "testnet": exchange.testnet if hasattr(exchange, "testnet") else False,
             "symbol": exchange.symbol if hasattr(exchange, "symbol") else None,
             "mid_price": market_data.get("mid_price", 0.0) if market_data else 0.0,
             "balance": account_data.get("balance", 0.0) if account_data else 0.0,
@@ -714,31 +719,51 @@ async def update_hyperliquid_leverage(leverage: int):
 async def update_hyperliquid_pair(pair: PairUpdate):
     """
     Update Hyperliquid trading pair / 更新 Hyperliquid 交易对
+    
+    Note: This endpoint allows updating the symbol even if Hyperliquid is not connected.
+    The symbol will be updated when connection is established.
+    注意：即使 Hyperliquid 未连接，此端点也允许更新交易对。连接建立时将更新交易对。
     """
     try:
         from src.trading.hyperliquid_client import HyperliquidClient
         
         exchange = get_exchange_by_name("hyperliquid")
-        if not exchange or not exchange.is_connected:
-            return {
-                "error": "Hyperliquid exchange not connected / Hyperliquid 交易所未连接"
-            }
         
-        success = exchange.set_symbol(pair.symbol)
-        if success:
-            # Also update strategy instance if exists
-            # 如果存在，也更新策略实例
+        # If exchange is connected, update it immediately
+        # 如果交易所已连接，立即更新
+        if exchange and exchange.is_connected:
+            success = exchange.set_symbol(pair.symbol)
+            if success:
+                # Also update strategy instance if exists
+                # 如果存在，也更新策略实例
+                for instance_id, instance in bot_engine.strategy_instances.items():
+                    if isinstance(instance.exchange, HyperliquidClient):
+                        instance.symbol = pair.symbol
+                        instance.refresh_data()
+                        break
+                
+                return {"status": "updated", "symbol": pair.symbol}
+            else:
+                return {
+                    "status": "error",
+                    "message": f"Failed to update to symbol {pair.symbol} / 更新到交易对 {pair.symbol} 失败",
+                }
+        else:
+            # Exchange not connected, but we still allow symbol update for UI
+            # Store the symbol preference for when connection is established
+            # 交易所未连接，但我们仍然允许更新交易对以用于 UI
+            # 存储交易对偏好，以便连接建立时使用
             for instance_id, instance in bot_engine.strategy_instances.items():
                 if isinstance(instance.exchange, HyperliquidClient):
                     instance.symbol = pair.symbol
-                    instance.refresh_data()
                     break
             
-            return {"status": "updated", "symbol": pair.symbol}
-        else:
+            # Return success with a warning that connection is needed for actual trading
+            # 返回成功，但警告需要连接才能进行实际交易
             return {
-                "status": "error",
-                "message": f"Failed to update to symbol {pair.symbol} / 更新到交易对 {pair.symbol} 失败",
+                "status": "updated",
+                "symbol": pair.symbol,
+                "warning": "Hyperliquid not connected. Symbol updated for UI. Please connect to Hyperliquid for trading. / Hyperliquid 未连接。交易对已更新用于 UI。请连接到 Hyperliquid 进行交易。"
             }
     except Exception as e:
         logger.error(f"Error updating Hyperliquid pair: {e}")

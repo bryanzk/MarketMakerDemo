@@ -211,4 +211,254 @@
 
 ---
 
+## Issue #003: Hyperliquid Trading Pair Switch Fails When Not Connected / Hyperliquid 未连接时切换交易对失败
+
+**Date / 日期**: 2025-12-04  
+**Status / 状态**: ✅ Fixed / 已修复  
+**Priority / 优先级**: Medium / 中  
+**Module / 模块**: web (Agent WEB)  
+**Related Feature / 相关功能**: US-UI-004: Dedicated Hyperliquid Trading Page / 专用 Hyperliquid 交易页面
+
+### Description / 描述
+
+在 Hyperliquid 交易页面（`/hyperliquid`）切换交易对时，如果 Hyperliquid 交易所未连接，会显示错误提示："Hyperliquid exchange not connected / Hyperliquid 交易所未连接"，导致无法切换交易对。
+
+**User Experience Issue / 用户体验问题**:
+- 用户可能只是想在前端选择一个新的交易对
+- 实际的连接和交易操作可能稍后进行
+- 当前的实现要求必须先连接才能切换交易对，这限制了用户体验
+
+**Root Cause / 根本原因**:
+- `/api/hyperliquid/pair` API 端点要求 Hyperliquid 必须已连接
+- 如果 `exchange.is_connected` 为 `False`，API 直接返回错误
+- 前端无法更新交易对选择，即使这只是 UI 操作
+
+### Solution / 解决方案
+
+修改了 `/api/hyperliquid/pair` API 端点和前端 `switchPair()` 函数：
+
+1. **API 端点改进** (`server.py`):
+   - 如果 Hyperliquid 已连接：正常更新交易对并返回成功
+   - 如果 Hyperliquid 未连接：仍然允许更新交易对（用于 UI），但返回警告信息
+   - 警告信息告知用户需要连接才能进行实际交易
+
+2. **前端改进** (`templates/HyperliquidTrade.html`):
+   - 处理 API 返回的 `warning` 字段
+   - 显示警告信息但不阻止交易对切换
+   - 只有在已连接时才刷新状态和仓位数据
+
+**Behavior / 行为**:
+- ✅ 允许切换交易对即使未连接（更新 UI 状态）
+- ✅ 显示警告信息，告知用户需要连接才能进行实际交易
+- ✅ 如果已连接，正常更新交易对并刷新数据
+
+### Files Modified / 修改的文件
+
+- ✅ `server.py` - `/api/hyperliquid/pair` API 端点
+- ✅ `templates/HyperliquidTrade.html` - `switchPair()` JavaScript 函数
+
+### Testing / 测试
+
+- ✅ 未连接状态下可以切换交易对
+- ✅ 显示适当的警告信息
+- ✅ 已连接状态下正常更新交易对
+- ✅ 不影响其他功能
+
+### Related Documentation / 相关文档
+
+- `docs/user_guide/hyperliquid_trading_page.md`
+- `docs/issues.md` - Issue #002 (USDT to USDC conversion)
+
+---
+
+## Issue #004: Display Testnet/Mainnet Status on Hyperliquid Trading Page / 在 Hyperliquid 交易页面显示测试网/主网状态
+
+**Date / 日期**: 2025-12-04  
+**Status / 状态**: ✅ Fixed / 已修复  
+**Priority / 优先级**: High / 高  
+**Module / 模块**: web (Agent WEB)  
+**Related Feature / 相关功能**: US-UI-004: Dedicated Hyperliquid Trading Page / 专用 Hyperliquid 交易页面
+
+### Description / 描述
+
+Hyperliquid 交易页面需要在显眼位置显示当前连接的是 Mainnet（主网）还是 Testnet（测试网），以防止用户在错误的网络上进行交易操作。
+
+**User Safety Issue / 用户安全问题**:
+- 用户可能不知道当前连接的是主网还是测试网
+- 在主网上进行测试可能导致资金损失
+- 在测试网上进行真实交易会导致无效操作
+
+**Requirement / 需求**:
+- 在页面显眼位置（header）显示网络状态
+- 使用醒目的视觉标识（颜色、图标）
+- 实时更新网络状态
+
+### Solution / 解决方案
+
+1. **API 端点改进** (`server.py`):
+   - 在 `/api/hyperliquid/status` API 响应中添加 `testnet` 字段
+   - 即使未连接也返回 testnet 状态（如果可用）
+
+2. **页面 UI 改进** (`templates/HyperliquidTrade.html`):
+   - 在页面 header 添加网络状态标识（在连接状态旁边）
+   - 添加样式：
+     - **Mainnet / 主网**: 绿色背景，显示 "✓ MAINNET / 主网"
+     - **Testnet / 测试网**: 黄色背景，显示 "⚠️ TESTNET / 测试网"
+   - 更新 `checkConnection()` 函数来显示网络状态
+
+**Visual Design / 视觉设计**:
+- Mainnet: 绿色边框和背景，表示安全的主网环境
+- Testnet: 黄色边框和背景，带警告图标，提醒这是测试环境
+
+### Files Modified / 修改的文件
+
+- ✅ `server.py` - `/api/hyperliquid/status` API 端点（添加 `testnet` 字段）
+- ✅ `templates/HyperliquidTrade.html` - Header 网络状态标识和样式
+
+### Testing / 测试
+
+- ✅ 主网状态下显示绿色 "MAINNET / 主网" 标识
+- ✅ 测试网状态下显示黄色 "TESTNET / 测试网" 标识
+- ✅ 未连接时也能显示网络状态（如果可用）
+- ✅ 标识位置显眼，易于识别
+
+### Related Documentation / 相关文档
+
+- `docs/user_guide/hyperliquid_trading_page.md`
+- `docs/user_guide/hyperliquid_connection.md`
+
+---
+
+## Issue #005: Add Testnet Connection Links and Instructions / 添加测试网连接链接和说明
+
+**Date / 日期**: 2025-12-04  
+**Status / 状态**: ✅ Fixed / 已修复  
+**Priority / 优先级**: Medium / 中  
+**Module / 模块**: web (Agent WEB)  
+**Related Feature / 相关功能**: US-UI-004: Dedicated Hyperliquid Trading Page / 专用 Hyperliquid 交易页面
+
+### Description / 描述
+
+用户需要在 Hyperliquid 交易页面上有显眼的链接和说明来连接到 Testnet（测试网）。
+
+**User Need / 用户需求**:
+- 快速访问 Hyperliquid Testnet 网站
+- 了解如何配置和连接到 Testnet
+- 区分 Testnet 和 Mainnet 的配置方法
+
+### Solution / 解决方案
+
+在连接状态面板添加了：
+
+1. **快速链接按钮**:
+   - "🔗 Testnet Website / 测试网网站" - 链接到 `https://hyperliquid-testnet.xyz`
+   - "🔗 Mainnet Website / 主网网站" - 链接到 `https://hyperliquid.xyz`
+
+2. **Testnet 连接说明框**:
+   - 醒目的黄色背景提示框
+   - 显示如何设置环境变量连接到 Testnet
+   - 包含代码示例和文档链接
+   - 双语说明（英文和中文）
+
+**Visual Design / 视觉设计**:
+- 黄色背景（`#fef3c7`）突出显示 Testnet 说明
+- 代码块使用深色背景，易于复制
+- 链接到官方文档
+
+### Files Modified / 修改的文件
+
+- ✅ `templates/HyperliquidTrade.html` - 连接状态面板添加 Testnet 链接和说明
+
+### Testing / 测试
+
+- ✅ Testnet 网站链接正常工作
+- ✅ Mainnet 网站链接正常工作
+- ✅ 说明框显示正确
+- ✅ 代码示例可复制
+
+### Related Documentation / 相关文档
+
+- `docs/user_guide/hyperliquid_connection.md` - Testnet 配置说明
+- `docs/user_guide/hyperliquid_trading_page.md` - 交易页面使用指南
+
+---
+
+## Issue #006: TypeError in fetch_market_data - float() argument must be a string or a real number, not 'dict' / fetch_market_data 中的 TypeError - float() 参数必须是字符串或实数，不是字典
+
+**Date / 日期**: 2025-12-04  
+**Status / 状态**: ✅ Fixed / 已修复  
+**Priority / 优先级**: High / 高  
+**Module / 模块**: trading (Agent TRADING)  
+**Related Feature / 相关功能**: US-CORE-004-A: Hyperliquid Connection and Authentication / Hyperliquid 连接与认证
+
+### Description / 描述
+
+在获取市场数据时，`fetch_market_data()` 函数抛出 `TypeError: float() argument must be a string or a real number, not 'dict'` 错误。
+
+**Error Location / 错误位置**:
+- File: `src/trading/hyperliquid_client.py`
+- Line: ~608 (in `fetch_market_data` method)
+- Function: Parsing bid/ask prices from orderbook response
+
+**Root Cause / 根本原因**:
+- Hyperliquid API 返回的订单簿数据格式可能与预期不同
+- 代码假设 `bids[0][0]` 和 `asks[0][0]` 是数字，但实际可能是字典
+- 缺少对不同数据格式的处理和类型检查
+
+**Error Message / 错误消息**:
+```
+Error fetching market data: float() argument must be a string or a real number, not 'dict'
+TypeError: float() argument must be a string or a real number, not 'dict'
+```
+
+### Solution / 解决方案
+
+增强了 `fetch_market_data()` 函数的数据解析逻辑：
+
+1. **增强类型检查**:
+   - 检查 `bids[0][0]` 和 `asks[0][0]` 的类型
+   - 支持多种数据格式：数字、字符串、字典
+   - 处理字典格式：`{"price": ...}`, `{"px": ...}`, `{"bid": ...}`, `{"ask": ...}`
+
+2. **错误处理**:
+   - 添加 try-except 块捕获类型错误
+   - 记录警告日志而不是崩溃
+   - 优雅降级：如果解析失败，返回 None 而不是抛出异常
+
+3. **mid_price 解析**:
+   - 同样增强 `allMids` 响应的解析逻辑
+   - 支持字典格式的中间价数据
+
+**Code Changes / 代码变更**:
+```python
+# Before / 之前
+best_bid = float(bids[0][0])  # May fail if bids[0][0] is a dict
+
+# After / 之后
+if isinstance(bid_value, (list, tuple)) and len(bid_value) > 0:
+    price_value = bid_value[0]
+    if isinstance(price_value, (int, float, str)):
+        best_bid = float(price_value)
+    elif isinstance(price_value, dict):
+        best_bid = float(price_value.get("price", price_value.get("px", 0)))
+```
+
+### Files Modified / 修改的文件
+
+- ✅ `src/trading/hyperliquid_client.py` - `fetch_market_data()` 方法
+
+### Testing / 测试
+
+- ✅ 处理数字格式的价格数据
+- ✅ 处理字符串格式的价格数据
+- ✅ 处理字典格式的价格数据
+- ✅ 错误情况下优雅降级
+- ✅ 日志记录帮助调试
+
+### Related Documentation / 相关文档
+
+- `docs/user_guide/hyperliquid_connection.md`
+- `contracts/trading.json` - MarketData interface
+
+---
 

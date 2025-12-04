@@ -155,6 +155,27 @@
             color: #991b1b;
         }
 
+        .network-badge {
+            display: inline-block;
+            padding: 6px 14px;
+            border-radius: 8px;
+            font-size: 13px;
+            font-weight: 600;
+            border: 2px solid;
+        }
+
+        .network-mainnet {
+            background: #f0fdf4;
+            color: #166534;
+            border-color: #22c55e;
+        }
+
+        .network-testnet {
+            background: #fef3c7;
+            color: #92400e;
+            border-color: #f59e0b;
+        }
+
         .info-card {
             background: #f0f9ff;
             border: 1px solid #bae6fd;
@@ -235,6 +256,9 @@
                 <div style="font-size:13px; color:#6b7280;">Dedicated interface for Hyperliquid exchange trading / 专用 Hyperliquid 交易所交易界面</div>
             </div>
             <div style="display:flex; gap:12px; align-items:center;">
+                <span id="networkStatus" class="network-badge" style="display:none;">
+                    <span id="networkText">Mainnet / 主网</span>
+                </span>
                 <span id="connectionStatus" class="status-badge status-disconnected">Checking...</span>
                 <a class="nav-link" href="/">← Back to Dashboard</a>
             </div>
@@ -242,10 +266,42 @@
 
         <!-- Connection Status Panel / 连接状态面板 -->
         <section class="panel">
-            <h2>Connection Status / 连接状态</h2>
-            <div id="connectionInfo" class="info-card">
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+                <h2 style="margin:0;">Connection Status / 连接状态</h2>
+                <div style="display:flex; gap:8px;">
+                    <a href="https://hyperliquid-testnet.xyz" target="_blank" class="btn btn-secondary" style="font-size:12px; padding:6px 12px;">
+                        🔗 Testnet Website / 测试网网站
+                    </a>
+                    <a href="https://hyperliquid.xyz" target="_blank" class="btn btn-secondary" style="font-size:12px; padding:6px 12px;">
+                        🔗 Mainnet Website / 主网网站
+                    </a>
+                </div>
+            </div>
+            <div id="connectionInfo" class="info-card" style="margin-top:16px;">
                 <div>Exchange: <strong>Hyperliquid</strong></div>
                 <div id="connectionDetails" style="margin-top:8px; font-size:13px; color:#6b7280;">Loading connection status...</div>
+                <div style="margin-top:12px; padding:12px; background:#fef3c7; border-radius:8px; border-left:3px solid #f59e0b;">
+                    <div style="font-size:12px; font-weight:600; margin-bottom:6px; color:#92400e;">
+                        🔗 Connect to Testnet / 连接到测试网
+                    </div>
+                    <div style="font-size:11px; color:#78350f; line-height:1.6; margin-bottom:8px;">
+                        To connect to Hyperliquid Testnet, set the environment variable and restart the server:
+                        要连接到 Hyperliquid 测试网，请设置环境变量并重启服务器：
+                    </div>
+                    <div style="background:#1f2937; color:#f9fafb; padding:8px; border-radius:6px; font-family:monospace; font-size:11px; margin-bottom:8px;">
+                        export HYPERLIQUID_TESTNET="true"<br>
+                        export HYPERLIQUID_API_KEY="your_testnet_key"<br>
+                        export HYPERLIQUID_API_SECRET="your_testnet_secret"
+                    </div>
+                    <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                        <a href="https://hyperliquid-testnet.xyz" target="_blank" style="font-size:11px; color:#3b82f6; text-decoration:underline;">
+                            📖 Testnet Documentation / 测试网文档
+                        </a>
+                        <a href="https://hyperliquid.xyz" target="_blank" style="font-size:11px; color:#3b82f6; text-decoration:underline;">
+                            📖 Mainnet Documentation / 主网文档
+                        </a>
+                    </div>
+                </div>
             </div>
         </section>
 
@@ -489,51 +545,101 @@
 
         // Connection Status / 连接状态
         async function checkConnection() {
+            // Prevent duplicate requests / 防止重复请求
+            if (isCheckingConnection) return;
+            isCheckingConnection = true;
+            
             try {
-                // Try to get exchange status by calling evaluation API with hyperliquid
-                // 尝试通过调用 hyperliquid 的评估 API 获取交易所状态
-                const res = await fetch('/api/evaluation/run', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ 
-                        symbol: 'ETH/USDC:USDC',
-                        exchange: 'hyperliquid',
-                        simulation_steps: 1
-                    }),
-                });
+                // Use Hyperliquid status API to check connection (faster than evaluation API)
+                // 使用 Hyperliquid 状态 API 检查连接（比评估 API 更快）
+                const res = await fetch('/api/hyperliquid/status');
                 const data = await res.json();
                 
                 const statusEl = document.getElementById('connectionStatus');
                 const detailsEl = document.getElementById('connectionDetails');
+                const networkEl = document.getElementById('networkStatus');
+                const networkTextEl = document.getElementById('networkText');
                 
-                if (data.error) {
-                    if (data.error.includes('not connected') || data.error.includes('未连接')) {
-                        statusEl.className = 'status-badge status-disconnected';
-                        statusEl.innerText = 'Disconnected / 未连接';
-                        detailsEl.innerHTML = '<span style="color:#991b1b;">Hyperliquid exchange is not connected. Please connect first. / Hyperliquid 交易所未连接，请先连接。</span>';
-                    } else {
-                        statusEl.className = 'status-badge status-disconnected';
-                        statusEl.innerText = 'Error / 错误';
-                        detailsEl.innerHTML = `<span style="color:#991b1b;">${data.error}</span>`;
+                if (!statusEl || !detailsEl) {
+                    return; // Elements not found, page might not be fully loaded
+                }
+                
+                // Handle rate limit error / 处理速率限制错误
+                if (data.error && (data.error.includes('429') || data.error.includes('Too Many Requests') || data.error.includes('速率限制'))) {
+                    statusEl.className = 'status-badge status-disconnected';
+                    statusEl.innerText = 'Rate Limited / 速率限制';
+                    detailsEl.innerHTML = '<span style="color:#f59e0b;">Too many requests. Please wait... / 请求过多，请稍候...</span>';
+                    // Extend refresh interval on rate limit / 速率限制时延长刷新间隔
+                    if (connectionRefreshInterval) {
+                        clearInterval(connectionRefreshInterval);
+                        connectionRefreshInterval = setInterval(checkConnection, 60000); // 1 minute
                     }
+                    return;
+                }
+                
+                // Update network status (testnet/mainnet)
+                // 更新网络状态（测试网/主网）
+                if (networkEl && networkTextEl) {
+                    const isTestnet = data.testnet === true;
+                    networkEl.style.display = 'inline-block';
+                    if (isTestnet) {
+                        networkEl.className = 'network-badge network-testnet';
+                        networkTextEl.innerText = '⚠️ TESTNET / 测试网';
+                    } else {
+                        networkEl.className = 'network-badge network-mainnet';
+                        networkTextEl.innerText = '✓ MAINNET / 主网';
+                    }
+                }
+                
+                if (data.error || !data.connected) {
+                    // Not connected
+                    statusEl.className = 'status-badge status-disconnected';
+                    statusEl.innerText = 'Disconnected / 未连接';
+                    const errorMsg = data.error || 'Hyperliquid exchange not connected / Hyperliquid 交易所未连接';
+                    detailsEl.innerHTML = `<span style="color:#991b1b;">${errorMsg}</span>`;
                 } else {
+                    // Connected
                     statusEl.className = 'status-badge status-connected';
                     statusEl.innerText = 'Connected / 已连接';
-                    const symbol = data.market_data?.symbol || 'N/A';
-                    const price = data.market_data?.mid_price || 0;
-                    detailsEl.innerHTML = `Symbol: <strong>${symbol}</strong> | Price: <strong>$${price.toFixed(2)}</strong>`;
+                    const symbol = data.symbol || 'N/A';
+                    const price = data.mid_price || 0;
+                    const balance = data.balance || 0;
+                    detailsEl.innerHTML = `
+                        <div>Symbol: <strong>${symbol}</strong> | Price: <strong>$${price.toFixed(2)}</strong></div>
+                        <div style="margin-top:4px;">Balance: <strong>${balance.toFixed(2)} USDC</strong></div>
+                    `;
+                }
+                
+                // Reset refresh interval on success / 成功时重置刷新间隔
+                if (connectionRefreshInterval) {
+                    clearInterval(connectionRefreshInterval);
+                    connectionRefreshInterval = setInterval(checkConnection, 30000); // 30 seconds
                 }
             } catch (err) {
                 const statusEl = document.getElementById('connectionStatus');
                 const detailsEl = document.getElementById('connectionDetails');
-                statusEl.className = 'status-badge status-disconnected';
-                statusEl.innerText = 'Error / 错误';
-                detailsEl.innerHTML = `<span style="color:#991b1b;">Failed to check connection: ${err.message}</span>`;
+                if (statusEl && detailsEl) {
+                    statusEl.className = 'status-badge status-disconnected';
+                    statusEl.innerText = 'Error / 错误';
+                    detailsEl.innerHTML = `<span style="color:#991b1b;">Failed to check connection: ${err.message} / 检查连接失败：${err.message}</span>`;
+                }
+            } finally {
+                isCheckingConnection = false;
             }
         }
 
+        // Track if refresh is in progress to avoid duplicate requests
+        // 跟踪刷新是否正在进行，避免重复请求
+        let isRefreshingPosition = false;
+        let isRefreshingOrders = false;
+        let isCheckingConnection = false;
+
         // Position and Balance / 仓位与余额
         async function refreshPosition() {
+            // Prevent duplicate requests / 防止重复请求
+            if (isRefreshingPosition) return;
+            isRefreshingPosition = true;
+            
             try {
                 const statusEl = document.getElementById('positionStatus');
                 statusEl.innerText = 'Loading position data... / 正在加载仓位数据...';
@@ -543,9 +649,22 @@
                 const data = await res.json();
                 
                 if (data.error) {
-                    positionData.style.display = 'none';
-                    statusEl.innerText = data.error;
-                    statusEl.classList.add('error');
+                    const positionData = document.getElementById('positionData');
+                    if (positionData) positionData.style.display = 'none';
+                    
+                    // Check for rate limit error / 检查速率限制错误
+                    if (data.error.includes('429') || data.error.includes('Too Many Requests') || data.error.includes('速率限制')) {
+                        statusEl.innerText = 'Rate limit exceeded. Please wait... / 速率限制已超出，请稍候...';
+                        statusEl.classList.add('error');
+                        // Extend refresh interval on rate limit / 速率限制时延长刷新间隔
+                        if (positionRefreshInterval) {
+                            clearInterval(positionRefreshInterval);
+                            positionRefreshInterval = setInterval(refreshPosition, 60000); // 1 minute
+                        }
+                    } else {
+                        statusEl.innerText = data.error;
+                        statusEl.classList.add('error');
+                    }
                     return;
                 }
                 
@@ -680,11 +799,27 @@
                     body: JSON.stringify({ symbol }),
                 });
                 const data = await res.json();
-                if (data.error) throw new Error(data.error);
+                
+                // Check for error
+                if (data.error) {
+                    throw new Error(data.error);
+                }
+                
+                // Update symbol
                 currentEvalSymbol = normalizeSymbol(symbol);
-                showMessage(controlMessage, `Switched to ${symbol} / 已切换到 ${symbol}`);
-                loadStatus();
-                refreshPosition();
+                
+                // Show success message, with warning if connection is needed
+                if (data.warning) {
+                    showMessage(controlMessage, `Switched to ${symbol} / 已切换到 ${symbol}. ${data.warning}`, false);
+                } else {
+                    showMessage(controlMessage, `Switched to ${symbol} / 已切换到 ${symbol}`);
+                }
+                
+                // Only refresh if connected
+                if (data.status === 'updated' && !data.warning) {
+                    loadStatus();
+                    refreshPosition();
+                }
             } catch (err) {
                 showMessage(controlMessage, err.message || 'Failed to switch pair / 切换交易对失败', true);
             }
@@ -1181,13 +1316,24 @@
         function startAutoRefresh() {
             if (ordersRefreshInterval) clearInterval(ordersRefreshInterval);
             if (positionRefreshInterval) clearInterval(positionRefreshInterval);
+            if (connectionRefreshInterval) clearInterval(connectionRefreshInterval);
+            
+            // Initial load
             refreshOrders();
             refreshPosition();
             checkConnection();
-            ordersRefreshInterval = setInterval(refreshOrders, 3000);
-            positionRefreshInterval = setInterval(refreshPosition, 5000);
-            setInterval(checkConnection, 10000);  // Check connection every 10 seconds
+            
+            // Reduced refresh intervals to avoid rate limiting (429 errors)
+            // 减少刷新间隔以避免速率限制（429 错误）
+            ordersRefreshInterval = setInterval(refreshOrders, 15000);  // 15 seconds (was 3)
+            positionRefreshInterval = setInterval(refreshPosition, 20000);  // 20 seconds (was 5)
+            connectionRefreshInterval = setInterval(checkConnection, 30000);  // 30 seconds (was 10)
         }
+        
+        // Track intervals for cleanup
+        let ordersRefreshInterval = null;
+        let positionRefreshInterval = null;
+        let connectionRefreshInterval = null;
 
         document.addEventListener('DOMContentLoaded', () => {
             loadStatus();

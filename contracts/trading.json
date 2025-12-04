@@ -6,6 +6,7 @@
   "owner": "Agent ARCH",
   "last_updated": "2025-12-01",
   "last_updated_by": "Agent ARCH",
+  "last_updated_by": "Agent ARCH",
   "readonly_for": ["Agent TRADING", "Agent PORTFOLIO", "Agent WEB", "Agent AI", "Agent QA"],
   "interfaces": {
     "ExchangeClient": {
@@ -105,7 +106,7 @@
           "raises": ["ConnectionError"]
         },
         "fetch_account_data": {
-          "description": "Fetch position and balance data (primary method for account information)",
+          "description": "Fetch position and balance data for current symbol (primary method for account information)",
           "params": {},
           "returns": {
             "position_amt": "float",
@@ -115,7 +116,57 @@
             "liquidation_price": "float"
           },
           "raises": ["ConnectionError"],
-          "notes": "This is the primary method for fetching account data. Position information can be extracted from position_amt, entry_price, and liquidation_price fields. Balance information is in balance and available_balance fields."
+          "notes": "This method returns account data for the current symbol set via set_symbol(). For multi-symbol position support, use fetch_positions(). Balance information is in balance and available_balance fields."
+        },
+        "fetch_balance": {
+          "description": "Fetch account balance and margin information",
+          "params": {},
+          "returns": {
+            "total": "float (total balance in USDT)",
+            "available": "float (available balance in USDT)",
+            "margin_used": "float (margin used in USDT)",
+            "margin_available": "float (margin available in USDT)",
+            "margin_ratio": "float (margin ratio as percentage, 0-100)",
+            "liquidation_price": "float (liquidation price if applicable)"
+          },
+          "raises": ["ConnectionError"],
+          "notes": "Returns balance and margin information in USDT. Can be extracted from fetch_account_data() or fetched separately for clarity."
+        },
+        "fetch_positions": {
+          "description": "Fetch all open positions across all symbols (multi-symbol support)",
+          "params": {},
+          "returns": "array of Position objects",
+          "raises": ["ConnectionError"],
+          "notes": "Returns all open positions for all symbols. Each Position object contains symbol, side, size, entry_price, mark_price, unrealized_pnl, etc. Required for AC-2 and AC-7 (multi-symbol position support)."
+        },
+        "fetch_position": {
+          "description": "Fetch position for specific symbol",
+          "params": {
+            "symbol": "string (optional, defaults to current symbol)"
+          },
+          "returns": {
+            "symbol": "string",
+            "side": "string (LONG|SHORT|NONE)",
+            "size": "float",
+            "entry_price": "float",
+            "mark_price": "float",
+            "unrealized_pnl": "float",
+            "liquidation_price": "float",
+            "timestamp": "integer"
+          },
+          "raises": ["ConnectionError", "SymbolNotFoundError"],
+          "notes": "Returns position details for a specific symbol. If symbol is not provided, returns position for current symbol. Required for AC-2 (position tracking)."
+        },
+        "fetch_position_history": {
+          "description": "Fetch position history (both open and closed positions)",
+          "params": {
+            "limit": "integer (optional, default: 100)",
+            "start_time": "integer (optional, timestamp in milliseconds)",
+            "symbol": "string (optional, filter by symbol)"
+          },
+          "returns": "array of PositionHistory objects",
+          "raises": ["ConnectionError"],
+          "notes": "Returns historical positions with timestamps. Each PositionHistory object includes open_time, close_time (if closed), entry_price, exit_price, realized_pnl, etc. Required for AC-5 (position history)."
         },
         "fetch_open_orders": {
           "description": "Fetch all open orders for the symbol",
@@ -237,6 +288,21 @@
         ],
         "error_handling": "Must map Hyperliquid-specific errors to standard exceptions (InsufficientFunds, InvalidOrder, OrderNotFound) with bilingual error messages / 必须将 Hyperliquid 特定错误映射到标准异常（余额不足、无效订单、订单未找到），并提供双语错误消息",
         "order_format": "Must convert between Hyperliquid API format and internal Order format for consistency with Binance / 必须在 Hyperliquid API 格式和内部 Order 格式之间转换，以与 Binance 保持一致"
+      },
+      "position_methods_requirements": {
+        "description": "Position and balance tracking methods required for US-CORE-004-C / US-CORE-004-C 所需的仓位和余额追踪方法",
+        "required_methods": [
+          "fetch_balance() - Get account balance and margin information (AC-1, AC-6)",
+          "fetch_positions() - Get all open positions across all symbols (AC-2, AC-7)",
+          "fetch_position(symbol) - Get position for specific symbol (AC-2)",
+          "fetch_position_history(limit, start_time, symbol) - Get position history (AC-5)",
+          "fetch_realized_pnl(start_time) - Get realized PnL (AC-4)",
+          "fetch_account_data() - Get position and balance for current symbol (existing method)"
+        ],
+        "pnl_calculation": "Unrealized PnL = (mark_price - entry_price) × size × side_multiplier. Realized PnL = sum of closed position PnL. Must handle both long and short positions correctly. / 未实现盈亏 = (标记价格 - 开仓价格) × 数量 × 方向乘数。已实现盈亏 = 已平仓仓位盈亏的总和。必须正确处理多头和空头仓位。",
+        "data_format": "All monetary values must be in USDT. Position data must be converted from Hyperliquid API format to internal format for consistency with Binance. / 所有货币值必须以 USDT 为单位。仓位数据必须从 Hyperliquid API 格式转换为内部格式，以与 Binance 保持一致。",
+        "error_handling": "Must provide clear bilingual error messages (Chinese and English) when API is unavailable or connection fails. / 当 API 不可用或连接失败时，必须提供清晰的双语错误消息（中文和英文）。",
+        "integration": "Must integrate correctly with PerformanceTracker for performance metrics calculation (AC-9). / 必须与 PerformanceTracker 正确集成以进行性能指标计算（AC-9）。"
       }
     },
     "OrderManager": {
@@ -358,6 +424,27 @@
       "name": "string",
       "symbol": "string",
       "params": "object"
+    },
+    "Position": {
+      "symbol": "string",
+      "side": "string (LONG|SHORT|NONE)",
+      "size": "float",
+      "entry_price": "float",
+      "mark_price": "float",
+      "unrealized_pnl": "float",
+      "liquidation_price": "float",
+      "timestamp": "integer (milliseconds)"
+    },
+    "PositionHistory": {
+      "symbol": "string",
+      "side": "string (LONG|SHORT)",
+      "size": "float",
+      "entry_price": "float",
+      "exit_price": "float (null if still open)",
+      "realized_pnl": "float",
+      "open_time": "integer (milliseconds)",
+      "close_time": "integer (milliseconds, null if still open)",
+      "status": "string (open|closed)"
     }
   }
 }

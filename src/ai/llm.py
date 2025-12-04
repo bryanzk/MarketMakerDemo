@@ -195,21 +195,35 @@ def create_all_providers() -> List[LLMProvider]:
 
     try:
         providers.append(GeminiProvider())
+        logger.info("✅ Gemini provider initialized successfully")
     except (ValueError, ImportError) as e:
-        errors.append(f"Gemini: {e}")
+        error_msg = f"Gemini: {e}"
+        errors.append(error_msg)
+        logger.warning(f"⚠️ Failed to initialize Gemini provider: {e}")
 
     try:
         providers.append(OpenAIProvider())
+        logger.info("✅ OpenAI provider initialized successfully")
     except (ValueError, ImportError) as e:
-        errors.append(f"OpenAI: {e}")
+        error_msg = f"OpenAI: {e}"
+        errors.append(error_msg)
+        logger.warning(f"⚠️ Failed to initialize OpenAI provider: {e}")
 
     try:
         providers.append(ClaudeProvider())
+        logger.info("✅ Claude provider initialized successfully")
     except (ValueError, ImportError) as e:
-        errors.append(f"Claude: {e}")
+        error_msg = f"Claude: {e}"
+        errors.append(error_msg)
+        logger.warning(f"⚠️ Failed to initialize Claude provider: {e}")
 
     if not providers:
-        raise ValueError(f"No LLM providers available. Errors: {'; '.join(errors)}")
+        error_summary = '; '.join(errors)
+        raise ValueError(f"No LLM providers available. Errors: {error_summary}")
+    
+    if errors:
+        logger.warning(f"⚠️ Some LLM providers failed to initialize: {'; '.join(errors)}")
+        logger.info(f"✅ Successfully initialized {len(providers)} provider(s): {[p.name for p in providers]}")
 
     return providers
 

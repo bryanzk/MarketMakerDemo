@@ -822,6 +822,11 @@
         async function updateLeverage() {
             try {
                 const leverage = parseInt(document.getElementById('leverageInput').value || '1', 10);
+                if (isNaN(leverage) || leverage < 1 || leverage > 125) {
+                    showMessage(controlMessage, 'Invalid leverage value. Must be between 1 and 125. / 无效的杠杆值。必须在 1 到 125 之间。', true);
+                    return;
+                }
+                
                 // Use Hyperliquid-specific leverage endpoint / 使用 Hyperliquid 特定杠杆端点
                 const res = await fetch('/api/hyperliquid/leverage', {
                     method: 'POST',
@@ -830,7 +835,11 @@
                 });
                 const data = await res.json();
                 if (data.error) throw new Error(data.error);
-                showMessage(controlMessage, `Leverage updated to ${data.leverage}x / 杠杆已更新至 ${data.leverage}x`);
+                
+                // Use message from response if available, otherwise construct it
+                // 如果响应中有消息则使用，否则构造消息
+                const message = data.message || `Leverage updated to ${data.leverage || leverage}x / 杠杆已更新至 ${data.leverage || leverage}x`;
+                showMessage(controlMessage, message);
             } catch (err) {
                 showMessage(controlMessage, err.message || 'Failed to update leverage / 更新杠杆失败', true);
             }

@@ -711,9 +711,12 @@ async def update_hyperliquid_config(config: ConfigUpdate):
 
 
 @app.post("/api/hyperliquid/leverage")
-async def update_hyperliquid_leverage(leverage: int):
+async def update_hyperliquid_leverage(leverage: int = Body(..., embed=True)):
     """
     Update Hyperliquid leverage / 更新 Hyperliquid 杠杆
+    
+    Args:
+        leverage: Leverage value (1-125) sent as JSON body
     """
     try:
         exchange = get_exchange_by_name("hyperliquid")
@@ -727,7 +730,9 @@ async def update_hyperliquid_leverage(leverage: int):
         
         success = exchange.set_leverage(leverage)
         if success:
-            return {"status": "updated", "leverage": leverage}
+            # Return leverage in response to confirm the update
+            # 在响应中返回杠杆值以确认更新
+            return {"status": "updated", "leverage": leverage, "message": f"Leverage updated to {leverage}x / 杠杆已更新至 {leverage}x"}
         else:
             return {"error": "Failed to update leverage on Hyperliquid / 在 Hyperliquid 上更新杠杆失败"}
     except Exception as e:

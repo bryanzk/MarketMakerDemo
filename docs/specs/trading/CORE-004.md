@@ -85,9 +85,9 @@ The system must support placing, canceling, and querying orders on Hyperliquid e
 ### REQ-3: Hyperliquid Position and Balance Tracking / Hyperliquid 仓位与余额追踪
 
 **Description / 描述**:  
-The system must support tracking positions, balance, and PnL on Hyperliquid exchange.
+The system must support tracking positions, balance, and PnL on Hyperliquid exchange, and display this information in the LLMTrade.html page UI.
 
-系统必须支持追踪 Hyperliquid 交易所上的仓位、余额和盈亏。
+系统必须支持追踪 Hyperliquid 交易所上的仓位、余额和盈亏，并在 LLMTrade.html 页面 UI 中显示此信息。
 
 **Details / 详情**:
 - Fetch account balance and margin information
@@ -100,6 +100,12 @@ The system must support tracking positions, balance, and PnL on Hyperliquid exch
 - 支持仓位历史
 - Integrate with existing PerformanceTracker
 - 与现有 PerformanceTracker 集成
+- Display position and balance information in LLMTrade.html page as a dedicated panel
+- 在 LLMTrade.html 页面中作为专用面板显示仓位和余额信息
+- Support real-time UI updates when position or balance changes
+- 支持仓位或余额变化时的实时 UI 更新
+- Ensure UI is bilingual (Chinese and English)
+- 确保 UI 是双语的（中文和英文）
 
 **User Story / 用户故事**: US-CORE-004-C  
 **Depends on / 依赖**: REQ-1 (Connection must be working)
@@ -219,6 +225,16 @@ HyperliquidClient 必须实现与 BinanceClient 相同的接口，以确保与�
 - [ ] **AC-3.8**: 支持多交易对仓位
 - [ ] **AC-3.9**: Position data integrates correctly with PerformanceTracker
 - [ ] **AC-3.9**: 仓位数据与 PerformanceTracker 正确集成
+- [ ] **AC-3.10**: Hyperliquid position and balance information is displayed in LLMTrade.html page as a dedicated panel
+- [ ] **AC-3.10**: Hyperliquid 仓位和余额信息在 LLMTrade.html 页面中作为专用面板显示
+- [ ] **AC-3.11**: UI panel displays account balance (available, total, margin), open positions table, unrealized/realized PnL, and margin information
+- [ ] **AC-3.11**: UI 面板显示账户余额（可用、总计、保证金）、未平仓仓位表、未实现/已实现盈亏和保证金信息
+- [ ] **AC-3.12**: UI automatically refreshes when position or balance changes occur
+- [ ] **AC-3.12**: 当仓位或余额发生变化时，UI 自动刷新
+- [ ] **AC-3.13**: UI panel follows the same design pattern as other panels in LLMTrade.html (Fixed Spread Strategy Control Panel, Multi-LLM Evaluation, Current Orders)
+- [ ] **AC-3.13**: UI 面板遵循与 LLMTrade.html 中其他面板相同的设计模式（固定价差策略控制面板、多 LLM 评估、当前订单）
+- [ ] **AC-3.14**: All UI text and labels are displayed in both English and Chinese
+- [ ] **AC-3.14**: 所有 UI 文本和标签都以英文和中文显示
 
 ### Phase 4: Integration and Consistency / 阶段 4：集成与一致性
 
@@ -370,6 +386,20 @@ HYPERLIQUID_TESTNET = os.getenv("HYPERLIQUID_TESTNET", "false").lower() == "true
 - 更改交易所时更新配置
 
 **Location / 位置**: `templates/index.html` or `templates/LLMTrade.html`
+
+**Hyperliquid Position and Balance Panel / Hyperliquid 仓位与余额面板**:
+- Add dedicated panel in LLMTrade.html to display Hyperliquid position and balance information
+- 在 LLMTrade.html 中添加专用面板以显示 Hyperliquid 仓位和余额信息
+- Panel should display: account balance (available, total, margin), open positions table, unrealized/realized PnL, margin information
+- 面板应显示：账户余额（可用、总计、保证金）、未平仓仓位表、未实现/已实现盈亏、保证金信息
+- Support real-time updates when position or balance changes
+- 支持仓位或余额变化时的实时更新
+- Follow same design pattern as other panels (Fixed Spread Strategy Control Panel, Multi-LLM Evaluation, Current Orders)
+- 遵循与其他面板相同的设计模式（固定价差策略控制面板、多 LLM 评估、当前订单）
+- All UI text should be bilingual (English and Chinese)
+- 所有 UI 文本应为双语（英文和中文）
+
+**Location / 位置**: `templates/LLMTrade.html`
 
 ---
 

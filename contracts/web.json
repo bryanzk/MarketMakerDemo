@@ -4,7 +4,8 @@
   "version": "1.0.0",
   "description": "Web/API interface contracts / Web/API 接口契约",
   "owner": "Agent ARCH",
-  "last_updated": "2025-11-30",
+  "last_updated": "2025-12-01",
+  "last_updated_by": "Agent ARCH",
   "readonly_for": ["Agent TRADING", "Agent PORTFOLIO", "Agent WEB", "Agent AI", "Agent QA"],
   "api_endpoints": {
     "BotControlAPI": {
@@ -122,34 +123,51 @@
       "description": "Multi-LLM evaluation endpoints / 多 LLM 评估接口",
       "endpoints": {
         "POST /api/evaluation/run": {
-          "description": "Run multi-LLM evaluation",
+          "description": "Run multi-LLM evaluation for specified exchange",
           "request": {
             "symbol": "string",
-            "simulation_steps": "integer (default: 500)"
+            "simulation_steps": "integer (default: 500)",
+            "exchange": "string (default: 'binance', options: 'binance'|'hyperliquid')"
           },
           "response": {
             "individual_results": "array of EvaluationResult",
-            "aggregated": "AggregatedResult"
+            "aggregated": "AggregatedResult",
+            "exchange": "string (binance|hyperliquid)",
+            "market_data": {
+              "symbol": "string",
+              "mid_price": "float",
+              "best_bid": "float",
+              "best_ask": "float",
+              "funding_rate": "float",
+              "spread_bps": "float"
+            }
           },
           "errors": {
-            "400": "Invalid request",
-            "503": "LLM providers unavailable"
-          }
+            "400": "Invalid request (invalid exchange parameter or missing symbol)",
+            "503": "LLM providers unavailable",
+            "503": "Exchange not connected (when exchange='hyperliquid' and HyperliquidClient is not connected)"
+          },
+          "notes": "When exchange='hyperliquid', the API will use HyperliquidClient to fetch market data and build LLM context. The exchange parameter determines which exchange client is used for market data fetching and context building. / 当 exchange='hyperliquid' 时，API 将使用 HyperliquidClient 获取市场数据并构建 LLM 上下文。exchange 参数决定使用哪个交易所客户端进行市场数据获取和上下文构建。"
         },
         "POST /api/evaluation/apply": {
-          "description": "Apply evaluation proposal",
+          "description": "Apply evaluation proposal to specified exchange",
           "request": {
             "source": "string (consensus|individual)",
-            "provider_name": "string (optional)"
+            "provider_name": "string (optional, required when source='individual')",
+            "exchange": "string (default: 'binance', options: 'binance'|'hyperliquid')"
           },
           "response": {
-            "status": "string",
-            "applied_config": "StrategyConfig"
+            "status": "string (success|error)",
+            "applied_config": "StrategyConfig",
+            "exchange": "string (binance|hyperliquid)",
+            "message": "string (bilingual: English and Chinese)"
           },
           "errors": {
-            "400": "Invalid source",
-            "404": "Proposal not found"
-          }
+            "400": "Invalid source or provider_name",
+            "404": "Proposal not found",
+            "503": "Exchange not connected (when exchange='hyperliquid' and HyperliquidClient is not connected)"
+          },
+          "notes": "When exchange='hyperliquid', the applied configuration will be used for Hyperliquid exchange trading. The exchange parameter ensures configuration is applied to the correct exchange client. / 当 exchange='hyperliquid' 时，应用的配置将用于 Hyperliquid 交易所交易。exchange 参数确保配置应用于正确的交易所客户端。"
         }
       }
     }

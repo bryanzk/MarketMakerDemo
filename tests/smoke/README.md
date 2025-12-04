@@ -59,3 +59,19 @@ US-CORE-004-B 冒烟测试：Hyperliquid 订单管理
 pytest tests/smoke/test_hyperliquid_orders.py -v
 ```
 
+### `test_hyperliquid_llm_evaluation.py`
+Smoke tests for US-API-004: Hyperliquid LLM Evaluation Support  
+US-API-004 冒烟测试：Hyperliquid LLM 评估支持
+
+**Coverage / 覆盖范围:**
+- AC-1: API accepts Hyperliquid exchange parameter / API 接受 Hyperliquid 交易所参数
+- AC-2: Response format is correct / 响应格式正确
+- AC-3: Hyperliquid market data is fetched / 获取 Hyperliquid 市场数据
+- AC-5: Error handling when Hyperliquid is not connected / Hyperliquid 未连接时的错误处理
+- Exchange parameter validation / 交易所参数验证
+
+**Run specific test / 运行特定测试:**
+```bash
+pytest tests/smoke/test_hyperliquid_llm_evaluation.py -v
+```
+

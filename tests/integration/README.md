@@ -87,3 +87,28 @@ US-API-004 集成测试：Hyperliquid LLM 评估支持
 pytest tests/integration/test_hyperliquid_llm_evaluation_integration.py -v
 ```
 
+### `test_hyperliquid_positions_integration.py`
+Integration tests for US-CORE-004-C: Hyperliquid Position and Balance Tracking  
+US-CORE-004-C 集成测试：Hyperliquid 仓位与余额追踪
+
+**Coverage / 覆盖范围:**
+- AC-2, AC-8: StrategyInstance position tracking integration / StrategyInstance 仓位追踪集成
+- AC-3, AC-4: PnL calculation flow / 盈亏计算流程
+- AC-5: Position history tracking / 仓位历史追踪
+- AC-6: Margin information integration / 保证金信息集成
+- AC-7: Multi-symbol position tracking / 多交易对仓位追踪
+- AC-9: PerformanceTracker integration / PerformanceTracker 集成
+- AC-10: Error handling integration / 错误处理集成
+- Complete position tracking workflow / 完整仓位追踪工作流
+
+**Test Classes / 测试类:**
+1. `TestHyperliquidStrategyInstancePositionIntegration` - StrategyInstance 集成测试
+2. `TestHyperliquidPerformanceTrackerIntegration` - PerformanceTracker 集成测试
+3. `TestHyperliquidPositionWorkflowIntegration` - 工作流集成测试
+4. `TestHyperliquidErrorHandlingIntegration` - 错误处理集成测试
+
+**Run specific test / 运行特定测试:**
+```bash
+pytest tests/integration/test_hyperliquid_positions_integration.py -v
+```
+

@@ -59,6 +59,26 @@ US-CORE-004-B 冒烟测试：Hyperliquid 订单管理
 pytest tests/smoke/test_hyperliquid_orders.py -v
 ```
 
+### `test_hyperliquid_positions.py`
+Smoke tests for US-CORE-004-C: Hyperliquid Position and Balance Tracking  
+US-CORE-004-C 冒烟测试：Hyperliquid 仓位与余额追踪
+
+**Coverage / 覆盖范围:**
+- AC-1: Balance fetching / 余额获取
+- AC-2: Position tracking / 仓位追踪
+- AC-3: Unrealized PnL calculation / 未实现盈亏计算
+- AC-4: Realized PnL tracking / 已实现盈亏追踪
+- AC-5: Position history / 仓位历史
+- AC-6: Margin information / 保证金信息
+- AC-7: Multi-symbol position support / 多交易对仓位支持
+- AC-10: Error handling / 错误处理
+- Method existence verification / 方法存在性验证
+
+**Run specific test / 运行特定测试:**
+```bash
+pytest tests/smoke/test_hyperliquid_positions.py -v
+```
+
 ### `test_hyperliquid_llm_evaluation.py`
 Smoke tests for US-API-004: Hyperliquid LLM Evaluation Support  
 US-API-004 冒烟测试：Hyperliquid LLM 评估支持

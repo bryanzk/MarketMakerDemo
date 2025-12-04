@@ -665,6 +665,8 @@ result = place_order_safely(client, order)
 ## Related Documentation / 相关文档
 
 - **Connection Guide / 连接指南**: [Hyperliquid Connection Guide](hyperliquid_connection.md)
+- **Position Tracking Guide / 仓位追踪指南**: [Hyperliquid Positions Guide](hyperliquid_positions.md)
+- **LLM Evaluation Guide / LLM 评估指南**: [Hyperliquid LLM Evaluation Guide](hyperliquid_llm_evaluation.md)
 - **Specification / 规范**: `docs/specs/trading/CORE-004.md`
 - **User Story / 用户故事**: `docs/stories/trading/US-CORE-004-B.md`
 - **Interface Contract / 接口契约**: `contracts/trading.json#HyperliquidClient`

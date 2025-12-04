@@ -99,10 +99,17 @@
           "id": "US-UI-004",
           "name": "Dedicated Hyperliquid Trading Page / 专用 Hyperliquid 交易页面",
           "name_zh": "专用 Hyperliquid 交易页面",
-          "status": "TODO",
-          "current_step": "spec_defined",
-          "branch": "pending",
-          "sync_source": "docs/modules/web.json"
+          "status": "IN_PROGRESS",
+          "current_step": "plan_approved",
+          "branch": "feat/US-UI-004-hyperliquid-trading-page",
+          "sync_source": "docs/modules/web.json",
+          "step_status": {
+            "spec_defined": true,
+            "story_defined": true,
+            "ac_defined": true,
+            "contract_defined": true,
+            "plan_approved": true
+          }
         }
       ]
     }

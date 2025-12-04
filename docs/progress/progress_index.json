@@ -236,6 +236,23 @@
       "completion_percentage": 100.0,
       "ci_cd_status": "PASSED",
       "merge_commit": "e16f782"
+    },
+    {
+      "id": "E-2025-0014",
+      "type": "story_step_advanced",
+      "feature_ids": [
+        "US-UI-004"
+      ],
+      "modules": [
+        "web"
+      ],
+      "summary": "US-UI-004 plan approved by human reviewer",
+      "summary_zh": "US-UI-004 计划已由人工审查员批准",
+      "author": "Agent PM",
+      "timestamp": "2025-12-04T16:35:00.000000+00:00",
+      "notes": "Step 5 (plan_approved) completed. Human reviewer approved the plan after contract definition.",
+      "step": "plan_approved",
+      "branch": "feat/US-UI-004-hyperliquid-trading-page"
     }
   ]
 }

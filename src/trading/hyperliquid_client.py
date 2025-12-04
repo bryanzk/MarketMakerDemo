@@ -431,6 +431,24 @@ class HyperliquidClient:
         # For now, we'll use a simple approach
         # In a full implementation, we'd fetch market info from Hyperliquid
         self.market = {"id": self.symbol.replace("/", "").replace(":", "")}
+    
+    def _extract_stablecoin(self, symbol: str) -> str:
+        """
+        Extract stablecoin type (USDT or USDC) from symbol / 从交易对中提取稳定币类型（USDT 或 USDC）
+        
+        Args:
+            symbol: Trading symbol (e.g., "ETH/USDT:USDT" or "ETH/USDC:USDC")
+            
+        Returns:
+            Stablecoin type: "USDT" or "USDC" (defaults to "USDC" for Hyperliquid)
+        """
+        if "USDC" in symbol.upper():
+            return "USDC"
+        elif "USDT" in symbol.upper():
+            return "USDT"
+        else:
+            # Default to USDC for Hyperliquid
+            return "USDC"
 
     def get_connection_status(self) -> Dict:
         """
@@ -543,9 +561,9 @@ class HyperliquidClient:
                 else self.symbol.split(":")[0] if ":" in self.symbol else self.symbol
             )
 
-            # Hyperliquid uses coin name without /USDT suffix
-            # Hyperliquid 使用币种名称，不带 /USDT 后缀
-            coin = symbol_base.replace("USDT", "").replace("/", "").replace(":", "")
+            # Hyperliquid uses coin name without /USDT or /USDC suffix
+            # Hyperliquid 使用币种名称，不带 /USDT 或 /USDC 后缀
+            coin = symbol_base.replace("USDT", "").replace("USDC", "").replace("/", "").replace(":", "")
 
             # Fetch orderbook from Hyperliquid API
             # 从 Hyperliquid API 获取订单簿
@@ -933,6 +951,7 @@ class HyperliquidClient:
             )
             coin = (
                 symbol_base.replace("USDT", "")
+                .replace("USDC", "")
                 .replace("/", "")
                 .replace(":", "")
                 .upper()
@@ -949,6 +968,7 @@ class HyperliquidClient:
                 )
                 pos_coin = (
                     pos_symbol_base.replace("USDT", "")
+                    .replace("USDC", "")
                     .replace("/", "")
                     .replace(":", "")
                     .upper()
@@ -1061,6 +1081,7 @@ class HyperliquidClient:
                     )
                     coin = (
                         symbol_base.replace("USDT", "")
+                        .replace("USDC", "")
                         .replace("/", "")
                         .replace(":", "")
                         .upper()
@@ -1071,8 +1092,11 @@ class HyperliquidClient:
                     if coin != fill_coin:
                         continue
 
+                # Determine stablecoin type from original symbol or default to USDC
+                # 从原始交易对确定稳定币类型，或默认为 USDC
+                stablecoin = self._extract_stablecoin(symbol) if symbol else "USDC"
                 history_entry = {
-                    "symbol": f"{fill_symbol}/USDT:USDT",
+                    "symbol": f"{fill_symbol}/{stablecoin}:{stablecoin}",
                     "side": "LONG" if float(fill.get("sz", 0)) > 0 else "SHORT",
                     "size": abs(float(fill.get("sz", 0))),
                     "entry_price": float(fill.get("px", 0)),
@@ -1101,6 +1125,7 @@ class HyperliquidClient:
                             else symbol.split(":")[0] if ":" in symbol else symbol
                         )
                         .replace("USDT", "")
+                        .replace("USDC", "")
                         .replace("/", "")
                         .replace(":", "")
                         .upper()
@@ -1116,6 +1141,7 @@ class HyperliquidClient:
                             )
                         )
                         .replace("USDT", "")
+                        .replace("USDC", "")
                         .replace("/", "")
                         .replace(":", "")
                         .upper()
@@ -1914,7 +1940,10 @@ class HyperliquidClient:
                 try:
                     # Try to get mark price from market data for the coin
                     # 尝试从市场数据获取币种的标记价格
-                    coin_symbol = f"{coin}/USDT:USDT"
+                    # Use the same stablecoin type as the original symbol
+                    # 使用与原始交易对相同的稳定币类型
+                    stablecoin = self._extract_stablecoin(self.symbol)
+                    coin_symbol = f"{coin}/{stablecoin}:{stablecoin}"
                     original_symbol = self.symbol
                     try:
                         self.set_symbol(coin_symbol)
@@ -1943,9 +1972,10 @@ class HyperliquidClient:
                 # 最终备用方案：使用开仓价格
                 mark_price = entry_price
 
-            # Format symbol
-            # 格式化交易对
-            symbol = f"{coin}/USDT:USDT"
+            # Format symbol with the same stablecoin type as the original symbol
+            # 使用与原始交易对相同的稳定币类型格式化交易对
+            stablecoin = self._extract_stablecoin(self.symbol)
+            symbol = f"{coin}/{stablecoin}:{stablecoin}"
 
             return {
                 "symbol": symbol,

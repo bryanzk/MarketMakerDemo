@@ -112,3 +112,27 @@ US-CORE-004-C 集成测试：Hyperliquid 仓位与余额追踪
 pytest tests/integration/test_hyperliquid_positions_integration.py -v
 ```
 
+### `test_hyperliquid_trade_page_integration.py`
+Integration tests for US-UI-004: Dedicated Hyperliquid Trading Page  
+US-UI-004 集成测试：专用 Hyperliquid 交易页面
+
+**Coverage / 覆盖范围:**
+- AC-2: Strategy control API integration / 策略控制 API 集成
+- AC-3: Position and balance data integration / 仓位与余额数据集成
+- AC-4: LLM evaluation API integration / LLM 评估 API 集成
+- AC-6: Real-time updates integration / 实时更新集成
+- AC-10: Error handling integration / 错误处理集成
+- Complete page workflow / 完整页面工作流
+- API endpoint integration / API 端点集成
+
+**Test Classes / 测试类:**
+1. `TestHyperliquidPageAPIIntegration` - API 集成测试
+2. `TestHyperliquidPageWorkflowIntegration` - 工作流集成测试
+3. `TestHyperliquidPageErrorHandlingIntegration` - 错误处理集成测试
+4. `TestHyperliquidPageRealTimeUpdatesIntegration` - 实时更新集成测试
+
+**Run specific test / 运行特定测试:**
+```bash
+pytest tests/integration/test_hyperliquid_trade_page_integration.py -v
+```
+

@@ -2,13 +2,14 @@ import logging
 import os
 import threading
 import time
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from typing import Optional
 
 import uvicorn
 
 logger = logging.getLogger(__name__)
-from fastapi import FastAPI, Query, Request
+from fastapi import FastAPI, Query, Request, Body
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -26,13 +27,22 @@ from src.ai.evaluation.evaluator import MultiLLMEvaluator
 from src.ai.evaluation.schemas import MarketContext
 from src.ai import create_all_providers
 
-app = FastAPI()
-
-
-@app.on_event("startup")
-async def startup_event():
-    """Initialize portfolio capital from Binance on server startup."""
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """
+    Lifespan event handler for FastAPI application.
+    Handles startup and shutdown events.
+    FastAPI 应用程序的生命周期事件处理器。
+    处理启动和关闭事件。
+    """
+    # Startup / 启动
     init_portfolio_capital()
+    yield
+    # Shutdown (if needed in the future) / 关闭（如果将来需要）
+    pass
+
+
+app = FastAPI(lifespan=lifespan)
 
 
 # Setup Templates
@@ -397,19 +407,19 @@ async def read_root(request: Request):
     exchange = get_default_exchange()
     if exchange and hasattr(exchange, "last_order_error"):
         exchange.last_order_error = None
-    return templates.TemplateResponse("index.html", {"request": request})
+    return templates.TemplateResponse(request, "index.html")
 
 
 @app.get("/evaluation", response_class=HTMLResponse)
 async def llm_trade_page(request: Request):
     """Render dedicated LLM Trade Lab page / 渲染专用 LLM 交易实验室页面"""
-    return templates.TemplateResponse("LLMTrade.html", {"request": request})
+    return templates.TemplateResponse(request, "LLMTrade.html")
 
 
 @app.get("/hyperliquid", response_class=HTMLResponse)
 async def hyperliquid_trade_page(request: Request):
     """Render dedicated Hyperliquid Trading page / 渲染专用 Hyperliquid 交易页面"""
-    return templates.TemplateResponse("HyperliquidTrade.html", {"request": request})
+    return templates.TemplateResponse(request, "HyperliquidTrade.html")
 
 
 @app.get("/api/debug/balance")
@@ -434,7 +444,23 @@ async def debug_balance():
 
 
 @app.get("/api/status")
-async def get_status():
+async def get_status(exchange: Optional[str] = None):
+    """
+    Get bot status / 获取 Bot 状态
+    
+    Args:
+        exchange: Optional exchange name ("binance" or "hyperliquid"). 
+                  If not provided, returns default exchange status.
+                  可选的交易所名称（"binance" 或 "hyperliquid"）。
+                  如果未提供，返回默认交易所状态。
+    """
+    # If exchange parameter is provided, get exchange-specific status
+    # 如果提供了交易所参数，获取特定交易所的状态
+    if exchange and exchange.lower() == "hyperliquid":
+        return await get_hyperliquid_status()
+    
+    # Default behavior: return default exchange status
+    # 默认行为：返回默认交易所状态
     status = bot_engine.get_status()
     status["active"] = is_running
     status["stage"] = bot_engine.current_stage
@@ -513,6 +539,213 @@ async def get_status():
                     status["strategy_instance_status"]["funding_rate"] = True
 
     return status
+
+
+@app.get("/api/hyperliquid/status")
+async def get_hyperliquid_status():
+    """
+    Get Hyperliquid-specific status including positions, balance, and orders
+    获取 Hyperliquid 特定状态，包括仓位、余额和订单
+    """
+    try:
+        exchange = get_exchange_by_name("hyperliquid")
+        if not exchange:
+            return {
+                "error": "Hyperliquid exchange not connected / Hyperliquid 交易所未连接",
+                "connected": False,
+            }
+        
+        if not exchange.is_connected:
+            return {
+                "error": "Hyperliquid exchange not connected / Hyperliquid 交易所未连接",
+                "connected": False,
+            }
+        
+        # Fetch account data
+        account_data = exchange.fetch_account_data()
+        market_data = exchange.fetch_market_data()
+        
+        # Fetch positions
+        positions = []
+        try:
+            positions = exchange.fetch_positions() or []
+        except Exception as e:
+            logger.warning(f"Failed to fetch positions: {e}")
+        
+        # Fetch open orders
+        orders = []
+        try:
+            orders = exchange.fetch_open_orders() or []
+        except Exception as e:
+            logger.warning(f"Failed to fetch orders: {e}")
+        
+        # Build status response
+        status = {
+            "connected": True,
+            "exchange": "hyperliquid",
+            "symbol": exchange.symbol if hasattr(exchange, "symbol") else None,
+            "mid_price": market_data.get("mid_price", 0.0) if market_data else 0.0,
+            "balance": account_data.get("balance", 0.0) if account_data else 0.0,
+            "available_balance": account_data.get("available_balance", 0.0) if account_data else 0.0,
+            "position": account_data.get("position_amt", 0.0) if account_data else 0.0,
+            "unrealized_pnl": account_data.get("unrealized_pnl", 0.0) if account_data else 0.0,
+            "leverage": account_data.get("leverage", 1) if account_data else 1,
+            "positions": positions,
+            "orders": orders,
+        }
+        
+        return status
+    except Exception as e:
+        logger.error(f"Error getting Hyperliquid status: {e}")
+        return {
+            "error": f"Failed to get Hyperliquid status: {str(e)} / 获取 Hyperliquid 状态失败：{str(e)}",
+            "connected": False,
+        }
+
+
+@app.post("/api/hyperliquid/cancel-order")
+async def cancel_hyperliquid_order(order_id: str = Body(..., embed=True)):
+    """
+    Cancel a Hyperliquid order / 取消 Hyperliquid 订单
+    
+    Args:
+        order_id: Order ID to cancel
+    """
+    try:
+        exchange = get_exchange_by_name("hyperliquid")
+        if not exchange or not exchange.is_connected:
+            return {
+                "error": "Hyperliquid exchange not connected / Hyperliquid 交易所未连接"
+            }
+        
+        # Cancel the order
+        exchange.cancel_orders([order_id])
+        
+        return {
+            "status": "success",
+            "message": f"Order {order_id} canceled / 订单 {order_id} 已取消",
+            "order_id": order_id,
+        }
+    except Exception as e:
+        logger.error(f"Error canceling Hyperliquid order: {e}")
+        return {
+            "error": f"Failed to cancel order: {str(e)} / 取消订单失败：{str(e)}"
+        }
+
+
+@app.post("/api/hyperliquid/config")
+async def update_hyperliquid_config(config: ConfigUpdate):
+    """
+    Update Hyperliquid strategy configuration / 更新 Hyperliquid 策略配置
+    """
+    try:
+        from src.trading.hyperliquid_client import HyperliquidClient
+        
+        exchange = get_exchange_by_name("hyperliquid")
+        if not exchange or not exchange.is_connected:
+            return {
+                "error": "Hyperliquid exchange not connected / Hyperliquid 交易所未连接"
+            }
+        
+        # Find or create Hyperliquid strategy instance
+        # 查找或创建 Hyperliquid 策略实例
+        hyperliquid_instance = None
+        for instance_id, instance in bot_engine.strategy_instances.items():
+            if isinstance(instance.exchange, HyperliquidClient):
+                hyperliquid_instance = instance
+                break
+        
+        if not hyperliquid_instance:
+            # Create a new instance for Hyperliquid
+            # 为 Hyperliquid 创建新实例
+            success = bot_engine.add_strategy_instance(
+                "hyperliquid", "fixed_spread", symbol=exchange.symbol if hasattr(exchange, "symbol") else None
+            )
+            if success:
+                hyperliquid_instance = bot_engine.strategy_instances.get("hyperliquid")
+        
+        if not hyperliquid_instance:
+            return {"error": "Failed to get or create Hyperliquid strategy instance / 无法获取或创建 Hyperliquid 策略实例"}
+        
+        # Update strategy parameters
+        new_spread = config.spread / 100
+        hyperliquid_instance.strategy.spread = new_spread
+        hyperliquid_instance.strategy.quantity = config.quantity
+        
+        return {
+            "status": "updated",
+            "config": {
+                "spread": config.spread,
+                "quantity": config.quantity,
+                "strategy_type": config.strategy_type,
+            }
+        }
+    except Exception as e:
+        logger.error(f"Error updating Hyperliquid config: {e}")
+        return {"error": f"Failed to update config: {str(e)} / 更新配置失败：{str(e)}"}
+
+
+@app.post("/api/hyperliquid/leverage")
+async def update_hyperliquid_leverage(leverage: int):
+    """
+    Update Hyperliquid leverage / 更新 Hyperliquid 杠杆
+    """
+    try:
+        exchange = get_exchange_by_name("hyperliquid")
+        if not exchange or not exchange.is_connected:
+            return {
+                "error": "Hyperliquid exchange not connected / Hyperliquid 交易所未连接"
+            }
+        
+        if leverage < 1 or leverage > 125:
+            return {"error": "Leverage must be between 1 and 125 / 杠杆必须在 1 到 125 之间"}
+        
+        success = exchange.set_leverage(leverage)
+        if success:
+            return {"status": "updated", "leverage": leverage}
+        else:
+            return {"error": "Failed to update leverage on Hyperliquid / 在 Hyperliquid 上更新杠杆失败"}
+    except Exception as e:
+        logger.error(f"Error updating Hyperliquid leverage: {e}")
+        return {"error": f"Failed to update leverage: {str(e)} / 更新杠杆失败：{str(e)}"}
+
+
+@app.post("/api/hyperliquid/pair")
+async def update_hyperliquid_pair(pair: PairUpdate):
+    """
+    Update Hyperliquid trading pair / 更新 Hyperliquid 交易对
+    """
+    try:
+        from src.trading.hyperliquid_client import HyperliquidClient
+        
+        exchange = get_exchange_by_name("hyperliquid")
+        if not exchange or not exchange.is_connected:
+            return {
+                "error": "Hyperliquid exchange not connected / Hyperliquid 交易所未连接"
+            }
+        
+        success = exchange.set_symbol(pair.symbol)
+        if success:
+            # Also update strategy instance if exists
+            # 如果存在，也更新策略实例
+            for instance_id, instance in bot_engine.strategy_instances.items():
+                if isinstance(instance.exchange, HyperliquidClient):
+                    instance.symbol = pair.symbol
+                    instance.refresh_data()
+                    break
+            
+            return {"status": "updated", "symbol": pair.symbol}
+        else:
+            return {
+                "status": "error",
+                "message": f"Failed to update to symbol {pair.symbol} / 更新到交易对 {pair.symbol} 失败",
+            }
+    except Exception as e:
+        logger.error(f"Error updating Hyperliquid pair: {e}")
+        return {
+            "status": "error",
+            "message": f"Failed to update pair: {str(e)} / 更新交易对失败：{str(e)}",
+        }
 
 
 @app.post("/api/control")

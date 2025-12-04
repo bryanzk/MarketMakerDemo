@@ -21,6 +21,7 @@ tests/unit/
 │   ├── test_bot_control_api.py
 │   ├── test_portfolio_api.py
 │   ├── test_hyperliquid_llm_evaluation.py
+│   ├── test_hyperliquid_trade_page.py
 │   └── ...
 └── ai/               # AI/LLM tests / AI/LLM 测试 (Agent AI)
     ├── test_multi_llm_evaluator.py
@@ -54,6 +55,7 @@ pytest tests/unit/ai/ -v
 
 # Run specific feature tests / 运行特定功能测试
 pytest tests/unit/web/test_hyperliquid_llm_evaluation.py -v
+pytest tests/unit/web/test_hyperliquid_trade_page.py -v
 ```
 
 ## TDD Workflow / TDD 工作流

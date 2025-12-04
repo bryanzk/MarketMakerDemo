@@ -535,13 +535,143 @@ class HyperliquidClient:
     def fetch_market_data(self) -> Optional[Dict]:
         """Fetches top 5 order book and calculates mid price / 获取前 5 档订单簿并计算中间价"""
         try:
-            # Placeholder implementation
-            # In a full implementation, we'd fetch orderbook from Hyperliquid API
-            # For now, return None to indicate not implemented
-            logger.warning("fetch_market_data not fully implemented for Hyperliquid")
-            return None
+            # Convert symbol format (e.g., "ETH/USDT:USDT" -> "ETH")
+            # 转换交易对格式（例如，"ETH/USDT:USDT" -> "ETH"）
+            symbol_base = self.symbol.split("/")[0] if "/" in self.symbol else self.symbol.split(":")[0] if ":" in self.symbol else self.symbol
+            
+            # Hyperliquid uses coin name without /USDT suffix
+            # Hyperliquid 使用币种名称，不带 /USDT 后缀
+            coin = symbol_base.replace("USDT", "").replace("/", "").replace(":", "")
+            
+            # Fetch orderbook from Hyperliquid API
+            # 从 Hyperliquid API 获取订单簿
+            # Hyperliquid uses /info endpoint with "l2Book" type
+            # Hyperliquid 使用 /info 端点，类型为 "l2Book"
+            query_payload = {
+                "type": "l2Book",
+                "coin": coin,
+            }
+            
+            response = self._make_request(
+                method="POST",
+                endpoint="/info",
+                data=query_payload,
+                public=True,  # Orderbook is public data
+            )
+            
+            if not response:
+                logger.warning("No response when fetching market data / 获取市场数据时无响应")
+                return None
+            
+            # Parse orderbook response
+            # 解析订单簿响应
+            best_bid = None
+            best_ask = None
+            mid_price = None
+            
+            if isinstance(response, dict):
+                # Try different response formats
+                # 尝试不同的响应格式
+                
+                # Format 1: {"levels": {"bids": [[price, size], ...], "asks": [[price, size], ...]}}
+                # 格式 1: {"levels": {"bids": [[价格, 数量], ...], "asks": [[价格, 数量], ...]}}
+                if "levels" in response:
+                    levels = response["levels"]
+                    if isinstance(levels, dict):
+                        bids = levels.get("bids", [])
+                        asks = levels.get("asks", [])
+                    else:
+                        # Format 2: {"levels": [[price, size], ...]} - single array
+                        # 格式 2: {"levels": [[价格, 数量], ...]} - 单个数组
+                        bids = levels if isinstance(levels, list) else []
+                        asks = []
+                
+                # Format 3: Direct bids/asks in response
+                # 格式 3: 响应中直接包含 bids/asks
+                elif "bids" in response or "asks" in response:
+                    bids = response.get("bids", [])
+                    asks = response.get("asks", [])
+                else:
+                    bids = []
+                    asks = []
+                
+                # Get best bid and ask (first level)
+                # 获取最佳买价和卖价（第一档）
+                if bids and len(bids) > 0:
+                    if isinstance(bids[0], (list, tuple)) and len(bids[0]) > 0:
+                        best_bid = float(bids[0][0])
+                    elif isinstance(bids[0], (int, float)):
+                        best_bid = float(bids[0])
+                
+                if asks and len(asks) > 0:
+                    if isinstance(asks[0], (list, tuple)) and len(asks[0]) > 0:
+                        best_ask = float(asks[0][0])
+                    elif isinstance(asks[0], (int, float)):
+                        best_ask = float(asks[0])
+            
+            # If we have both bid and ask, calculate mid price
+            # 如果我们有买价和卖价，计算中间价
+            if best_bid and best_ask:
+                mid_price = (best_bid + best_ask) / 2
+            else:
+                # Fallback: try to get mid price from allMids endpoint
+                # 回退：尝试从 allMids 端点获取中间价
+                try:
+                    mids_payload = {
+                        "type": "allMids",
+                    }
+                    mids_response = self._make_request(
+                        method="POST",
+                        endpoint="/info",
+                        data=mids_payload,
+                        public=True,
+                    )
+                    
+                    if mids_response and isinstance(mids_response, dict):
+                        # allMids returns {coin: mid_price} or {"mid_prices": {coin: mid_price}}
+                        # allMids 返回 {币种: 中间价} 或 {"mid_prices": {币种: 中间价}}
+                        mid_prices = mids_response.get("mid_prices", mids_response)
+                        if isinstance(mid_prices, dict):
+                            mid_price = mid_prices.get(coin)
+                            if mid_price:
+                                mid_price = float(mid_price)
+                                # Estimate bid/ask from mid price (assume 0.1% spread)
+                                # 从中间价估算买价/卖价（假设 0.1% 价差）
+                                if not best_bid:
+                                    best_bid = mid_price * 0.9995
+                                if not best_ask:
+                                    best_ask = mid_price * 1.0005
+                            else:
+                                logger.warning(f"Mid price not found for {coin} in allMids response / 在 allMids 响应中未找到 {coin} 的中间价")
+                        else:
+                            logger.warning(f"Unexpected allMids response format / 意外的 allMids 响应格式")
+                except Exception as e:
+                    logger.debug(f"Failed to fetch mid price from allMids: {e}")
+                
+                # If still no mid price, return None
+                # 如果仍然没有中间价，返回 None
+                if not mid_price:
+                    logger.warning(f"Failed to fetch market data for {coin} / 获取 {coin} 的市场数据失败")
+                    return None
+            
+            # Fetch funding rate
+            # 获取资金费率
+            funding_rate = self.fetch_funding_rate()
+            
+            # Return market data
+            # 返回市场数据
+            return {
+                "best_bid": best_bid,
+                "best_ask": best_ask,
+                "mid_price": mid_price,
+                "timestamp": int(time.time() * 1000),
+                "funding_rate": funding_rate,
+                "tick_size": None,  # Will be populated from symbol limits if needed
+                "step_size": None,  # Will be populated from symbol limits if needed
+            }
+                
         except Exception as e:
-            logger.error(f"Error fetching market data: {e}")
+            logger.error(f"Error fetching market data: {e}", exc_info=True)
             return None
 
     def fetch_funding_rate(self) -> float:

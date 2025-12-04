@@ -317,8 +317,13 @@ class MultiLLMEvaluator:
         for result in results:
             if not result.proposal.parse_success:
                 result.score = 0.0
+                logger.warning(
+                    f"Score set to 0.0 for {result.provider_name} due to parse_success=False"
+                )
                 continue
 
+            # Calculate individual score components
+            # 计算各个得分组成部分
             pnl_score = (
                 min(max(result.simulation.realized_pnl / 100.0, -1), 1) * 50 + 50
             )
@@ -328,11 +333,24 @@ class MultiLLMEvaluator:
             win_rate_score = result.simulation.win_rate * 100
             confidence_score = result.proposal.confidence * 100
 
+            # Calculate weighted total score
+            # 计算加权总分
             result.score = (
                 pnl_score * 0.40
                 + sharpe_score * 0.30
                 + win_rate_score * 0.20
                 + confidence_score * 0.10
+            )
+
+            # Log score calculation for debugging
+            # 记录得分计算以便调试
+            logger.debug(
+                f"Score calculation for {result.provider_name}: "
+                f"PnL={result.simulation.realized_pnl:.2f} (score={pnl_score:.1f}), "
+                f"Sharpe={result.simulation.sharpe_ratio:.2f} (score={sharpe_score:.1f}), "
+                f"WinRate={result.simulation.win_rate:.2%} (score={win_rate_score:.1f}), "
+                f"Confidence={result.proposal.confidence:.2%} (score={confidence_score:.1f}), "
+                f"Total={result.score:.1f}"
             )
 
         sorted_results = sorted(results, key=lambda r: r.score, reverse=True)
@@ -676,15 +694,32 @@ class MultiLLMEvaluator:
             r for r in valid_results if r.provider_name in agreeing_providers
         ]
 
+        # Build consensus reasoning from agreeing models
+        # 从同意的模型中构建共识推理
         combined_reasoning = (
             f"Consensus from {len(agreeing_results)}/{len(valid_results)} models. "
         )
         if agreeing_results:
+            # Extract non-empty reasoning from agreeing results
+            # 从同意的结果中提取非空推理
             reasons = [
-                r.proposal.reasoning for r in agreeing_results if r.proposal.reasoning
+                r.proposal.reasoning.strip() 
+                for r in agreeing_results 
+                if r.proposal.reasoning and r.proposal.reasoning.strip()
             ]
             if reasons:
+                # Combine up to 3 reasoning statements
+                # 组合最多 3 个推理陈述
                 combined_reasoning += " | ".join(reasons[:3])
+            else:
+                # If no detailed reasoning available, add summary information
+                # 如果没有详细推理，添加摘要信息
+                if len(agreeing_results) == 1:
+                    provider_name = agreeing_results[0].provider_name
+                    combined_reasoning += f"Based on {provider_name} recommendation."
+                else:
+                    provider_names = [r.provider_name for r in agreeing_results[:3]]
+                    combined_reasoning += f"Based on recommendations from: {', '.join(provider_names)}."
 
         risk_levels = [r.proposal.risk_level for r in agreeing_results]
         if risk_levels:

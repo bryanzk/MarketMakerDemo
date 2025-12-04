@@ -626,3 +626,5 @@ class TestHyperliquidErrorHandlingIntegration:
             # 错误应该提到连接或网络
             assert "error" in error_msg.lower() or "连接" in error_msg or "网络" in error_msg
 
+
+

@@ -268,28 +268,48 @@ def get_session_start_time_ms() -> int:
 
 def init_portfolio_capital():
     """
-    Initialize portfolio capital from Binance Demo Trading account.
-    Fetches actual USDT balance and stores it as the initial capital.
+    Initialize portfolio capital from exchange account.
+    Fetches actual balance and stores it as the initial capital.
+    Only attempts to fetch from Binance if Binance is the default exchange.
+    从交易所账户初始化投资组合资金。
+    获取实际余额并存储为初始资金。
+    仅当 Binance 是默认交易所时才尝试从 Binance 获取。
     """
     global initial_capital
 
     try:
-        # Fetch actual balance from Binance using default strategy instance's exchange
+        # Only fetch from Binance if it's the default exchange
+        # 仅当 Binance 是默认交易所时才获取
         exchange = get_default_exchange()
         if exchange is not None:
-            account_data = exchange.fetch_account_data()
-            if account_data and "balance" in account_data:
-                actual_balance = account_data["balance"]
-                if actual_balance > 0:
-                    initial_capital = actual_balance
-                    portfolio_manager.total_capital = actual_balance
-                    print(
-                        f"✅ Portfolio capital initialized from Binance: ${actual_balance:.2f} USDT"
-                    )
-                    return actual_balance
+            # Check if it's a Binance client (not Hyperliquid)
+            # 检查是否是 Binance 客户端（不是 Hyperliquid）
+            from src.trading.exchange import BinanceClient
+            if isinstance(exchange, BinanceClient):
+                account_data = exchange.fetch_account_data()
+                if account_data and "balance" in account_data:
+                    actual_balance = account_data["balance"]
+                    if actual_balance > 0:
+                        initial_capital = actual_balance
+                        portfolio_manager.total_capital = actual_balance
+                        print(
+                            f"✅ Portfolio capital initialized from Binance: ${actual_balance:.2f} USDT"
+                        )
+                        return actual_balance
+            else:
+                # Not Binance, skip initialization (e.g., Hyperliquid)
+                # 不是 Binance，跳过初始化（例如 Hyperliquid）
+                logger.debug(
+                    "Skipping portfolio capital initialization: default exchange is not Binance / "
+                    "跳过投资组合资金初始化：默认交易所不是 Binance"
+                )
     except Exception as e:
-        print(f"⚠️ Failed to fetch balance from Binance: {e}")
-        print(f"   Using default capital: ${initial_capital:.2f} USDT")
+        # Only log error if it's a Binance-related error
+        # 仅当是 Binance 相关错误时才记录
+        logger.debug(
+            f"Portfolio capital initialization skipped or failed: {e} / "
+            f"投资组合资金初始化已跳过或失败: {e}"
+        )
 
     return initial_capital
 
@@ -1574,7 +1594,20 @@ async def apply_evaluation(request: EvaluationApplyRequest):
         proposal = None
         
         if request.source == "consensus":
+            if not _last_evaluation_aggregated or not _last_evaluation_aggregated.consensus_proposal:
+                return {
+                    "status": "error",
+                    "error": "No consensus proposal available. This may happen if all LLM providers failed to parse their responses. / 没有可用的共识建议。如果所有 LLM 提供商都未能解析其响应，可能会发生这种情况。"
+                }
             proposal = _last_evaluation_aggregated.consensus_proposal
+            if not proposal.parse_success:
+                # Provide more detailed error information
+                # 提供更详细的错误信息
+                strategy = getattr(proposal, 'recommended_strategy', 'Unknown')
+                return {
+                    "status": "error",
+                    "error": f"Consensus proposal parsing failed. Strategy: {strategy}. Please check LLM responses and try running evaluation again. / 共识建议解析失败。策略：{strategy}。请检查 LLM 响应并重试运行评估。"
+                }
         elif request.source == "individual":
             if not request.provider_name:
                 return {
@@ -1591,9 +1624,17 @@ async def apply_evaluation(request: EvaluationApplyRequest):
                     break
             
             if not found:
+                available_providers = [r.provider_name for r in _last_evaluation_results]
                 return {
                     "status": "error",
-                    "error": f"Provider {request.provider_name} not found in evaluation results / 在评估结果中未找到提供商 {request.provider_name}"
+                    "error": f"Provider {request.provider_name} not found in evaluation results. Available providers: {', '.join(available_providers)} / 在评估结果中未找到提供商 {request.provider_name}。可用提供商：{', '.join(available_providers)}"
+                }
+            
+            if not proposal or not proposal.parse_success:
+                strategy = getattr(proposal, 'recommended_strategy', 'Unknown') if proposal else 'None'
+                return {
+                    "status": "error",
+                    "error": f"Provider {request.provider_name} proposal parsing failed. Strategy: {strategy}. Please try running evaluation again. / 提供商 {request.provider_name} 建议解析失败。策略：{strategy}。请重试运行评估。"
                 }
         else:
             return {
@@ -1601,10 +1642,10 @@ async def apply_evaluation(request: EvaluationApplyRequest):
                 "error": f"Invalid source: {request.source}. Use 'consensus' or 'individual'. / 无效的来源：{request.source}。使用 'consensus' 或 'individual'。"
             }
         
-        if not proposal or not proposal.parse_success:
+        if not proposal:
             return {
                 "status": "error",
-                "error": "Invalid proposal or proposal parsing failed / 无效的建议或建议解析失败"
+                "error": "Proposal is None. This should not happen. / 建议为 None。这不应该发生。"
             }
         
         # Map strategy name to strategy_type

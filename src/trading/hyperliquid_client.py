@@ -873,10 +873,20 @@ class HyperliquidClient:
         try:
             # Query user state from Hyperliquid API
             # 从 Hyperliquid API 查询用户状态
+            # Try using wallet address if available, otherwise use API key
+            # 如果可用，尝试使用钱包地址，否则使用 API key
+            user_identifier = self.api_key
+            if hasattr(self, 'wallet_address') and self.wallet_address:
+                user_identifier = self.wallet_address
+            elif hasattr(self, 'address') and self.address:
+                user_identifier = self.address
+            
             query_payload = {
                 "type": "clearinghouseState",
-                "user": self.api_key,
+                "user": user_identifier,
             }
+            
+            logger.debug(f"Fetching balance for user: {user_identifier[:10]}... (truncated)")
 
             response = self._make_request(
                 method="POST",
@@ -889,12 +899,60 @@ class HyperliquidClient:
                 logger.warning("No response when fetching balance / 获取余额时无响应")
                 return None
 
+            # Debug: Log response structure to understand API format
+            # 调试：记录响应结构以了解 API 格式
+            # Temporarily use warning level to see actual API response
+            # 临时使用 warning 级别以查看实际 API 响应
+            logger.warning(f"Balance API response structure: {list(response.keys()) if isinstance(response, dict) else type(response)}")
+            if isinstance(response, dict):
+                logger.warning(f"Balance API response (first level): {response}")
+                if "marginSummary" in response:
+                    logger.warning(f"marginSummary keys: {list(response['marginSummary'].keys()) if isinstance(response['marginSummary'], dict) else 'Not a dict'}")
+                    logger.warning(f"marginSummary content: {response['marginSummary']}")
+
             # Parse response to extract balance and margin information
             # 解析响应以提取余额和保证金信息
+            # Hyperliquid API may return data in different formats
+            # Hyperliquid API 可能以不同格式返回数据
             margin_summary = response.get("marginSummary", {})
-            account_value = float(margin_summary.get("accountValue", 0.0))
-            total_margin_used = float(margin_summary.get("totalMarginUsed", 0.0))
-            total_raw_usd = float(margin_summary.get("totalRawUsd", 0.0))
+            
+            # Try different possible field names for account value
+            # 尝试不同的账户价值字段名
+            account_value = 0.0
+            if margin_summary:
+                # Try common field names in marginSummary
+                # 尝试 marginSummary 中的常见字段名
+                account_value = float(
+                    margin_summary.get("accountValue") or
+                    margin_summary.get("account_value") or
+                    margin_summary.get("totalBalance") or
+                    margin_summary.get("total_balance") or
+                    margin_summary.get("balance") or
+                    0.0
+                )
+            else:
+                # If marginSummary is empty, try direct response fields
+                # 如果 marginSummary 为空，尝试直接响应字段
+                account_value = float(
+                    response.get("accountValue") or
+                    response.get("account_value") or
+                    response.get("totalBalance") or
+                    response.get("total_balance") or
+                    response.get("balance") or
+                    0.0
+                )
+            
+            total_margin_used = float(
+                margin_summary.get("totalMarginUsed") or
+                margin_summary.get("total_margin_used") or
+                0.0
+            ) if margin_summary else 0.0
+            
+            total_raw_usd = float(
+                margin_summary.get("totalRawUsd") or
+                margin_summary.get("total_raw_usd") or
+                0.0
+            ) if margin_summary else 0.0
 
             # Calculate available balance
             # 计算可用余额
@@ -1278,9 +1336,26 @@ class HyperliquidClient:
             )
 
             if not response:
-                logger.warning(
-                    "No response when fetching open orders / 获取未成交订单时无响应"
-                )
+                # Check if it's a rate limit error / 检查是否是速率限制错误
+                if self.last_api_error:
+                    if isinstance(self.last_api_error, str) and "Rate limit" in self.last_api_error:
+                        # Rate limit - use debug level to avoid spam / 速率限制 - 使用 debug 级别避免刷屏
+                        logger.debug(
+                            "Rate limited when fetching open orders, returning empty list / "
+                            "获取未成交订单时遇到速率限制，返回空列表"
+                        )
+                    else:
+                        # Other error - log as warning / 其他错误 - 记录为警告
+                        logger.warning(
+                            f"No response when fetching open orders: {self.last_api_error} / "
+                            f"获取未成交订单时无响应: {self.last_api_error}"
+                        )
+                else:
+                    # Unknown error / 未知错误
+                    logger.debug(
+                        "No response when fetching open orders (may be normal if no orders) / "
+                        "获取未成交订单时无响应（如果没有订单可能是正常的）"
+                    )
                 return []
 
             # Parse response

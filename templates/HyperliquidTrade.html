@@ -280,7 +280,7 @@
             <div id="connectionInfo" class="info-card" style="margin-top:16px;">
                 <div>Exchange: <strong>Hyperliquid</strong></div>
                 <div id="connectionDetails" style="margin-top:8px; font-size:13px; color:#6b7280;">Loading connection status...</div>
-                <div style="margin-top:12px; padding:12px; background:#fef3c7; border-radius:8px; border-left:3px solid #f59e0b;">
+                <div id="testnetConnectionHint" style="margin-top:12px; padding:12px; background:#fef3c7; border-radius:8px; border-left:3px solid #f59e0b; display:none;">
                     <div style="font-size:12px; font-weight:600; margin-bottom:6px; color:#92400e;">
                         🔗 Connect to Testnet / 连接到测试网
                     </div>
@@ -579,8 +579,10 @@
                 
                 // Update network status (testnet/mainnet)
                 // 更新网络状态（测试网/主网）
+                const isTestnet = data.testnet === true;
+                const testnetHintEl = document.getElementById('testnetConnectionHint');
+                
                 if (networkEl && networkTextEl) {
-                    const isTestnet = data.testnet === true;
                     networkEl.style.display = 'inline-block';
                     if (isTestnet) {
                         networkEl.className = 'network-badge network-testnet';
@@ -588,6 +590,20 @@
                     } else {
                         networkEl.className = 'network-badge network-mainnet';
                         networkTextEl.innerText = '✓ MAINNET / 主网';
+                    }
+                }
+                
+                // Show/hide testnet connection hint based on connection status
+                // 根据连接状态显示/隐藏测试网连接提示
+                if (testnetHintEl) {
+                    // Only show hint if not connected or if connected to mainnet (to suggest switching to testnet)
+                    // 仅在未连接或连接到主网时显示提示（建议切换到测试网）
+                    if (!data.connected || !isTestnet) {
+                        testnetHintEl.style.display = 'block';
+                    } else {
+                        // Already connected to testnet, hide the hint
+                        // 已连接到测试网，隐藏提示
+                        testnetHintEl.style.display = 'none';
                     }
                 }
                 
@@ -601,7 +617,12 @@
                     // Connected
                     statusEl.className = 'status-badge status-connected';
                     statusEl.innerText = 'Connected / 已连接';
-                    const symbol = data.symbol || 'N/A';
+                    // Convert USDT to USDC for Hyperliquid display (Hyperliquid uses USDC, not USDT)
+                    // 将 USDT 转换为 USDC 用于 Hyperliquid 显示（Hyperliquid 使用 USDC，不是 USDT）
+                    let symbol = data.symbol || 'N/A';
+                    if (symbol.includes('USDT')) {
+                        symbol = symbol.replace(/USDT/g, 'USDC');
+                    }
                     const price = data.mid_price || 0;
                     const balance = data.balance || 0;
                     detailsEl.innerHTML = `
@@ -642,10 +663,16 @@
             
             try {
                 const statusEl = document.getElementById('positionStatus');
-                statusEl.innerText = 'Loading position data... / 正在加载仓位数据...';
+                if (statusEl) {
+                    statusEl.innerText = 'Loading position data... / 正在加载仓位数据...';
+                    statusEl.classList.remove('error');
+                }
                 
                 // Get Hyperliquid-specific status / 获取 Hyperliquid 特定状态
                 const res = await fetch('/api/hyperliquid/status');
+                if (!res.ok) {
+                    throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+                }
                 const data = await res.json();
                 
                 if (data.error) {
@@ -654,16 +681,20 @@
                     
                     // Check for rate limit error / 检查速率限制错误
                     if (data.error.includes('429') || data.error.includes('Too Many Requests') || data.error.includes('速率限制')) {
-                        statusEl.innerText = 'Rate limit exceeded. Please wait... / 速率限制已超出，请稍候...';
-                        statusEl.classList.add('error');
+                        if (statusEl) {
+                            statusEl.innerText = 'Rate limit exceeded. Please wait... / 速率限制已超出，请稍候...';
+                            statusEl.classList.add('error');
+                        }
                         // Extend refresh interval on rate limit / 速率限制时延长刷新间隔
                         if (positionRefreshInterval) {
                             clearInterval(positionRefreshInterval);
                             positionRefreshInterval = setInterval(refreshPosition, 60000); // 1 minute
                         }
                     } else {
-                        statusEl.innerText = data.error;
-                        statusEl.classList.add('error');
+                        if (statusEl) {
+                            statusEl.innerText = data.error;
+                            statusEl.classList.add('error');
+                        }
                     }
                     return;
                 }
@@ -675,47 +706,63 @@
                 const unrealizedPnLEl = document.getElementById('unrealizedPnL');
                 const positionsTableBody = document.getElementById('positionsTableBody');
                 
-                if (data.balance !== undefined) {
-                    positionData.style.display = 'block';
-                    totalBalanceEl.innerText = `$${data.balance.toFixed(2)}`;
-                    availableBalanceEl.innerText = `$${(data.available_balance || 0).toFixed(2)}`;
-                    positionAmountEl.innerText = `${(data.position || 0).toFixed(4)}`;
-                    unrealizedPnLEl.innerText = `$${((data.unrealized_pnl || 0)).toFixed(2)}`;
-                    statusEl.innerText = 'Position data loaded / 仓位数据已加载';
+                // Always show data if connected, even if balance is 0
+                // 如果已连接，即使余额为 0 也显示数据
+                if (data.connected && data.balance !== undefined) {
+                    if (positionData) positionData.style.display = 'block';
+                    if (totalBalanceEl) totalBalanceEl.innerText = `$${(data.balance || 0).toFixed(2)}`;
+                    if (availableBalanceEl) availableBalanceEl.innerText = `$${(data.available_balance || 0).toFixed(2)}`;
+                    if (positionAmountEl) positionAmountEl.innerText = `${(data.position || 0).toFixed(4)}`;
+                    if (unrealizedPnLEl) unrealizedPnLEl.innerText = `$${((data.unrealized_pnl || 0)).toFixed(2)}`;
+                    if (statusEl) {
+                        statusEl.innerText = 'Position data loaded / 仓位数据已加载';
+                        statusEl.classList.remove('error');
+                    }
                     
                     // Populate positions table / 填充仓位表格
-                    if (data.positions && Array.isArray(data.positions) && data.positions.length > 0) {
-                        const rows = data.positions.map(pos => {
-                            const symbol = pos.symbol || pos.coin || '--';
-                            const side = pos.side || (pos.szi > 0 ? 'LONG' : 'SHORT') || '--';
-                            const size = Math.abs(pos.szi || pos.size || 0);
-                            const entryPrice = pos.entryPx || pos.entry_price || 0;
-                            const markPrice = pos.markPx || pos.mark_price || data.mid_price || 0;
-                            const pnl = pos.unrealizedPnl || pos.unrealized_pnl || 0;
-                            
-                            return `
-                                <tr>
-                                    <td>${symbol}</td>
-                                    <td><span style="color:${side === 'LONG' || side === 'BUY' ? '#22c55e' : '#ef4444'}; font-weight:bold;">${side}</span></td>
-                                    <td>${size.toFixed(4)}</td>
-                                    <td>$${entryPrice.toFixed(2)}</td>
-                                    <td>$${markPrice.toFixed(2)}</td>
-                                    <td style="color:${pnl >= 0 ? '#22c55e' : '#ef4444'};">$${pnl.toFixed(2)}</td>
-                                </tr>
-                            `;
-                        }).join('');
-                        positionsTableBody.innerHTML = rows;
-                    } else {
-                        positionsTableBody.innerHTML = '<tr><td colspan="6" style="text-align:center; color:#6b7280;">No open positions / 无未平仓</td></tr>';
+                    if (positionsTableBody) {
+                        if (data.positions && Array.isArray(data.positions) && data.positions.length > 0) {
+                            const rows = data.positions.map(pos => {
+                                const symbol = pos.symbol || pos.coin || '--';
+                                const side = pos.side || (pos.szi > 0 ? 'LONG' : 'SHORT') || '--';
+                                const size = Math.abs(pos.szi || pos.size || 0);
+                                const entryPrice = pos.entryPx || pos.entry_price || 0;
+                                const markPrice = pos.markPx || pos.mark_price || data.mid_price || 0;
+                                const pnl = pos.unrealizedPnl || pos.unrealized_pnl || 0;
+                                
+                                return `
+                                    <tr>
+                                        <td>${symbol}</td>
+                                        <td><span style="color:${side === 'LONG' || side === 'BUY' ? '#22c55e' : '#ef4444'}; font-weight:bold;">${side}</span></td>
+                                        <td>${size.toFixed(4)}</td>
+                                        <td>$${entryPrice.toFixed(2)}</td>
+                                        <td>$${markPrice.toFixed(2)}</td>
+                                        <td style="color:${pnl >= 0 ? '#22c55e' : '#ef4444'};">$${pnl.toFixed(2)}</td>
+                                    </tr>
+                                `;
+                            }).join('');
+                            positionsTableBody.innerHTML = rows;
+                        } else {
+                            positionsTableBody.innerHTML = '<tr><td colspan="6" style="text-align:center; color:#6b7280;">No open positions / 无未平仓</td></tr>';
+                        }
                     }
                 } else {
-                    positionData.style.display = 'none';
-                    statusEl.innerText = 'Position data not available / 仓位数据不可用';
+                    if (positionData) positionData.style.display = 'none';
+                    if (statusEl) {
+                        statusEl.innerText = 'Position data not available / 仓位数据不可用';
+                        statusEl.classList.add('error');
+                    }
                 }
             } catch (err) {
                 const statusEl = document.getElementById('positionStatus');
-                statusEl.innerText = `Error: ${err.message} / 错误: ${err.message}`;
-                statusEl.classList.add('error');
+                if (statusEl) {
+                    statusEl.innerText = `Error: ${err.message} / 错误: ${err.message}`;
+                    statusEl.classList.add('error');
+                }
+                const positionData = document.getElementById('positionData');
+                if (positionData) positionData.style.display = 'none';
+            } finally {
+                isRefreshingPosition = false;
             }
         }
 
@@ -1072,8 +1119,12 @@
                     document.getElementById('evaluationConsensusStrategy').innerText = proposal.recommended_strategy || '--';
                     document.getElementById('evaluationConsensusParams').innerText =
                         `${formatPercent(proposal.spread || 0, 2)} · Qty ${formatNumber(proposal.quantity || 0, 3)} · Lev ${formatNumber(proposal.leverage || 0, 1)}x`;
-                    document.getElementById('evaluationConsensusReasoning').innerText =
-                        proposal.reasoning || 'Consensus reasoning unavailable. / 共识推理不可用。';
+                    // Display reasoning, or show default message if empty
+                    // 显示推理，如果为空则显示默认消息
+                    const reasoning = proposal.reasoning && proposal.reasoning.trim() 
+                        ? proposal.reasoning 
+                        : 'Consensus reasoning unavailable. / 共识推理不可用。';
+                    document.getElementById('evaluationConsensusReasoning').innerText = reasoning;
                     document.getElementById('evaluationConsensusStats').innerText =
                         `Avg PnL ${formatCurrency(aggregated.avg_pnl || 0)} · Avg Sharpe ${formatNumber(aggregated.avg_sharpe || 0, 2)} · Avg Win ${formatPercent(aggregated.avg_win_rate || 0, 1)}`;
                 } else {
@@ -1219,66 +1270,94 @@
         }
 
         async function refreshOrders() {
+            // Prevent duplicate requests / 防止重复请求
+            if (isRefreshingOrders) return;
+            isRefreshingOrders = true;
+            
             try {
                 const statusEl = document.getElementById('ordersStatusText');
                 const tableWrapper = document.getElementById('ordersTableWrapper');
                 const tableBody = document.getElementById('ordersTableBody');
                 const emptyMessage = document.getElementById('ordersEmptyMessage');
                 
-                statusEl.innerText = 'Loading orders... / 正在加载订单...';
+                if (statusEl) {
+                    statusEl.innerText = 'Loading orders... / 正在加载订单...';
+                    statusEl.classList.remove('error');
+                }
                 
                 // Get Hyperliquid-specific status / 获取 Hyperliquid 特定状态
                 const res = await fetch('/api/hyperliquid/status');
+                if (!res.ok) {
+                    throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+                }
                 const data = await res.json();
                 
                 if (data.error) {
-                    tableWrapper.style.display = 'none';
-                    emptyMessage.style.display = 'block';
-                    statusEl.innerText = data.error;
-                    statusEl.classList.add('error');
+                    if (tableWrapper) tableWrapper.style.display = 'none';
+                    if (emptyMessage) emptyMessage.style.display = 'block';
+                    if (statusEl) {
+                        statusEl.innerText = data.error;
+                        statusEl.classList.add('error');
+                    }
                     return;
                 }
                 
                 const orders = data.orders || [];
                 
                 if (orders.length === 0) {
-                    tableWrapper.style.display = 'none';
-                    emptyMessage.style.display = 'block';
-                    statusEl.innerText = 'No active orders / 无活跃订单';
+                    if (tableWrapper) tableWrapper.style.display = 'none';
+                    if (emptyMessage) emptyMessage.style.display = 'block';
+                    if (statusEl) {
+                        statusEl.innerText = 'No active orders / 无活跃订单';
+                        statusEl.classList.remove('error');
+                    }
                 } else {
-                    tableWrapper.style.display = 'block';
-                    emptyMessage.style.display = 'none';
-                    statusEl.innerText = `Found ${orders.length} active order(s) / 找到 ${orders.length} 个活跃订单`;
+                    if (tableWrapper) tableWrapper.style.display = 'block';
+                    if (emptyMessage) emptyMessage.style.display = 'none';
+                    if (statusEl) {
+                        statusEl.innerText = `Found ${orders.length} active order(s) / 找到 ${orders.length} 个活跃订单`;
+                        statusEl.classList.remove('error');
+                    }
                     
-                    const rows = orders.map(order => {
-                        const orderId = order.id || order.orderId || order.oid || '--';
-                        const side = order.side || (order.sz > 0 ? 'BUY' : 'SELL') || '--';
-                        const price = formatNumber(order.price || order.limitPx || 0, 4);
-                        const quantity = formatNumber(Math.abs(order.amount || order.sz || order.quantity || 0), 4);
-                        const status = order.status || order.status || 'open';
-                        const timestamp = order.timestamp ? new Date(order.timestamp).toLocaleTimeString() : '--';
+                    if (tableBody) {
+                        const rows = orders.map(order => {
+                            const orderId = order.id || order.orderId || order.oid || '--';
+                            const side = order.side || (order.sz > 0 ? 'BUY' : 'SELL') || '--';
+                            const price = formatNumber(order.price || order.limitPx || 0, 4);
+                            const quantity = formatNumber(Math.abs(order.amount || order.sz || order.quantity || 0), 4);
+                            const status = order.status || order.status || 'open';
+                            const timestamp = order.timestamp ? new Date(order.timestamp).toLocaleTimeString() : '--';
+                            
+                            const sideColor = side.toLowerCase() === 'buy' ? '#22c55e' : '#ef4444';
+                            const safeOrderId = String(orderId).replace(/'/g, "\\'");
+                            
+                            return `
+                                <tr>
+                                    <td style="font-family:monospace; font-size:11px;">${String(orderId).substring(0, 20)}${String(orderId).length > 20 ? '...' : ''}</td>
+                                    <td><span style="color:${sideColor}; font-weight:bold;">${side.toUpperCase()}</span></td>
+                                    <td>${price}</td>
+                                    <td>${quantity}</td>
+                                    <td><span style="padding:2px 6px; border-radius:4px; background:#e5e7eb; font-size:11px;">${status}</span></td>
+                                    <td style="font-size:11px; color:#6b7280;">${timestamp}</td>
+                                    <td><button class="btn btn-danger" style="font-size:11px; padding:4px 8px;" onclick="cancelOrder('${safeOrderId}')">Cancel</button></td>
+                                </tr>`;
+                        }).join('');
                         
-                        const sideColor = side.toLowerCase() === 'buy' ? '#22c55e' : '#ef4444';
-                        const safeOrderId = String(orderId).replace(/'/g, "\\'");
-                        
-                        return `
-                            <tr>
-                                <td style="font-family:monospace; font-size:11px;">${String(orderId).substring(0, 20)}${String(orderId).length > 20 ? '...' : ''}</td>
-                                <td><span style="color:${sideColor}; font-weight:bold;">${side.toUpperCase()}</span></td>
-                                <td>${price}</td>
-                                <td>${quantity}</td>
-                                <td><span style="padding:2px 6px; border-radius:4px; background:#e5e7eb; font-size:11px;">${status}</span></td>
-                                <td style="font-size:11px; color:#6b7280;">${timestamp}</td>
-                                <td><button class="btn btn-danger" style="font-size:11px; padding:4px 8px;" onclick="cancelOrder('${safeOrderId}')">Cancel</button></td>
-                            </tr>`;
-                    }).join('');
-                    
-                    tableBody.innerHTML = rows;
+                        tableBody.innerHTML = rows;
+                    }
                 }
             } catch (err) {
                 const statusEl = document.getElementById('ordersStatusText');
-                statusEl.innerText = `Error loading orders: ${err.message} / 加载订单错误: ${err.message}`;
-                statusEl.classList.add('error');
+                if (statusEl) {
+                    statusEl.innerText = `Error loading orders: ${err.message} / 加载订单错误: ${err.message}`;
+                    statusEl.classList.add('error');
+                }
+                const tableWrapper = document.getElementById('ordersTableWrapper');
+                const emptyMessage = document.getElementById('ordersEmptyMessage');
+                if (tableWrapper) tableWrapper.style.display = 'none';
+                if (emptyMessage) emptyMessage.style.display = 'block';
+            } finally {
+                isRefreshingOrders = false;
             }
         }
 
@@ -1310,9 +1389,12 @@
             }
         }
 
-        // Auto-refresh
+        // Auto-refresh - Track intervals for cleanup
+        // 自动刷新 - 跟踪间隔以便清理
         let ordersRefreshInterval = null;
         let positionRefreshInterval = null;
+        let connectionRefreshInterval = null;
+        
         function startAutoRefresh() {
             if (ordersRefreshInterval) clearInterval(ordersRefreshInterval);
             if (positionRefreshInterval) clearInterval(positionRefreshInterval);
@@ -1329,11 +1411,24 @@
             positionRefreshInterval = setInterval(refreshPosition, 20000);  // 20 seconds (was 5)
             connectionRefreshInterval = setInterval(checkConnection, 30000);  // 30 seconds (was 10)
         }
-        
-        // Track intervals for cleanup
-        let ordersRefreshInterval = null;
-        let positionRefreshInterval = null;
-        let connectionRefreshInterval = null;
+
+        // Suppress Chrome extension runtime.lastError messages
+        // These errors are caused by browser extensions trying to communicate
+        // and don't affect page functionality
+        // 抑制 Chrome 扩展 runtime.lastError 消息
+        // 这些错误是由浏览器扩展尝试通信引起的，不影响页面功能
+        const originalError = console.error;
+        console.error = function(...args) {
+            // Filter out Chrome extension runtime.lastError messages
+            // 过滤掉 Chrome 扩展 runtime.lastError 消息
+            if (args.length > 0 && typeof args[0] === 'string' && 
+                (args[0].includes('runtime.lastError') || 
+                 args[0].includes('Could not establish connection') ||
+                 args[0].includes('Receiving end does not exist'))) {
+                return; // Suppress this error
+            }
+            originalError.apply(console, args);
+        };
 
         document.addEventListener('DOMContentLoaded', () => {
             loadStatus();

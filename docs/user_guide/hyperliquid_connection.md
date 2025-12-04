@@ -442,6 +442,7 @@ client = HyperliquidClient()  # Reads from env vars / 从环境变量读取
 
 ## Related Documentation / 相关文档
 
+- **Trading Page Guide / 交易页面指南**: [Hyperliquid Trading Page Guide](hyperliquid_trading_page.md)
 - **Order Management Guide / 订单管理指南**: [Hyperliquid Orders Guide](hyperliquid_orders.md)
 - **Position Tracking Guide / 仓位追踪指南**: [Hyperliquid Positions Guide](hyperliquid_positions.md)
 - **LLM Evaluation Guide / LLM 评估指南**: [Hyperliquid LLM Evaluation Guide](hyperliquid_llm_evaluation.md)

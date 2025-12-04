@@ -100,7 +100,7 @@
           "name": "Dedicated Hyperliquid Trading Page / 专用 Hyperliquid 交易页面",
           "name_zh": "专用 Hyperliquid 交易页面",
           "status": "IN_PROGRESS",
-          "current_step": "plan_approved",
+          "current_step": "code_implemented",
           "branch": "feat/US-UI-004-hyperliquid-trading-page",
           "sync_source": "docs/modules/web.json",
           "step_status": {
@@ -108,7 +108,9 @@
             "story_defined": true,
             "ac_defined": true,
             "contract_defined": true,
-            "plan_approved": true
+            "plan_approved": true,
+            "unit_test_written": true,
+            "code_implemented": true
           }
         }
       ]

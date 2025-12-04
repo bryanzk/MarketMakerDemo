@@ -30,7 +30,7 @@ class TestHyperliquidLLMEvaluationAPI:
         """Create a mock HyperliquidClient / 创建模拟 HyperliquidClient"""
         client = Mock(spec=HyperliquidClient)
         client.is_connected = True
-        client.symbol = "ETH/USDT:USDT"
+        client.symbol = "ETH/USDC:USDC"
         client.fetch_market_data.return_value = {
             "best_bid": 3000.0,
             "best_ask": 3002.0,
@@ -53,7 +53,7 @@ class TestHyperliquidLLMEvaluationAPI:
         """Create a mock BinanceClient / 创建模拟 BinanceClient"""
         client = Mock(spec=BinanceClient)
         client.is_connected = True
-        client.symbol = "ETH/USDT:USDT"
+        client.symbol = "ETH/USDC:USDC"
         client.fetch_market_data.return_value = {
             "best_bid": 2000.0,
             "best_ask": 2002.0,
@@ -127,7 +127,7 @@ class TestHyperliquidLLMEvaluationAPI:
             response = client.post(
                 "/api/evaluation/run",
                 json={
-                    "symbol": "ETH/USDT:USDT",
+                    "symbol": "ETH/USDC:USDC",
                     "simulation_steps": 100,
                     # "exchange": "hyperliquid"  # This parameter may need to be added
                 },
@@ -172,7 +172,7 @@ class TestHyperliquidLLMEvaluationAPI:
 
             response = client.post(
                 "/api/evaluation/run",
-                json={"symbol": "ETH/USDT:USDT", "simulation_steps": 100},
+                json={"symbol": "ETH/USDC:USDC", "simulation_steps": 100},
             )
 
             # Verify Hyperliquid market data was fetched
@@ -258,7 +258,7 @@ class TestHyperliquidLLMResponseFormat:
 
             response = client.post(
                 "/api/evaluation/run",
-                json={"symbol": "ETH/USDT:USDT", "simulation_steps": 100},
+                json={"symbol": "ETH/USDC:USDC", "simulation_steps": 100},
             )
 
             # Verify response structure (when API is updated to include exchange)
@@ -337,7 +337,7 @@ class TestHyperliquidExchangeContext:
 
             response = client.post(
                 "/api/evaluation/run",
-                json={"symbol": "ETH/USDT:USDT", "simulation_steps": 100},
+                json={"symbol": "ETH/USDC:USDC", "simulation_steps": 100},
             )
 
             # Verify market data was fetched from Hyperliquid
@@ -383,7 +383,7 @@ class TestHyperliquidErrorHandling:
 
             response = client.post(
                 "/api/evaluation/run",
-                json={"symbol": "ETH/USDT:USDT", "simulation_steps": 100},
+                json={"symbol": "ETH/USDC:USDC", "simulation_steps": 100},
             )
 
             # Verify error response (API should return error when exchange is None)
@@ -436,7 +436,7 @@ class TestHyperliquidErrorHandling:
 
             response = client.post(
                 "/api/evaluation/run",
-                json={"symbol": "ETH/USDT:USDT", "simulation_steps": 100},
+                json={"symbol": "ETH/USDC:USDC", "simulation_steps": 100},
             )
 
             # Verify error response (API should handle exception gracefully)

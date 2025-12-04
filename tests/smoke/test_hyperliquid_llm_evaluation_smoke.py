@@ -32,7 +32,7 @@ class TestHyperliquidLLMEvaluationSmoke:
         """Create a mock HyperliquidClient / 创建模拟 HyperliquidClient"""
         client = Mock(spec=HyperliquidClient)
         client.is_connected = True
-        client.symbol = "ETHUSDT"
+        client.symbol = "ETHUSDC"
         client.exchange_name = "hyperliquid"
         client.fetch_market_data.return_value = {
             "best_bid": 3000.0,
@@ -101,7 +101,7 @@ class TestHyperliquidLLMEvaluationSmoke:
             response = client.post(
                 "/api/evaluation/run",
                 json={
-                    "symbol": "ETH/USDT:USDT",
+                    "symbol": "ETH/USDC:USDC",
                     "simulation_steps": 100,
                     "exchange": "hyperliquid",
                 },
@@ -151,7 +151,7 @@ class TestHyperliquidLLMEvaluationSmoke:
             response = client.post(
                 "/api/evaluation/run",
                 json={
-                    "symbol": "ETH/USDT:USDT",
+                    "symbol": "ETH/USDC:USDC",
                     "simulation_steps": 100,
                     "exchange": "hyperliquid",
                 },
@@ -201,7 +201,7 @@ class TestHyperliquidLLMEvaluationSmoke:
             response = client.post(
                 "/api/evaluation/run",
                 json={
-                    "symbol": "ETH/USDT:USDT",
+                    "symbol": "ETH/USDC:USDC",
                     "simulation_steps": 100,
                     "exchange": "hyperliquid",
                 },
@@ -261,7 +261,7 @@ class TestHyperliquidLLMEvaluationSmoke:
             response = client.post(
                 "/api/evaluation/run",
                 json={
-                    "symbol": "ETH/USDT:USDT",
+                    "symbol": "ETH/USDC:USDC",
                     "simulation_steps": 100,
                     "exchange": "hyperliquid",
                 },
@@ -299,7 +299,7 @@ class TestHyperliquidLLMEvaluationSmoke:
             response = client.post(
                 "/api/evaluation/run",
                 json={
-                    "symbol": "ETH/USDT:USDT",
+                    "symbol": "ETH/USDC:USDC",
                     "simulation_steps": 100,
                     "exchange": "invalid_exchange",
                 },

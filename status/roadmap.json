@@ -74,8 +74,8 @@
           "id": "US-API-004",
           "name": "Hyperliquid LLM Evaluation Support / Hyperliquid LLM 评估支持",
           "name_zh": "Hyperliquid LLM 评估支持",
-          "status": "IN_PROGRESS",
-          "current_step": "unit_test_passed",
+          "status": "DONE",
+          "current_step": "ci_cd_passed",
           "branch": "feat/US-API-004",
           "sync_source": "docs/modules/web.json",
           "step_status": {
@@ -86,7 +86,13 @@
             "plan_approved": true,
             "unit_test_written": true,
             "code_implemented": true,
-            "unit_test_passed": true
+            "code_reviewed": true,
+            "unit_test_passed": true,
+            "smoke_test_passed": true,
+            "integration_passed": true,
+            "docs_updated": true,
+            "progress_logged": true,
+            "ci_cd_passed": true
           }
         },
         {

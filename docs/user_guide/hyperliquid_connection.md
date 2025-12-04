@@ -442,6 +442,9 @@ client = HyperliquidClient()  # Reads from env vars / 从环境变量读取
 
 ## Related Documentation / 相关文档
 
+- **Order Management Guide / 订单管理指南**: [Hyperliquid Orders Guide](hyperliquid_orders.md)
+- **Position Tracking Guide / 仓位追踪指南**: [Hyperliquid Positions Guide](hyperliquid_positions.md)
+- **LLM Evaluation Guide / LLM 评估指南**: [Hyperliquid LLM Evaluation Guide](hyperliquid_llm_evaluation.md)
 - **Specification / 规范**: `docs/specs/trading/CORE-004.md`
 - **User Story / 用户故事**: `docs/stories/trading/US-CORE-004-A.md`
 - **Interface Contract / 接口契约**: `contracts/trading.json#HyperliquidClient`

@@ -1205,3 +1205,72 @@ Gemini 给出的建议 score 为 0，不应该为零。
 
 ---
 
+## Issue #019: Leverage Update Shows "undefinedx" / 杠杆更新显示 "undefinedx"
+
+**Date / 日期**: 2025-12-01  
+**Status / 状态**: ✅ Fixed / 已修复  
+**Priority / 优先级**: Medium / 中  
+**Module / 模块**: web (Agent WEB)  
+**Related Feature / 相关功能**: US-UI-004 - Hyperliquid Trading Page / Hyperliquid 交易页面
+
+### Description / 描述
+
+修改杠杆后点击 "Update Leverage" 按钮，显示：
+```
+Leverage updated to undefinedx / 杠杆已更新至 undefinedx
+```
+
+**Root Cause / 根本原因**:
+1. 前端发送 `JSON.stringify(leverage)` 作为 JSON body
+2. FastAPI 的 `leverage: int` 参数无法正确解析 JSON body 中的整数
+3. FastAPI 期望查询参数或路径参数，而不是 JSON body
+4. 导致 `leverage` 参数为 `None` 或未定义，响应中 `data.leverage` 为 `undefined`
+
+### Solution / 解决方案
+
+修复 FastAPI 参数解析：
+
+1. **使用 Body 参数**:
+   - 将 `leverage: int` 改为 `leverage: int = Body(..., embed=True)`
+   - 这样 FastAPI 可以正确解析 JSON body 中的整数
+   - 与 `cancel_hyperliquid_order` 端点保持一致
+
+2. **改进响应消息**:
+   - 在响应中包含 `message` 字段，提供完整的成功消息
+   - 确保响应中始终包含 `leverage` 值
+
+3. **改进前端错误处理**:
+   - 添加杠杆值验证（1-125）
+   - 使用响应中的 `message` 字段（如果可用）
+   - 如果 `data.leverage` 不存在，使用输入的杠杆值作为回退
+
+### Files Modified / 修改的文件
+
+- `server.py`: 修复 `/api/hyperliquid/leverage` 端点的参数解析
+- `templates/HyperliquidTrade.html`: 改进 `updateLeverage()` 函数的错误处理
+
+### Code Changes / 代码变更
+
+**`/api/hyperliquid/leverage` 端点**:
+- 使用 `Body(..., embed=True)` 正确解析 JSON body
+- 在响应中添加 `message` 字段
+
+**`updateLeverage()` 函数**:
+- 添加杠杆值验证
+- 使用响应中的 `message` 字段或构造消息
+- 添加回退逻辑，如果 `data.leverage` 不存在，使用输入的杠杆值
+
+### Testing / 测试
+
+- ✅ 杠杆更新后正确显示杠杆值
+- ✅ 杠杆值验证正常工作
+- ✅ 错误处理正确
+
+### Related Documentation / 相关文档
+
+- `server.py`
+- `templates/HyperliquidTrade.html`
+- `docs/user_guide/hyperliquid_trading_page.md`
+
+---
+

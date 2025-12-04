@@ -726,17 +726,434 @@ class HyperliquidClient:
     def fetch_account_data(self) -> Optional[Dict]:
         """Fetches position and balance data / 获取仓位和余额数据"""
         try:
-            # Placeholder implementation
+            # Use fetch_balance and fetch_position to get account data
+            # fetch_account_data needs liquidation_price, so include it
+            # 使用 fetch_balance 和 fetch_position 获取账户数据
+            # fetch_account_data 需要清算价格，因此包含它
+            balance = self.fetch_balance(include_liquidation_price=True)
+            if not balance:
+                return None
+
+            position = self.fetch_position(self.symbol)
+            if not position:
+                return {
+                    "position_amt": 0.0,
+                    "entry_price": 0.0,
+                    "balance": balance.get("total", 0.0),
+                    "available_balance": balance.get("available", 0.0),
+                    "liquidation_price": balance.get("liquidation_price", 0.0),
+                }
+
             return {
-                "position_amt": 0.0,
-                "entry_price": 0.0,
-                "balance": 0.0,
-                "available_balance": 0.0,
-                "liquidation_price": 0.0,
+                "position_amt": position.get("size", 0.0),
+                "entry_price": position.get("entry_price", 0.0),
+                "balance": balance.get("total", 0.0),
+                "available_balance": balance.get("available", 0.0),
+                "liquidation_price": position.get("liquidation_price", 0.0),
             }
         except Exception as e:
             logger.error(f"Error fetching account data: {e}")
             return None
+
+    def fetch_balance(self, include_liquidation_price: bool = False) -> Optional[Dict]:
+        """
+        Fetch account balance and margin information / 获取账户余额和保证金信息
+
+        Args:
+            include_liquidation_price: Whether to fetch liquidation price from positions.
+                Defaults to False to avoid redundant API calls. Set to True if liquidation
+                price is needed.
+                是否从仓位获取清算价格。默认为 False 以避免冗余 API 调用。
+                如果需要清算价格，设置为 True。
+
+        Returns:
+            Dictionary with balance and margin information:
+            {
+                "total": float (total balance in USDT),
+                "available": float (available balance in USDT),
+                "margin_used": float (margin used in USDT),
+                "margin_available": float (margin available in USDT),
+                "margin_ratio": float (margin ratio as percentage, 0-100),
+                "liquidation_price": float (liquidation price if applicable, 0.0 if not fetched)
+            }
+        """
+        try:
+            # Query user state from Hyperliquid API
+            # 从 Hyperliquid API 查询用户状态
+            query_payload = {
+                "type": "clearinghouseState",
+                "user": self.api_key,
+            }
+
+            response = self._make_request(
+                method="POST",
+                endpoint="/info",
+                data=query_payload,
+                public=False,
+            )
+
+            if not response:
+                logger.warning("No response when fetching balance / 获取余额时无响应")
+                return None
+
+            # Parse response to extract balance and margin information
+            # 解析响应以提取余额和保证金信息
+            margin_summary = response.get("marginSummary", {})
+            account_value = float(margin_summary.get("accountValue", 0.0))
+            total_margin_used = float(margin_summary.get("totalMarginUsed", 0.0))
+            total_raw_usd = float(margin_summary.get("totalRawUsd", 0.0))
+
+            # Calculate available balance
+            # 计算可用余额
+            available = account_value - total_margin_used
+
+            # Calculate margin ratio (as percentage)
+            # 计算保证金比率（百分比）
+            margin_ratio = (
+                (total_margin_used / account_value * 100) if account_value > 0 else 0.0
+            )
+
+            # Get liquidation price from positions only if requested
+            # 仅在请求时从仓位获取清算价格
+            liquidation_price = 0.0
+            if include_liquidation_price:
+                positions = self.fetch_positions()
+                if positions:
+                    # Use the liquidation price from the first position with liquidation price
+                    # 使用第一个有清算价格的仓位的清算价格
+                    for pos in positions:
+                        if pos.get("liquidation_price", 0.0) > 0:
+                            liquidation_price = pos.get("liquidation_price", 0.0)
+                            break
+
+            return {
+                "total": account_value,
+                "available": available,
+                "margin_used": total_margin_used,
+                "margin_available": available,
+                "margin_ratio": margin_ratio,
+                "liquidation_price": liquidation_price,
+            }
+
+        except Exception as e:
+            error_msg = (
+                f"Error fetching balance: {str(e)}. " f"获取余额时出错：{str(e)}。"
+            )
+            logger.error(error_msg, exc_info=True)
+            raise ConnectionError(error_msg) from e
+
+    def fetch_positions(self) -> List[Dict]:
+        """
+        Fetch all open positions across all symbols / 获取所有交易对的所有未平仓仓位
+
+        Returns:
+            List of Position objects, each containing:
+            {
+                "symbol": str,
+                "side": str (LONG|SHORT|NONE),
+                "size": float,
+                "entry_price": float,
+                "mark_price": float,
+                "unrealized_pnl": float,
+                "liquidation_price": float,
+                "timestamp": int (milliseconds)
+            }
+        """
+        try:
+            # Query user state to get positions
+            # 查询用户状态以获取仓位
+            query_payload = {
+                "type": "clearinghouseState",
+                "user": self.api_key,
+            }
+
+            response = self._make_request(
+                method="POST",
+                endpoint="/info",
+                data=query_payload,
+                public=False,
+            )
+
+            if not response:
+                logger.warning("No response when fetching positions / 获取仓位时无响应")
+                return []
+
+            # Parse asset positions from response
+            # 从响应中解析资产仓位
+            asset_positions = response.get("assetPositions", [])
+            positions = []
+
+            for asset_pos in asset_positions:
+                position_data = asset_pos.get("position", {})
+                if not position_data:
+                    continue
+
+                # Convert Hyperliquid position format to internal format
+                # 将 Hyperliquid 仓位格式转换为内部格式
+                position = self._convert_hyperliquid_position_to_internal(
+                    position_data, asset_pos
+                )
+                if position:
+                    positions.append(position)
+
+            return positions
+
+        except Exception as e:
+            error_msg = (
+                f"Error fetching positions: {str(e)}. " f"获取仓位时出错：{str(e)}。"
+            )
+            logger.error(error_msg, exc_info=True)
+            raise ConnectionError(error_msg) from e
+
+    def fetch_position(self, symbol: Optional[str] = None) -> Optional[Dict]:
+        """
+        Fetch position for specific symbol / 获取特定交易对的仓位
+
+        Args:
+            symbol: Trading symbol (optional, defaults to current symbol)
+
+        Returns:
+            Position dictionary with symbol, side, size, entry_price, mark_price,
+            unrealized_pnl, liquidation_price, timestamp
+        """
+        try:
+            if symbol is None:
+                symbol = self.symbol
+
+            # Fetch all positions and filter by symbol
+            # 获取所有仓位并按交易对过滤
+            positions = self.fetch_positions()
+
+            # Normalize symbol format for exact matching
+            # 规范化交易对格式以进行精确匹配
+            symbol_base = (
+                symbol.split("/")[0]
+                if "/" in symbol
+                else symbol.split(":")[0] if ":" in symbol else symbol
+            )
+            coin = (
+                symbol_base.replace("USDT", "")
+                .replace("/", "")
+                .replace(":", "")
+                .upper()
+            )
+
+            for position in positions:
+                pos_symbol = position.get("symbol", "")
+                # Extract coin from position symbol for exact matching
+                # 从仓位交易对中提取币种以进行精确匹配
+                pos_symbol_base = (
+                    pos_symbol.split("/")[0]
+                    if "/" in pos_symbol
+                    else pos_symbol.split(":")[0] if ":" in pos_symbol else pos_symbol
+                )
+                pos_coin = (
+                    pos_symbol_base.replace("USDT", "")
+                    .replace("/", "")
+                    .replace(":", "")
+                    .upper()
+                )
+
+                # Exact match: coin names must be identical
+                # 精确匹配：币种名称必须完全相同
+                if coin == pos_coin:
+                    return position
+
+            # Return empty position if not found
+            # 如果未找到，返回空仓位
+            return {
+                "symbol": symbol,
+                "side": "NONE",
+                "size": 0.0,
+                "entry_price": 0.0,
+                "mark_price": 0.0,
+                "unrealized_pnl": 0.0,
+                "liquidation_price": 0.0,
+                "timestamp": int(time.time() * 1000),
+            }
+
+        except Exception as e:
+            error_msg = (
+                f"Error fetching position for {symbol}: {str(e)}. "
+                f"获取 {symbol} 仓位时出错：{str(e)}。"
+            )
+            logger.error(error_msg, exc_info=True)
+            raise ConnectionError(error_msg) from e
+
+    def fetch_position_history(
+        self,
+        limit: Optional[int] = 100,
+        start_time: Optional[int] = None,
+        symbol: Optional[str] = None,
+    ) -> List[Dict]:
+        """
+        Fetch position history (both open and closed positions) / 获取仓位历史（包括未平仓和已平仓仓位）
+
+        Note: This method constructs position history from user fills (trade executions)
+        and current open positions. Hyperliquid API does not provide a dedicated position
+        history endpoint, so the history is reconstructed from fill data. This means:
+        - Closed positions are represented by fills with closedPnl
+        - Open positions are included from current position data
+        - Position lifecycle events (partial closes, position modifications) may not be
+          fully captured in the history
+
+        注意：此方法从用户成交记录（交易执行）和当前未平仓仓位构建仓位历史。
+        Hyperliquid API 不提供专用的仓位历史端点，因此历史是从成交数据重建的。
+        这意味着：
+        - 已平仓仓位由带有 closedPnl 的成交记录表示
+        - 未平仓仓位从当前仓位数据中包含
+        - 仓位生命周期事件（部分平仓、仓位修改）可能无法在历史中完全捕获
+
+        Args:
+            limit: Maximum number of positions to return (default: 100)
+            start_time: Start timestamp in milliseconds (optional)
+            symbol: Filter by symbol (optional)
+
+        Returns:
+            List of PositionHistory objects with open_time, close_time, entry_price,
+            exit_price, realized_pnl, etc.
+        """
+        try:
+            # Query user fills to get position history
+            # 查询用户成交记录以获取仓位历史
+            query_payload = {
+                "type": "userFills",
+                "user": self.api_key,
+            }
+
+            if limit:
+                query_payload["limit"] = limit
+            if start_time:
+                query_payload["startTime"] = start_time
+
+            response = self._make_request(
+                method="POST",
+                endpoint="/info",
+                data=query_payload,
+                public=False,
+            )
+
+            if not response:
+                logger.warning(
+                    "No response when fetching position history / 获取仓位历史时无响应"
+                )
+                return []
+
+            # Parse fills to create position history
+            # 解析成交记录以创建仓位历史
+            fills = response.get("fills", [])
+            if not fills and "userFills" in response:
+                fills = response.get("userFills", [])
+
+            position_history = []
+
+            for fill in fills:
+                # Convert fill to position history entry
+                # 将成交记录转换为仓位历史条目
+                fill_symbol = fill.get("coin", "")
+                if symbol:
+                    # Filter by symbol if specified (exact match)
+                    # 如果指定了交易对，则进行过滤（精确匹配）
+                    symbol_base = (
+                        symbol.split("/")[0]
+                        if "/" in symbol
+                        else symbol.split(":")[0] if ":" in symbol else symbol
+                    )
+                    coin = (
+                        symbol_base.replace("USDT", "")
+                        .replace("/", "")
+                        .replace(":", "")
+                        .upper()
+                    )
+                    fill_coin = fill_symbol.upper()
+                    # Exact match: coin names must be identical
+                    # 精确匹配：币种名称必须完全相同
+                    if coin != fill_coin:
+                        continue
+
+                history_entry = {
+                    "symbol": f"{fill_symbol}/USDT:USDT",
+                    "side": "LONG" if float(fill.get("sz", 0)) > 0 else "SHORT",
+                    "size": abs(float(fill.get("sz", 0))),
+                    "entry_price": float(fill.get("px", 0)),
+                    "exit_price": float(fill.get("px", 0)),  # Same as entry for fills
+                    "realized_pnl": float(fill.get("closedPnl", 0)),
+                    "open_time": int(fill.get("time", time.time() * 1000)),
+                    "close_time": int(fill.get("time", time.time() * 1000)),
+                    "status": "closed",
+                }
+                position_history.append(history_entry)
+
+            # Also include current open positions
+            # 同时包含当前未平仓仓位
+            open_positions = self.fetch_positions()
+            for pos in open_positions:
+                if symbol:
+                    # Filter by symbol if specified (exact match)
+                    # 如果指定了交易对，则进行过滤（精确匹配）
+                    pos_symbol = pos.get("symbol", "")
+                    # Normalize both symbols for exact matching
+                    # 规范化两个交易对以进行精确匹配
+                    symbol_normalized = (
+                        (
+                            symbol.split("/")[0]
+                            if "/" in symbol
+                            else symbol.split(":")[0] if ":" in symbol else symbol
+                        )
+                        .replace("USDT", "")
+                        .replace("/", "")
+                        .replace(":", "")
+                        .upper()
+                    )
+                    pos_symbol_normalized = (
+                        (
+                            pos_symbol.split("/")[0]
+                            if "/" in pos_symbol
+                            else (
+                                pos_symbol.split(":")[0]
+                                if ":" in pos_symbol
+                                else pos_symbol
+                            )
+                        )
+                        .replace("USDT", "")
+                        .replace("/", "")
+                        .replace(":", "")
+                        .upper()
+                    )
+                    if symbol_normalized != pos_symbol_normalized:
+                        continue
+
+                history_entry = {
+                    "symbol": pos.get("symbol", ""),
+                    "side": pos.get("side", "NONE"),
+                    "size": pos.get("size", 0.0),
+                    "entry_price": pos.get("entry_price", 0.0),
+                    "exit_price": None,
+                    "realized_pnl": 0.0,
+                    "open_time": pos.get("timestamp", int(time.time() * 1000)),
+                    "close_time": None,
+                    "status": "open",
+                }
+                position_history.append(history_entry)
+
+            # Sort by timestamp (most recent first)
+            # 按时间戳排序（最新的在前）
+            position_history.sort(key=lambda x: x.get("open_time", 0), reverse=True)
+
+            # Limit results
+            # 限制结果数量
+            if limit:
+                position_history = position_history[:limit]
+
+            return position_history
+
+        except Exception as e:
+            error_msg = (
+                f"Error fetching position history: {str(e)}. "
+                f"获取仓位历史时出错：{str(e)}。"
+            )
+            logger.error(error_msg, exc_info=True)
+            raise ConnectionError(error_msg) from e
 
     def fetch_open_orders(self) -> List[Dict]:
         """
@@ -985,13 +1402,60 @@ class HyperliquidClient:
             logger.error(f"Error canceling all orders: {e}")
 
     def fetch_realized_pnl(self, start_time: Optional[int] = None) -> float:
-        """Fetches total realized PnL from transaction history / 从交易历史获取总已实现盈亏"""
+        """
+        Fetches total realized PnL from transaction history / 从交易历史获取总已实现盈亏
+
+        Args:
+            start_time: Start timestamp in milliseconds (optional)
+
+        Returns:
+            Total realized PnL as float
+        """
         try:
-            # Placeholder implementation
-            return 0.0
+            # Query user fills to get realized PnL
+            # 查询用户成交记录以获取已实现盈亏
+            query_payload = {
+                "type": "userFills",
+                "user": self.api_key,
+            }
+
+            if start_time:
+                query_payload["startTime"] = start_time
+
+            response = self._make_request(
+                method="POST",
+                endpoint="/info",
+                data=query_payload,
+                public=False,
+            )
+
+            if not response:
+                logger.warning(
+                    "No response when fetching realized PnL / 获取已实现盈亏时无响应"
+                )
+                return 0.0
+
+            # Sum up closed PnL from all fills
+            # 汇总所有成交记录的已平仓盈亏
+            fills = response.get("fills", [])
+            if not fills and "userFills" in response:
+                fills = response.get("userFills", [])
+
+            total_realized_pnl = 0.0
+            for fill in fills:
+                closed_pnl = fill.get("closedPnl", 0)
+                if closed_pnl:
+                    total_realized_pnl += float(closed_pnl)
+
+            return total_realized_pnl
+
         except Exception as e:
-            logger.error(f"Error fetching realized PnL: {e}")
-            return 0.0
+            error_msg = (
+                f"Error fetching realized PnL: {str(e)}. "
+                f"获取已实现盈亏时出错：{str(e)}。"
+            )
+            logger.error(error_msg, exc_info=True)
+            raise ConnectionError(error_msg) from e
 
     def fetch_commission(self, start_time: Optional[int] = None) -> float:
         """Fetches total trading commission/fees / 获取总交易手续费"""
@@ -1391,6 +1855,112 @@ class HyperliquidClient:
             "status": "open",
             "timestamp": int(order_data.get("timestamp", time.time() * 1000)),
         }
+
+    def _convert_hyperliquid_position_to_internal(
+        self, position_data: Dict, asset_pos: Optional[Dict] = None
+    ) -> Optional[Dict]:
+        """
+        Convert Hyperliquid position format to internal format / 将 Hyperliquid 仓位格式转换为内部格式
+
+        Args:
+            position_data: Position data from Hyperliquid API
+            asset_pos: Full asset position object (optional)
+
+        Returns:
+            Internal position format dictionary
+        """
+        try:
+            coin = position_data.get("coin", "")
+            if not coin:
+                return None
+
+            # Get position size (szi: signed size, positive for long, negative for short)
+            # 获取仓位数量（szi：有符号数量，正数为多头，负数为空头）
+            szi = float(position_data.get("szi", 0))
+            size = abs(szi)
+
+            # Determine side based on szi
+            # 根据 szi 确定方向
+            if szi > 0:
+                side = "LONG"
+            elif szi < 0:
+                side = "SHORT"
+            else:
+                side = "NONE"
+
+            # Get entry price
+            # 获取开仓价格
+            entry_price = float(position_data.get("entryPx", 0))
+
+            # Get liquidation price
+            # 获取清算价格
+            liquidation_price = float(position_data.get("liquidationPx", 0))
+
+            # Get unrealized PnL (already calculated by Hyperliquid)
+            # 获取未实现盈亏（已由 Hyperliquid 计算）
+            unrealized_pnl = float(position_data.get("unrealizedPnl", 0))
+
+            # Try to get mark price from API response first
+            # 首先尝试从 API 响应获取标记价格
+            mark_price = None
+            if "markPx" in position_data:
+                mark_price = float(position_data.get("markPx", 0))
+            elif asset_pos and "markPx" in asset_pos:
+                mark_price = float(asset_pos.get("markPx", 0))
+
+            # If mark price not available from API, try to fetch from market data
+            # 如果 API 未提供标记价格，尝试从市场数据获取
+            if mark_price is None or mark_price == 0:
+                try:
+                    # Try to get mark price from market data for the coin
+                    # 尝试从市场数据获取币种的标记价格
+                    coin_symbol = f"{coin}/USDT:USDT"
+                    original_symbol = self.symbol
+                    try:
+                        self.set_symbol(coin_symbol)
+                        market_data = self.fetch_market_data()
+                        if market_data:
+                            mark_price = market_data.get("mid_price", 0)
+                    finally:
+                        # Restore original symbol
+                        # 恢复原始交易对
+                        if original_symbol:
+                            self.set_symbol(original_symbol)
+                except Exception:
+                    pass
+
+            # Fallback: calculate mark price from unrealized PnL and entry price
+            # 备用方案：从未实现盈亏和开仓价格计算标记价格
+            # Unrealized PnL = (mark_price - entry_price) × size × side_multiplier
+            # For LONG: side_multiplier = 1, for SHORT: side_multiplier = -1
+            if (mark_price is None or mark_price == 0) and size > 0 and entry_price > 0:
+                if side == "LONG":
+                    mark_price = entry_price + (unrealized_pnl / size)
+                else:  # SHORT
+                    mark_price = entry_price - (unrealized_pnl / size)
+            elif mark_price is None or mark_price == 0:
+                # Final fallback: use entry price
+                # 最终备用方案：使用开仓价格
+                mark_price = entry_price
+
+            # Format symbol
+            # 格式化交易对
+            symbol = f"{coin}/USDT:USDT"
+
+            return {
+                "symbol": symbol,
+                "side": side,
+                "size": size,
+                "entry_price": entry_price,
+                "mark_price": mark_price,
+                "unrealized_pnl": unrealized_pnl,
+                "liquidation_price": liquidation_price,
+                "timestamp": int(time.time() * 1000),
+            }
+
+        except Exception as e:
+            logger.error(f"Error converting position: {e}")
+            return None
 
     def _map_order_status(self, order_data: Dict) -> str:
         """

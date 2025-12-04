@@ -49,8 +49,8 @@
           "id": "US-CORE-004-C",
           "name": "Hyperliquid Position and Balance Tracking / Hyperliquid 仓位与余额追踪",
           "name_zh": "Hyperliquid 仓位与余额追踪",
-          "status": "IN_PROGRESS",
-          "current_step": "progress_logged",
+          "status": "DONE",
+          "current_step": "ci_cd_passed",
           "branch": "feat/US-CORE-004-C-hyperliquid-positions",
           "sync_source": "docs/modules/trading.json",
           "step_status": {
@@ -66,7 +66,8 @@
             "smoke_test_passed": true,
             "integration_passed": true,
             "docs_updated": true,
-            "progress_logged": true
+            "progress_logged": true,
+            "ci_cd_passed": true
           }
         },
         {

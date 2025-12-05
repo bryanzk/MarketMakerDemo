@@ -556,8 +556,18 @@ class AlphaLoop:
                 )
                 continue
 
+            # Safely access proposal spread, handling Mock objects
+            # 安全访问 proposal spread，处理 Mock 对象
+            if isinstance(proposal, dict) and "spread" in proposal:
+                spread_value = proposal["spread"]
+                if isinstance(spread_value, (int, float)):
+                    spread_str = f"{spread_value:.2%}"
+                else:
+                    spread_str = "N/A"
+            else:
+                spread_str = "N/A"
             logger.info(
-                f"Quant proposing spread {proposal['spread']:.2%} for strategy '{strategy_id}'"
+                f"Quant proposing spread {spread_str} for strategy '{strategy_id}'"
             )
 
             # Safely unpack validate_proposal result / 安全解包 validate_proposal 结果

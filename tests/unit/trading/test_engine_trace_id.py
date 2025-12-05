@@ -18,6 +18,7 @@ from src.trading.engine import AlphaLoop
 class TestEngineErrorHistoryTraceId:
     """Test error_history includes trace_id / 测试 error_history 包含 trace_id"""
 
+    @patch("src.trading.strategy_instance.BinanceClient")
     @patch("src.trading.engine.BinanceClient")
     @patch("src.trading.engine.DataAgent")
     @patch("src.trading.engine.QuantAgent")
@@ -25,7 +26,7 @@ class TestEngineErrorHistoryTraceId:
     @patch("src.trading.engine.FixedSpreadStrategy")
     @patch("src.trading.strategy_instance.OrderManager")
     def test_order_error_includes_trace_id(
-        self, mock_order_manager_cls, mock_strategy_cls, mock_risk_cls, mock_quant_cls, mock_data_cls, mock_client_cls
+        self, mock_order_manager_cls, mock_strategy_cls, mock_risk_cls, mock_quant_cls, mock_data_cls, mock_engine_client_cls, mock_strategy_client_cls
     ):
         """Test order error includes trace_id / 测试订单错误包含 trace_id"""
         # Setup mocks
@@ -40,21 +41,31 @@ class TestEngineErrorHistoryTraceId:
         mock_client.fetch_open_orders.return_value = []
         # Simulate order placement failure by returning empty list and setting error
         # 通过返回空列表并设置错误来模拟订单放置失败
-        # Set last_order_error BEFORE place_orders is called so it's checked after
-        # 在调用 place_orders 之前设置 last_order_error，以便之后检查
-        mock_client.last_order_error = {
-            "type": "insufficient_funds",
-            "message": "Insufficient balance",
-            "symbol": "ETH/USDT:USDT",
-        }
-        # place_orders returns empty list to simulate failure
-        # place_orders 返回空列表以模拟失败
-        mock_client.place_orders.return_value = []
+        # Mock place_orders to return empty list and set last_order_error
+        # Mock place_orders 以返回空列表并设置 last_order_error
+        def place_orders_with_error(orders):
+            # Set error when place_orders is called
+            # 在调用 place_orders 时设置错误
+            mock_client.last_order_error = {
+                "type": "insufficient_funds",
+                "message": "Insufficient balance",
+                "symbol": "ETH/USDT:USDT",
+            }
+            return []  # Return empty list to simulate failure
+        mock_client.place_orders.side_effect = place_orders_with_error
+        # Initialize last_order_error as None (will be set by side_effect)
+        # 初始化 last_order_error 为 None（将由 side_effect 设置）
+        mock_client.last_order_error = None
         # Ensure place_orders is called but returns empty (simulating failure)
         # 确保 place_orders 被调用但返回空（模拟失败）
         # Also need to ensure to_place is not empty so place_orders is actually called
         # 还需要确保 to_place 不为空，以便实际调用 place_orders
-        mock_client_cls.return_value = mock_client
+        # Patch both engine and strategy_instance BinanceClient
+        # Patch engine 和 strategy_instance 的 BinanceClient
+        # Note: Parameters are in reverse order of @patch decorators
+        # 注意：参数顺序与 @patch 装饰器相反（从下往上）
+        mock_strategy_client_cls.return_value = mock_client
+        mock_engine_client_cls.return_value = mock_client
 
         mock_data_cls.return_value = Mock()
         mock_data_cls.return_value.calculate_metrics.return_value = {}
@@ -113,6 +124,7 @@ class TestEngineErrorHistoryTraceId:
         assert "trace_id" in error
         assert error["trace_id"] == trace_id
 
+    @patch("src.trading.strategy_instance.BinanceClient")
     @patch("src.trading.engine.BinanceClient")
     @patch("src.trading.engine.DataAgent")
     @patch("src.trading.engine.QuantAgent")
@@ -120,7 +132,7 @@ class TestEngineErrorHistoryTraceId:
     @patch("src.trading.engine.FixedSpreadStrategy")
     @patch("src.trading.strategy_instance.OrderManager")
     def test_cycle_error_includes_trace_id(
-        self, mock_order_manager_cls, mock_strategy_cls, mock_risk_cls, mock_quant_cls, mock_data_cls, mock_client_cls
+        self, mock_order_manager_cls, mock_strategy_cls, mock_risk_cls, mock_quant_cls, mock_data_cls, mock_engine_client_cls, mock_strategy_client_cls
     ):
         """Test cycle error includes trace_id / 测试循环错误包含 trace_id"""
         # Setup mocks
@@ -136,14 +148,23 @@ class TestEngineErrorHistoryTraceId:
         # Also mock other required methods to avoid additional errors
         # 同时 mock 其他必需的方法以避免额外错误
         mock_client.fetch_account_data.side_effect = Exception("Network timeout")
-        mock_client_cls.return_value = mock_client
+        # Patch both engine and strategy_instance BinanceClient
+        # Patch engine 和 strategy_instance 的 BinanceClient
+        # Note: Parameters are in reverse order of @patch decorators (bottom to top)
+        # 注意：参数顺序与 @patch 装饰器相反（从下往上）
+        mock_strategy_client_cls.return_value = mock_client  # First @patch (bottom)
+        mock_engine_client_cls.return_value = mock_client    # Second @patch
 
         # Mock data with proper return values
         # Mock data 并设置正确的返回值
         mock_data = Mock()
         mock_data.calculate_metrics.return_value = {"volatility": 0.01, "sharpe_ratio": 1.0}
         mock_data_cls.return_value = mock_data
-        mock_quant_cls.return_value = Mock()
+        # Mock quant to return a proper proposal dict (not Mock)
+        # Mock quant 以返回正确的 proposal 字典（不是 Mock）
+        mock_quant = Mock()
+        mock_quant.analyze_and_propose.return_value = {"spread": 0.001}  # Return a dict
+        mock_quant_cls.return_value = mock_quant
         # Mock risk.validate_proposal to return tuple
         # Mock risk.validate_proposal 以返回元组
         mock_risk = Mock()

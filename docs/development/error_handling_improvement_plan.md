@@ -111,7 +111,9 @@ class StandardErrorResponse:
     Standard error response format / 标准错误响应格式
     
     All API endpoints should return errors in this format.
+    All responses (success and error) should include trace_id for correlation.
     所有 API 端点应以此格式返回错误。
+    所有响应（成功和错误）都应包含 trace_id 用于关联。
     """
     error: bool = True
     error_type: str
@@ -121,13 +123,17 @@ class StandardErrorResponse:
     severity: str = ErrorSeverity.ERROR
     suggestion: Optional[str] = None  # English suggestion / 英文建议
     suggestion_zh: Optional[str] = None  # Chinese suggestion / 中文建议
+    remediation: Optional[str] = None  # English remediation steps / 英文修复步骤
+    remediation_zh: Optional[str] = None  # Chinese remediation steps / 中文修复步骤
     details: Optional[Dict[str, Any]] = None
     timestamp: Optional[float] = None
+    trace_id: Optional[str] = None  # Request trace ID for correlation / 请求追踪ID用于关联
     
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for JSON response / 转换为字典用于 JSON 响应"""
         import time
         return {
+            "ok": not self.error,  # Success flag / 成功标志
             "error": self.error,
             "error_type": self.error_type,
             "error_code": self.error_code,
@@ -136,8 +142,11 @@ class StandardErrorResponse:
             "severity": self.severity,
             "suggestion": self.suggestion,
             "suggestion_zh": self.suggestion_zh,
+            "remediation": self.remediation,
+            "remediation_zh": self.remediation_zh,
             "details": self.details,
             "timestamp": self.timestamp or time.time(),
+            "trace_id": self.trace_id,
         }
 ```
 
@@ -304,15 +313,120 @@ class ErrorMapper:
             return ErrorSeverity.ERROR
 ```
 
-### Phase 2: Update API Endpoints / 阶段 2：更新 API 端点
+### Phase 2: Request Tracing & Correlation / 阶段 2：请求追踪与关联
 
-#### 2.1 Create Error Response Helper / 创建错误响应辅助函数
+#### 2.1 Create Trace ID Middleware / 创建追踪ID中间件
+
+**File**: `src/shared/tracing.py` (new file)
+
+```python
+"""
+Request Tracing Utilities / 请求追踪工具
+
+Provides trace_id generation and correlation across requests, logs, and responses.
+提供跨请求、日志和响应的 trace_id 生成和关联。
+"""
+
+import uuid
+import time
+from typing import Optional, Dict, Any
+from contextvars import ContextVar
+
+# Context variable for trace_id / 用于 trace_id 的上下文变量
+trace_id_var: ContextVar[Optional[str]] = ContextVar('trace_id', default=None)
+
+
+def generate_trace_id() -> str:
+    """
+    Generate a unique trace ID / 生成唯一的追踪ID
+    
+    Returns:
+        Trace ID string (e.g., "req_abc123def456")
+    """
+    return f"req_{uuid.uuid4().hex[:12]}"
+
+
+def get_trace_id() -> Optional[str]:
+    """Get current trace ID from context / 从上下文获取当前追踪ID"""
+    return trace_id_var.get()
+
+
+def set_trace_id(trace_id: str) -> None:
+    """Set trace ID in context / 在上下文中设置追踪ID"""
+    trace_id_var.set(trace_id)
+
+
+def create_request_context(
+    endpoint: str,
+    method: str = "GET",
+    payload_hash: Optional[str] = None,
+) -> Dict[str, Any]:
+    """
+    Create minimal request context for logging / 创建用于日志记录的最小请求上下文
+    
+    Args:
+        endpoint: API endpoint path
+        method: HTTP method
+        payload_hash: Hash of request payload (for repro without secrets)
+        
+    Returns:
+        Context dictionary
+    """
+    return {
+        "endpoint": endpoint,
+        "method": method,
+        "payload_hash": payload_hash,
+        "trace_id": get_trace_id(),
+    }
+```
+
+#### 2.2 Add Trace ID Middleware to FastAPI / 为 FastAPI 添加追踪ID中间件
+
+**File**: `server.py` (add middleware)
+
+```python
+from fastapi import Request
+from src.shared.tracing import generate_trace_id, set_trace_id, get_trace_id
+
+@app.middleware("http")
+async def add_trace_id(request: Request, call_next):
+    """
+    Add trace_id to all requests / 为所有请求添加 trace_id
+    
+    Trace ID is included in:
+    - Request context (for logging)
+    - Response headers
+    - Error responses
+    - Strategy instance error_history entries
+    
+    追踪ID包含在：
+    - 请求上下文（用于日志记录）
+    - 响应头
+    - 错误响应
+    - 策略实例 error_history 条目
+    """
+    trace_id = generate_trace_id()
+    set_trace_id(trace_id)
+    
+    # Add trace_id to request state / 将 trace_id 添加到请求状态
+    request.state.trace_id = trace_id
+    
+    response = await call_next(request)
+    
+    # Add trace_id to response headers / 将 trace_id 添加到响应头
+    response.headers["X-Trace-ID"] = trace_id
+    
+    return response
+```
+
+#### 2.3 Create Error Response Helper / 创建错误响应辅助函数
 
 **File**: `server.py` (add to existing file)
 
 ```python
 from src.shared.errors import StandardErrorResponse
 from src.shared.error_mapper import ErrorMapper
+from src.shared.tracing import get_trace_id
 
 def create_error_response(
     exception: Exception,
@@ -322,6 +436,9 @@ def create_error_response(
     """
     Create standardized error response / 创建标准化错误响应
     
+    Automatically includes trace_id from request context.
+    自动包含来自请求上下文的 trace_id。
+    
     Usage / 用法:
         try:
             # ... API logic ...
@@ -329,34 +446,139 @@ def create_error_response(
             return create_error_response(e).to_dict()
     """
     error_response = ErrorMapper.map_exception(exception, error_code, details)
+    error_response.trace_id = get_trace_id()  # Add trace_id / 添加 trace_id
     return error_response.to_dict()
 ```
 
-#### 2.2 Update Hyperliquid API Endpoints / 更新 Hyperliquid API 端点
+#### 2.4 Update Hyperliquid API Endpoints / 更新 Hyperliquid API 端点
 
 **Example**: Update `/api/hyperliquid/status` endpoint
 
 ```python
+from src.shared.tracing import get_trace_id, create_request_context
+import hashlib
+import json
+
 @app.get("/api/hyperliquid/status")
-async def get_hyperliquid_status():
+async def get_hyperliquid_status(request: Request):
     """Get Hyperliquid connection status / 获取 Hyperliquid 连接状态"""
+    trace_id = get_trace_id()
+    request_context = create_request_context("/api/hyperliquid/status", "GET")
+    
     try:
         exchange = get_exchange_by_name("hyperliquid")
         if not exchange:
             return create_error_response(
                 ValueError("Hyperliquid exchange not initialized"),
-                error_code="EXCHANGE_NOT_INITIALIZED"
+                error_code="EXCHANGE_NOT_INITIALIZED",
+                details=request_context
             )
         
         # ... existing logic ...
         
+        # Add trace_id to success response / 将 trace_id 添加到成功响应
+        status["trace_id"] = trace_id
+        status["ok"] = True
+        
         return status
     except Exception as e:
-        logger.error(f"Error getting Hyperliquid status: {e}", exc_info=True)
+        logger.error(
+            "Error getting Hyperliquid status",
+            exc_info=True,
+            extra={
+                "trace_id": trace_id,
+                **request_context,
+                "error": str(e),
+            }
+        )
         return create_error_response(
             e,
             error_code="STATUS_FETCH_ERROR",
-            details={"endpoint": "/api/hyperliquid/status"}
+            details=request_context
+        )
+```
+
+#### 2.5 Add Pre-flight Connection Endpoint / 添加预检连接端点
+
+**File**: `server.py` (add new endpoint)
+
+```python
+@app.get("/api/hyperliquid/connection")
+async def check_hyperliquid_connection(request: Request):
+    """
+    Pre-flight connection check / 预检连接检查
+    
+    Returns market-data freshness, auth status, and warnings.
+    Returns / 返回：市场数据新鲜度、认证状态和警告。
+    """
+    trace_id = get_trace_id()
+    request_context = create_request_context("/api/hyperliquid/connection", "GET")
+    
+    try:
+        exchange = get_exchange_by_name("hyperliquid")
+        if not exchange:
+            return {
+                "ok": False,
+                "connected": False,
+                "error": "Exchange not initialized / 交易所未初始化",
+                "trace_id": trace_id,
+            }
+        
+        # Check connection status / 检查连接状态
+        is_connected = exchange.is_connected if hasattr(exchange, "is_connected") else False
+        
+        # Check market data freshness / 检查市场数据新鲜度
+        market_data = None
+        data_freshness = None
+        if is_connected:
+            try:
+                market_data = exchange.fetch_market_data()
+                # Calculate freshness (time since last update) / 计算新鲜度（自上次更新以来的时间）
+                if market_data and "timestamp" in market_data:
+                    data_freshness = time.time() - market_data.get("timestamp", 0)
+            except Exception as e:
+                logger.warning(f"Failed to fetch market data: {e}", extra={"trace_id": trace_id})
+        
+        # Check auth status / 检查认证状态
+        auth_status = "authenticated" if is_connected else "not_authenticated"
+        
+        # Collect warnings / 收集警告
+        warnings = []
+        if not is_connected:
+            warnings.append({
+                "type": "connection",
+                "message": "Not connected to exchange / 未连接到交易所",
+                "message_zh": "未连接到交易所",
+            })
+        if data_freshness and data_freshness > 60:  # Stale if > 60 seconds / 超过60秒视为过期
+            warnings.append({
+                "type": "stale_data",
+                "message": f"Market data is stale ({data_freshness:.1f}s old) / 市场数据已过期（{data_freshness:.1f}秒）",
+                "message_zh": f"市场数据已过期（{data_freshness:.1f}秒）",
+            })
+        
+        return {
+            "ok": True,
+            "connected": is_connected,
+            "auth_status": auth_status,
+            "data_freshness": data_freshness,
+            "warnings": warnings,
+            "trace_id": trace_id,
+        }
+    except Exception as e:
+        logger.error(
+            "Error checking connection",
+            exc_info=True,
+            extra={
+                "trace_id": trace_id,
+                **request_context,
+                "error": str(e),
+            }
+        )
+        return create_error_response(
+            e,
+            error_code="CONNECTION_CHECK_ERROR",
+            details=request_context
         )
 ```
 
@@ -395,7 +617,166 @@ async def get_bot_status():
 
 ### Phase 4: Standardize Frontend Error Handling / 阶段 4：标准化前端错误处理
 
-#### 4.1 Create Frontend Error Handler Utility / 创建前端错误处理工具
+#### 4.1 Create Frontend Diagnostic Helper / 创建前端诊断辅助工具
+
+**File**: `templates/js/api_diagnostics.js` (new file)
+
+```javascript
+/**
+ * API Call Diagnostics Helper / API 调用诊断辅助工具
+ * 
+ * Wraps all fetch calls to log: URL, status, latency, payload, and errors.
+ * 包装所有 fetch 调用以记录：URL、状态、延迟、负载和错误。
+ */
+
+class ApiDiagnostics {
+    constructor(maxCalls = 50) {
+        this.calls = [];
+        this.maxCalls = maxCalls;
+    }
+    
+    /**
+     * Wrap fetch call with diagnostics / 用诊断包装 fetch 调用
+     * @param {string} url - API endpoint URL
+     * @param {Object} options - Fetch options
+     * @returns {Promise<Response>}
+     */
+    async fetch(url, options = {}) {
+        const startTime = performance.now();
+        const callId = `call_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        
+        // Hash payload for logging (without secrets) / 为日志记录哈希负载（不含密钥）
+        const payloadHash = options.body 
+            ? this.hashPayload(options.body) 
+            : null;
+        
+        try {
+            const response = await fetch(url, options);
+            const latency = performance.now() - startTime;
+            
+            // Clone response for reading body / 克隆响应以读取正文
+            const clonedResponse = response.clone();
+            let parsedPayload = null;
+            
+            try {
+                const contentType = response.headers.get("content-type");
+                if (contentType && contentType.includes("application/json")) {
+                    parsedPayload = await clonedResponse.json();
+                }
+            } catch (e) {
+                // Ignore parse errors / 忽略解析错误
+            }
+            
+            // Record call / 记录调用
+            this.recordCall({
+                id: callId,
+                url,
+                method: options.method || "GET",
+                status: response.status,
+                statusText: response.statusText,
+                latency: Math.round(latency),
+                payloadHash,
+                payload: parsedPayload,
+                timestamp: Date.now(),
+                traceId: response.headers.get("X-Trace-ID"),
+                error: parsedPayload?.error || null,
+            });
+            
+            return response;
+        } catch (error) {
+            const latency = performance.now() - startTime;
+            
+            // Record failed call / 记录失败的调用
+            this.recordCall({
+                id: callId,
+                url,
+                method: options.method || "GET",
+                status: 0,
+                statusText: "Network Error",
+                latency: Math.round(latency),
+                payloadHash,
+                payload: null,
+                timestamp: Date.now(),
+                traceId: null,
+                error: error.message,
+            });
+            
+            throw error;
+        }
+    }
+    
+    /**
+     * Hash payload for logging / 为日志记录哈希负载
+     * @param {string} payload - Request payload
+     * @returns {string} Hash string
+     */
+    hashPayload(payload) {
+        // Simple hash function / 简单哈希函数
+        let hash = 0;
+        const str = typeof payload === "string" ? payload : JSON.stringify(payload);
+        for (let i = 0; i < str.length; i++) {
+            const char = str.charCodeAt(i);
+            hash = ((hash << 5) - hash) + char;
+            hash = hash & hash; // Convert to 32-bit integer / 转换为32位整数
+        }
+        return Math.abs(hash).toString(36);
+    }
+    
+    /**
+     * Record API call / 记录 API 调用
+     * @param {Object} callData - Call data
+     */
+    recordCall(callData) {
+        this.calls.unshift(callData); // Add to beginning / 添加到开头
+        if (this.calls.length > this.maxCalls) {
+            this.calls.pop(); // Remove oldest / 移除最旧的
+        }
+    }
+    
+    /**
+     * Get recent calls / 获取最近的调用
+     * @param {Object} filters - Filter options
+     * @returns {Array} Filtered calls
+     */
+    getRecentCalls(filters = {}) {
+        let calls = this.calls;
+        
+        // Filter by errors only / 仅按错误过滤
+        if (filters.errorsOnly) {
+            calls = calls.filter(call => call.error || call.status >= 400);
+        }
+        
+        // Filter by endpoint / 按端点过滤
+        if (filters.endpoint) {
+            calls = calls.filter(call => call.url.includes(filters.endpoint));
+        }
+        
+        // Limit results / 限制结果
+        if (filters.limit) {
+            calls = calls.slice(0, filters.limit);
+        }
+        
+        return calls;
+    }
+    
+    /**
+     * Clear call history / 清除调用历史
+     */
+    clear() {
+        this.calls = [];
+    }
+}
+
+// Global instance / 全局实例
+const apiDiagnostics = new ApiDiagnostics();
+
+// Export for use in templates / 导出供模板使用
+if (typeof module !== "undefined" && module.exports) {
+    module.exports = { ApiDiagnostics, apiDiagnostics };
+}
+```
+
+#### 4.2 Create Frontend Error Handler Utility / 创建前端错误处理工具
 
 **File**: `templates/js/error_handler.js` (new file)
 
@@ -436,8 +817,11 @@ export function handleApiError(errorResponse, errorBox, options = {}) {
         severity = 'error',
         suggestion,
         suggestion_zh,
+        remediation,
+        remediation_zh,
         details,
-        timestamp
+        timestamp,
+        trace_id
     } = errorResponse;
     
     // Determine language / 确定语言
@@ -479,6 +863,16 @@ export function handleApiError(errorResponse, errorBox, options = {}) {
         `;
     }
     
+    // Add trace_id for log correlation / 添加 trace_id 用于日志关联
+    if (trace_id) {
+        errorHtml += `
+            <div class="error-trace-id">
+                <strong>Trace ID / 追踪ID:</strong> <code>${trace_id}</code>
+                <button onclick="navigator.clipboard.writeText('${trace_id}')" title="Copy / 复制">📋</button>
+            </div>
+        `;
+    }
+    
     errorHtml += `</div>`;
     
     // Display error / 显示错误
@@ -493,7 +887,8 @@ export function handleApiError(errorResponse, errorBox, options = {}) {
         severity,
         suggestion: displaySuggestion,
         details,
-        timestamp
+        timestamp,
+        trace_id,  // Include trace_id for log correlation / 包含 trace_id 用于日志关联
     });
 }
 
@@ -707,58 +1102,250 @@ setInterval(refreshErrorHistory, 30000);
 
 ### Phase 1: Standardize Error Response Format / 阶段 1：标准化错误响应格式
 - [ ] Create `src/shared/errors.py` with `StandardErrorResponse` and enums
+- [ ] Add `trace_id` field to `StandardErrorResponse`
+- [ ] Add `remediation` fields for detailed recovery steps
 - [ ] Create `src/shared/error_mapper.py` with `ErrorMapper` class
 - [ ] Add error type mappings for all custom exceptions
 - [ ] Add bilingual error suggestions for all error types
 - [ ] Test error mapping with sample exceptions
 
-### Phase 2: Update API Endpoints / 阶段 2：更新 API 端点
-- [ ] Add `create_error_response()` helper to `server.py`
-- [ ] Update all Hyperliquid API endpoints (`/api/hyperliquid/*`)
-- [ ] Update bot control endpoints (`/api/bot/*`)
-- [ ] Update evaluation endpoints (`/api/evaluation/*`)
-- [ ] Update portfolio endpoints (`/api/portfolio/*`)
-- [ ] Test all endpoints return standardized error format
+### Phase 2: Request Tracing & Correlation / 阶段 2：请求追踪与关联
+- [ ] Create `src/shared/tracing.py` with trace_id utilities
+- [ ] Add trace_id middleware to FastAPI
+- [ ] Update `create_error_response()` to include trace_id
+- [ ] Add trace_id to all API responses (success and error)
+- [ ] Update `/api/hyperliquid/status` endpoint with trace_id
+- [ ] Add `/api/hyperliquid/connection` pre-flight endpoint
+- [ ] Include trace_id in strategy instance error_history entries
+- [ ] Test trace_id generation and correlation
 
-### Phase 3: Expose Strategy Instance Errors / 阶段 3：暴露策略实例错误
-- [ ] Update `/api/bot/status` to include error information
-- [ ] Add `errors` field with `global_alert`, `global_error_history`, `instance_errors`
-- [ ] Limit error history to last 10-20 entries for performance
-- [ ] Test error exposure in API responses
+### Phase 3: Structured Logging & Observability / 阶段 3：结构化日志与可观测性
+- [ ] Update `src/shared/logger.py` with JSON formatter
+- [ ] Add trace_id to all log entries
+- [ ] Implement structured logging for API requests
+- [ ] Implement structured logging for exchange calls
+- [ ] Add `/metrics` endpoint for exchange health
+- [ ] Track latency buckets and error rates
+- [ ] Test structured logging output
 
 ### Phase 4: Standardize Frontend Error Handling / 阶段 4：标准化前端错误处理
+- [ ] Create `templates/js/api_diagnostics.js` for API call tracking
 - [ ] Create `templates/js/error_handler.js` utility
+- [ ] Update error handler to display trace_id
+- [ ] Wrap all fetch calls with diagnostics
 - [ ] Update `HyperliquidTrade.html` to use error handler
 - [ ] Update `LLMTrade.html` to use error handler
 - [ ] Update `index.html` to use error handler
 - [ ] Add error display styling (CSS)
 - [ ] Test error display in all templates
 
-### Phase 5: Add Error History Display / 阶段 5：添加错误历史显示
+### Phase 5: Frontend Debug Panel / 阶段 5：前端调试面板
+- [ ] Create `templates/js/debug_panel.js` component
+- [ ] Add debug panel to `HyperliquidTrade.html`
+- [ ] Add debug panel to `LLMTrade.html`
+- [ ] Add debug panel to `index.html`
+- [ ] Implement filters (errors only / all)
+- [ ] Add debug panel styling (CSS)
+- [ ] Test debug panel functionality
+
+### Phase 6: Client-Side Validation / 阶段 6：客户端验证
+- [ ] Create `templates/js/validation.js` validation layer
+- [ ] Validate order parameters before submission
+- [ ] Validate symbol format
+- [ ] Validate quantity and price
+- [ ] Validate leverage range
+- [ ] Display validation errors in UI
+- [ ] Test validation prevents invalid orders
+
+### Phase 7: Expose Strategy Instance Errors / 阶段 7：暴露策略实例错误
+- [ ] Update `/api/bot/status` to include error information
+- [ ] Add `errors` field with `global_alert`, `global_error_history`, `instance_errors`
+- [ ] Include trace_id in error_history entries
+- [ ] Limit error history to last 10-20 entries for performance
+- [ ] Test error exposure in API responses
+
+### Phase 8: Add Error History Display / 阶段 8：添加错误历史显示
 - [ ] Add error history panel to `HyperliquidTrade.html`
 - [ ] Add error history panel to `LLMTrade.html`
 - [ ] Add error history panel to `index.html`
+- [ ] Display trace_id in error history
 - [ ] Implement auto-refresh for error history
 - [ ] Add error history styling (CSS)
 - [ ] Test error history display
 
+### Phase 9: Testing / 阶段 9：测试
+- [ ] Write contract tests for error envelope structure
+- [ ] Write fixture-driven exchange failure simulations
+- [ ] Write E2E tests for error display
+- [ ] Write E2E tests for debug panel
+- [ ] Write unit tests for trace_id generation
+- [ ] Write integration tests for structured logging
+- [ ] Run full test suite
+
 ## Testing Plan / 测试计划
 
-1. **Unit Tests / 单元测试**
-   - Test `ErrorMapper.map_exception()` with various exceptions
-   - Test `StandardErrorResponse.to_dict()` serialization
-   - Test error type and severity determination
+### 1. Contract Tests / 契约测试
 
-2. **Integration Tests / 集成测试**
-   - Test API endpoints return standardized error format
-   - Test error history is exposed correctly
-   - Test frontend error handler displays errors correctly
+**File**: `tests/contract/test_error_envelope.py` (new file)
 
-3. **Manual Testing / 手动测试**
-   - Trigger various error scenarios (network, auth, insufficient funds, etc.)
-   - Verify error messages are bilingual
-   - Verify error suggestions are helpful
-   - Verify error history is accessible in frontend
+```python
+"""
+Contract tests to assert error envelopes per endpoint / 契约测试以断言每个端点的错误信封
+"""
+
+import pytest
+from fastapi.testclient import TestClient
+from server import app
+
+client = TestClient(app)
+
+def test_error_envelope_structure():
+    """Test that all error responses follow standard envelope / 测试所有错误响应遵循标准信封"""
+    # Trigger an error / 触发错误
+    response = client.get("/api/hyperliquid/status")
+    
+    if not response.json().get("ok", True):
+        data = response.json()
+        assert "error" in data
+        assert "error_type" in data
+        assert "message" in data
+        assert "message_zh" in data
+        assert "trace_id" in data
+        assert "timestamp" in data
+
+def test_success_envelope_structure():
+    """Test that success responses include trace_id / 测试成功响应包含 trace_id"""
+    # Mock successful response / 模拟成功响应
+    response = client.get("/api/bot/status")
+    
+    if response.status_code == 200:
+        data = response.json()
+        assert "trace_id" in data or "X-Trace-ID" in response.headers
+```
+
+### 2. Fixture-Driven Exchange Failure Simulations / 基于 Fixture 的交易所失败模拟
+
+**File**: `tests/integration/test_exchange_failures.py` (new file)
+
+```python
+"""
+Fixture-driven simulations for exchange failures / 交易所失败的基于 Fixture 的模拟
+"""
+
+import pytest
+from unittest.mock import patch, MagicMock
+
+@pytest.fixture
+def mock_network_timeout():
+    """Simulate network timeout / 模拟网络超时"""
+    with patch("src.trading.hyperliquid_client.requests.post") as mock_post:
+        mock_post.side_effect = requests.exceptions.Timeout("Request timeout")
+        yield mock_post
+
+@pytest.fixture
+def mock_rate_limit():
+    """Simulate rate limit error / 模拟速率限制错误"""
+    with patch("src.trading.hyperliquid_client.requests.post") as mock_post:
+        mock_response = MagicMock()
+        mock_response.status_code = 429
+        mock_response.json.return_value = {"error": "Rate limit exceeded"}
+        mock_post.return_value = mock_response
+        yield mock_post
+
+def test_network_timeout_handling(mock_network_timeout):
+    """Test handling of network timeout / 测试网络超时的处理"""
+    from src.trading.hyperliquid_client import HyperliquidClient
+    
+    client = HyperliquidClient()
+    result = client.fetch_market_data()
+    
+    assert result is None or "error" in result
+
+def test_rate_limit_handling(mock_rate_limit):
+    """Test handling of rate limit / 测试速率限制的处理"""
+    from src.trading.hyperliquid_client import HyperliquidClient
+    
+    client = HyperliquidClient()
+    result = client.place_order({})
+    
+    assert "error" in result or result is None
+```
+
+### 3. E2E Tests / 端到端测试
+
+**File**: `tests/e2e/test_error_display.py` (new file)
+
+```python
+"""
+E2E tests to verify error banners render correctly / 端到端测试以验证错误横幅正确渲染
+"""
+
+import pytest
+from playwright.sync_api import Page, expect
+
+def test_error_banner_displays_trace_id(page: Page):
+    """Test that error banner displays trace_id / 测试错误横幅显示 trace_id"""
+    # Navigate to page / 导航到页面
+    page.goto("http://localhost:3000/hyperliquid")
+    
+    # Trigger an error / 触发错误
+    page.click("button:has-text('Connect')")
+    
+    # Wait for error to appear / 等待错误出现
+    error_banner = page.locator(".error-message")
+    expect(error_banner).to_be_visible()
+    
+    # Check trace_id is displayed / 检查 trace_id 是否显示
+    trace_id_element = page.locator(".error-trace-id")
+    expect(trace_id_element).to_be_visible()
+    
+    # Check trace_id is copyable / 检查 trace_id 可复制
+    copy_button = trace_id_element.locator("button")
+    expect(copy_button).to_be_visible()
+
+def test_debug_panel_records_failing_call(page: Page):
+    """Test that debug panel records failing API call / 测试调试面板记录失败的 API 调用"""
+    page.goto("http://localhost:3000/hyperliquid")
+    
+    # Open debug panel / 打开调试面板
+    page.click("#debugPanelToggle")
+    
+    # Trigger an error / 触发错误
+    page.click("button:has-text('Connect')")
+    
+    # Check debug panel shows the call / 检查调试面板显示调用
+    debug_panel = page.locator("#debugPanel")
+    expect(debug_panel).to_be_visible()
+    
+    # Check call is recorded / 检查调用已记录
+    call_item = debug_panel.locator(".debug-call-item.error")
+    expect(call_item).to_be_visible()
+```
+
+### 4. Unit Tests / 单元测试
+
+- Test `ErrorMapper.map_exception()` with various exceptions
+- Test `StandardErrorResponse.to_dict()` serialization
+- Test error type and severity determination
+- Test trace_id generation and context management
+
+### 5. Integration Tests / 集成测试
+
+- Test API endpoints return standardized error format
+- Test error history is exposed correctly
+- Test frontend error handler displays errors correctly
+- Test trace_id is included in all responses
+- Test structured logging includes trace_id
+
+### 6. Manual Testing / 手动测试
+
+- Trigger various error scenarios (network, auth, insufficient funds, etc.)
+- Verify error messages are bilingual
+- Verify error suggestions are helpful
+- Verify error history is accessible in frontend
+- Verify trace_id is visible in error messages
+- Verify debug panel shows API calls
+- Verify client-side validation prevents invalid orders
 
 ## Additional Recommendations / 额外建议
 
@@ -834,15 +1421,66 @@ class ErrorRateLimiter {
 }
 ```
 
+## Expected Impact on Debugging / 对调试的预期影响
+
+### Faster Pinpointing / 更快定位问题
+
+- **Trace IDs and structured entries**: Make it trivial to follow a request from UI to backend/exchange
+- **追踪ID和结构化条目**：使从 UI 到后端/交易所的请求追踪变得简单
+- **Correlated logs**: Backend logs become directly searchable from the UI-surfaced trace ID
+- **关联日志**：后端日志可以通过 UI 显示的 trace ID 直接搜索
+
+### Actionable UI Errors / 可操作的 UI 错误
+
+- **Specific codes/messages**: Users see specific error codes and human-readable messages
+- **特定代码/消息**：用户看到特定的错误代码和人类可读的消息
+- **Suggested remediation**: Each error includes suggested remediation steps
+- **建议的修复**：每个错误都包含建议的修复步骤
+- **Reduced back-and-forth**: Clear error context reduces need for additional debugging
+- **减少来回沟通**：清晰的错误上下文减少额外调试的需要
+
+### Lower Reproduction Cost / 降低重现成本
+
+- **Captured context**: Request context (endpoint, payload hash, latency) captured for reproduction
+- **捕获的上下文**：捕获请求上下文（端点、负载哈希、延迟）用于重现
+- **Fixture-driven simulations**: Allow engineers to replay failure modes locally
+- **基于 Fixture 的模拟**：允许工程师在本地重放失败模式
+- **Debug panel**: Frontend debug panel shows all API calls with full context
+- **调试面板**：前端调试面板显示所有 API 调用及其完整上下文
+
+### Removed Ambiguity / 消除歧义
+
+- **"Which call failed?" ambiguity removed**: Debug panel clearly shows which API call failed
+- **"哪个调用失败？"歧义已消除**：调试面板清楚地显示哪个 API 调用失败
+- **Frontend vs backend vs exchange**: Structured signals make it clear where the failure occurred
+- **前端 vs 后端 vs 交易所**：结构化信号清楚地显示失败发生的位置
+- **Logs and UI messages correlated**: Trace IDs connect UI errors to backend logs
+- **日志和 UI 消息关联**：追踪ID将 UI 错误连接到后端日志
+
 ## Summary / 总结
 
 This plan provides a comprehensive approach to improving debugging experience:
 
-1. **Standardized Error Format**: All errors follow the same structure
-2. **Bilingual Support**: All error messages in English and Chinese
-3. **Actionable Suggestions**: Each error includes recovery suggestions
-4. **Frontend Integration**: Errors are visible in the UI with context
-5. **Error History**: Users can see recent errors and their history
+1. **Standardized Error Format**: All errors follow the same structure with trace_id for correlation
+2. **标准化错误格式**：所有错误遵循相同的结构，包含用于关联的 trace_id
+3. **Bilingual Support**: All error messages in English and Chinese
+4. **双语支持**：所有错误消息均为英文和中文
+5. **Actionable Suggestions**: Each error includes recovery suggestions and remediation steps
+6. **可操作的建议**：每个错误都包含恢复建议和修复步骤
+7. **Request Tracing**: Trace IDs enable end-to-end request correlation
+8. **请求追踪**：追踪ID支持端到端请求关联
+9. **Frontend Debug Panel**: Real-time visibility into API calls with full context
+10. **前端调试面板**：实时查看 API 调用及其完整上下文
+11. **Structured Logging**: JSON logs with trace_id for easy searching and correlation
+12. **结构化日志**：包含 trace_id 的 JSON 日志，便于搜索和关联
+13. **Client-Side Validation**: Prevent invalid orders before sending to backend
+14. **客户端验证**：在发送到后端之前防止无效订单
+15. **Exchange Health Metrics**: Monitor exchange latency and error rates
+16. **交易所健康指标**：监控交易所延迟和错误率
+17. **Comprehensive Testing**: Contract tests, fixture-driven simulations, and E2E tests
+18. **全面测试**：契约测试、基于 Fixture 的模拟和端到端测试
 
 The implementation should be done in phases to minimize disruption and allow for testing at each stage.
+
+实施应分阶段进行，以最小化干扰并在每个阶段进行测试。
 

@@ -95,3 +95,23 @@ US-API-004 冒烟测试：Hyperliquid LLM 评估支持
 pytest tests/smoke/test_hyperliquid_llm_evaluation.py -v
 ```
 
+### `test_hyperliquid_trade_page.py`
+Smoke tests for US-UI-004: Hyperliquid Trading Page Business Logic  
+US-UI-004 冒烟测试：Hyperliquid 交易页面业务逻辑
+
+**Coverage / 覆盖范围:**
+- `/api/hyperliquid/status` endpoint functionality / `/api/hyperliquid/status` 端点功能
+- `/api/hyperliquid/config` endpoint without skew_factor / `/api/hyperliquid/config` 端点（无 skew_factor）
+- Trading pair switching functionality / 交易对切换功能
+- Rate limit error handling in UI / UI 中的速率限制错误处理
+- Optimized refresh intervals (10s, 15s, 30s) / 优化的刷新间隔（10秒、15秒、30秒）
+- Request deduplication mechanism / 请求去重机制
+- Correct API endpoint usage / 正确的 API 端点使用
+- Key UI elements presence / 关键 UI 元素存在性
+- Skew factor removal verification / 倾斜因子移除验证
+
+**Run specific test / 运行特定测试:**
+```bash
+pytest tests/smoke/test_hyperliquid_trade_page.py -v
+```
+

@@ -1708,6 +1708,19 @@ async def get_hyperliquid_status(request: Request):
         open_orders = exchange.fetch_open_orders()
         positions = exchange.fetch_positions()
         
+        # Get strategy config from Hyperliquid strategy instance / 从 Hyperliquid 策略实例获取策略配置
+        spread = None
+        quantity = None
+        if hasattr(bot_engine, "strategy_instances") and bot_engine.strategy_instances:
+            # Find Hyperliquid strategy instance / 查找 Hyperliquid 策略实例
+            for instance_id, instance in bot_engine.strategy_instances.items():
+                if instance.exchange == exchange:
+                    # Get spread and quantity from strategy / 从策略获取价差和数量
+                    if hasattr(instance, "strategy"):
+                        spread = getattr(instance.strategy, "spread", None)
+                        quantity = getattr(instance.strategy, "quantity", None)
+                    break
+        
         status = {
             "connected": True,
             "exchange": "hyperliquid",
@@ -1719,6 +1732,8 @@ async def get_hyperliquid_status(request: Request):
             "position": account_data.get("position_amt", 0.0) if account_data else 0.0,
             "unrealized_pnl": account_data.get("unrealized_pnl", 0.0) if account_data else 0.0,
             "leverage": account_data.get("leverage", 1.0) if account_data else 1.0,
+            "spread": spread if spread is not None else None,
+            "quantity": quantity if quantity is not None else None,
             "orders": open_orders,
             "positions": positions,
             "trace_id": trace_id,
@@ -1739,6 +1754,308 @@ async def get_hyperliquid_status(request: Request):
         return create_error_response(
             e,
             error_code="STATUS_FETCH_ERROR",
+            details=request_context
+        )
+
+
+@app.get("/api/hyperliquid/prices")
+async def get_hyperliquid_prices(request: Request):
+    """
+    Get prices for multiple Hyperliquid trading pairs.
+    获取多个 Hyperliquid 交易对的价格。
+    
+    Query params:
+        symbols: Comma-separated list of symbols (e.g., "ETH/USDT:USDT,BTC/USDT:USDT")
+    """
+    trace_id = get_trace_id()
+    request_context = create_request_context("/api/hyperliquid/prices", "GET")
+    
+    try:
+        # Get symbols from query params / 从查询参数获取交易对
+        symbols_param = request.query_params.get("symbols", "")
+        if not symbols_param:
+            return create_error_response(
+                ValueError("Missing 'symbols' query parameter / 缺少 'symbols' 查询参数"),
+                error_code="MISSING_SYMBOLS_PARAM",
+                details=request_context
+            )
+        
+        # Parse symbols / 解析交易对
+        symbols = [s.strip() for s in symbols_param.split(",") if s.strip()]
+        if not symbols:
+            return create_error_response(
+                ValueError("No valid symbols provided / 未提供有效交易对"),
+                error_code="INVALID_SYMBOLS",
+                details=request_context
+            )
+        
+        # Get exchange client / 获取交易所客户端
+        exchange = get_exchange_by_name("hyperliquid")
+        if not exchange:
+            return create_error_response(
+                ValueError("Hyperliquid exchange not initialized / Hyperliquid 交易所未初始化"),
+                error_code="EXCHANGE_NOT_INITIALIZED",
+                details=request_context
+            )
+        
+        # Check if exchange supports fetch_multiple_prices / 检查交易所是否支持 fetch_multiple_prices
+        if not hasattr(exchange, "fetch_multiple_prices"):
+            # Fallback: fetch prices one by one / 回退：逐个获取价格
+            prices = {}
+            original_symbol = getattr(exchange, "symbol", None)
+            for symbol in symbols:
+                try:
+                    if hasattr(exchange, "set_symbol"):
+                        exchange.set_symbol(symbol)
+                    market_data = exchange.fetch_market_data()
+                    if market_data and market_data.get("mid_price"):
+                        prices[symbol] = market_data["mid_price"]
+                    else:
+                        prices[symbol] = None
+                except Exception as e:
+                    logger.warning(f"Error fetching price for {symbol}: {e}")
+                    prices[symbol] = None
+            # Restore original symbol / 恢复原始交易对
+            if original_symbol and hasattr(exchange, "set_symbol"):
+                exchange.set_symbol(original_symbol)
+        else:
+            # Use efficient batch method / 使用高效的批量方法
+            prices = exchange.fetch_multiple_prices(symbols)
+        
+        return {
+            "prices": prices,
+            "trace_id": trace_id,
+            "ok": True,
+        }
+    except Exception as e:
+        logger.error(
+            "Error getting Hyperliquid prices",
+            exc_info=True,
+            extra={
+                "trace_id": trace_id,
+                **request_context,
+                "error": str(e),
+            }
+        )
+        return create_error_response(
+            e,
+            error_code="HYPERLIQUID_PRICES_ERROR",
+            details=request_context
+        )
+
+
+@app.post("/api/hyperliquid/config")
+async def update_hyperliquid_config(request: Request, config: ConfigUpdate):
+    """
+    Update Hyperliquid strategy configuration / 更新 Hyperliquid 策略配置
+    """
+    trace_id = get_trace_id()
+    request_context = create_request_context("/api/hyperliquid/config", "POST", hash_payload(config.dict()))
+    
+    try:
+        exchange = get_exchange_by_name("hyperliquid")
+        if not exchange:
+            return create_error_response(
+                ValueError("Hyperliquid exchange not initialized"),
+                error_code="EXCHANGE_NOT_INITIALIZED",
+                details=request_context
+            )
+        
+        # Convert spread from percentage to decimal / 将价差从百分比转换为小数
+        new_spread = config.spread / 100
+        
+        # Validate with Risk Agent / 使用风险代理验证
+        proposal = {
+            "spread": new_spread,
+            "skew_factor": (
+                config.skew_factor if config.strategy_type == "funding_rate" else None
+            ),
+        }
+        approved, reason = bot_engine.risk.validate_proposal(proposal)
+        
+        if not approved:
+            return create_error_response(
+                ValueError(f"Risk Rejection: {reason}"),
+                error_code="RISK_REJECTION",
+                details={**request_context, "reason": reason}
+            )
+        
+        # Resolve target strategy instance / 解析目标策略实例
+        target_instance = _get_or_create_strategy_instance(
+            config.strategy_id, config.strategy_type
+        )
+        
+        if not target_instance:
+            return create_error_response(
+                ValueError(f"Failed to get or create strategy instance for {config.strategy_type}"),
+                error_code="STRATEGY_INSTANCE_ERROR",
+                details=request_context
+            )
+        
+        # Update parameters / 更新参数
+        target_instance.strategy.spread = new_spread
+        target_instance.strategy.quantity = config.quantity
+        
+        # Update skew factor if applicable / 如果适用，更新倾斜因子
+        if hasattr(target_instance.strategy, "skew_factor"):
+            target_instance.strategy.skew_factor = config.skew_factor
+        
+        # Clear alerts / 清除警报
+        bot_engine.alert = None
+        if hasattr(exchange, "last_order_error"):
+            exchange.last_order_error = None
+        
+        return {
+            "status": "updated",
+            "config": config.dict(),
+            "ok": True,
+            "trace_id": trace_id,
+        }
+    except Exception as e:
+        logger.error(
+            "Error updating Hyperliquid config",
+            exc_info=True,
+            extra={
+                "trace_id": trace_id,
+                **request_context,
+                "error": str(e),
+            }
+        )
+        return create_error_response(
+            e,
+            error_code="CONFIG_UPDATE_ERROR",
+            details=request_context
+        )
+
+
+@app.post("/api/hyperliquid/leverage")
+async def update_hyperliquid_leverage(request: Request):
+    """
+    Update Hyperliquid leverage / 更新 Hyperliquid 杠杆
+    
+    Accepts leverage as integer in request body (not JSON object)
+    接受请求体中的整数杠杆值（不是 JSON 对象）
+    """
+    trace_id = get_trace_id()
+    
+    try:
+        # Read raw body to handle integer payload / 读取原始请求体以处理整数负载
+        body = await request.body()
+        try:
+            leverage = int(body.decode('utf-8'))
+        except (ValueError, UnicodeDecodeError):
+            return create_error_response(
+                ValueError("Invalid leverage value. Expected integer."),
+                error_code="INVALID_LEVERAGE_FORMAT",
+                details={"trace_id": trace_id}
+            )
+        
+        request_context = create_request_context("/api/hyperliquid/leverage", "POST", hash_payload(str(leverage)))
+        
+        if leverage < 1 or leverage > 125:
+            return create_error_response(
+                ValueError("Leverage must be between 1 and 125"),
+                error_code="INVALID_LEVERAGE",
+                details=request_context
+            )
+        
+        exchange = get_exchange_by_name("hyperliquid")
+        if not exchange:
+            return create_error_response(
+                ValueError("Hyperliquid exchange not initialized"),
+                error_code="EXCHANGE_NOT_INITIALIZED",
+                details=request_context
+            )
+        
+        success = exchange.set_leverage(leverage)
+        if success:
+            return {
+                "status": "updated",
+                "leverage": leverage,
+                "ok": True,
+                "trace_id": trace_id,
+            }
+        else:
+            return create_error_response(
+                ValueError("Failed to update leverage on exchange"),
+                error_code="LEVERAGE_UPDATE_FAILED",
+                details=request_context
+            )
+    except Exception as e:
+        logger.error(
+            "Error updating Hyperliquid leverage",
+            exc_info=True,
+            extra={
+                "trace_id": trace_id,
+                "error": str(e),
+            }
+        )
+        return create_error_response(
+            e,
+            error_code="LEVERAGE_UPDATE_ERROR",
+            details={"trace_id": trace_id}
+        )
+
+
+@app.post("/api/hyperliquid/pair")
+async def update_hyperliquid_pair(request: Request, pair: PairUpdate):
+    """
+    Update Hyperliquid trading pair / 更新 Hyperliquid 交易对
+    """
+    trace_id = get_trace_id()
+    request_context = create_request_context("/api/hyperliquid/pair", "POST", hash_payload(pair.dict()))
+    
+    try:
+        exchange = get_exchange_by_name("hyperliquid")
+        if not exchange:
+            return create_error_response(
+                ValueError("Hyperliquid exchange not initialized"),
+                error_code="EXCHANGE_NOT_INITIALIZED",
+                details=request_context
+            )
+        
+        target_strategy_id = pair.strategy_id or "default"
+        success = bot_engine.set_symbol(pair.symbol, strategy_id=target_strategy_id)
+        
+        if success:
+            # Immediately refresh data / 立即刷新数据
+            target_instance = bot_engine.strategy_instances.get(target_strategy_id)
+            if target_instance:
+                # Force refresh to get new market data for the new symbol / 强制刷新以获取新交易对的市场数据
+                target_instance.refresh_data()
+                # Also ensure exchange symbol is updated / 同时确保交易所交易对已更新
+                if target_instance.exchange and hasattr(target_instance.exchange, "symbol"):
+                    # Double-check symbol is set correctly / 再次确认交易对设置正确
+                    if target_instance.exchange.symbol != pair.symbol:
+                        target_instance.exchange.set_symbol(pair.symbol)
+                        # Refresh again after setting symbol / 设置交易对后再次刷新
+                        target_instance.refresh_data()
+            
+            return {
+                "status": "updated",
+                "symbol": pair.symbol,
+                "ok": True,
+                "trace_id": trace_id,
+            }
+        else:
+            return create_error_response(
+                ValueError(f"Failed to update to symbol {pair.symbol} for strategy '{target_strategy_id}'"),
+                error_code="PAIR_UPDATE_FAILED",
+                details=request_context
+            )
+    except Exception as e:
+        logger.error(
+            "Error updating Hyperliquid pair",
+            exc_info=True,
+            extra={
+                "trace_id": trace_id,
+                **request_context,
+                "error": str(e),
+            }
+        )
+        return create_error_response(
+            e,
+            error_code="PAIR_UPDATE_ERROR",
             details=request_context
         )
 

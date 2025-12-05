@@ -273,7 +273,11 @@ class HyperliquidClient:
                     f"Connection attempt {attempt + 1}/{max_retries} failed (RequestsConnectionError): {e}"
                 )
                 if attempt < max_retries - 1:
-                    delay = retry_delays[attempt] if attempt < len(retry_delays) else retry_delays[-1]
+                    delay = (
+                        retry_delays[attempt]
+                        if attempt < len(retry_delays)
+                        else retry_delays[-1]
+                    )
                     logger.info(f"Retrying in {delay}s...")
                     time.sleep(delay)
                 else:
@@ -303,25 +307,27 @@ class HyperliquidClient:
                     )
                     logger.error(f"Authentication failed: {error_msg}")
                     raise AuthenticationError(error_msg) from e
-                
+
                 # Log detailed error information
                 status_code = None
                 response_text = None
                 if hasattr(e, "response") and e.response:
                     status_code = e.response.status_code
                     response_text = (
-                        e.response.text[:500]
-                        if hasattr(e.response, "text")
-                        else "N/A"
+                        e.response.text[:500] if hasattr(e.response, "text") else "N/A"
                     )
-                
+
                 logger.warning(
                     f"Request attempt {attempt + 1}/{max_retries} failed (RequestException): "
                     f"{e}, status_code={status_code}, response={response_text}"
                 )
-                
+
                 if attempt < max_retries - 1:
-                    delay = retry_delays[attempt] if attempt < len(retry_delays) else retry_delays[-1]
+                    delay = (
+                        retry_delays[attempt]
+                        if attempt < len(retry_delays)
+                        else retry_delays[-1]
+                    )
                     logger.info(f"Retrying in {delay}s...")
                     time.sleep(delay)
                 else:
@@ -330,7 +336,7 @@ class HyperliquidClient:
                         error_details += f", Status Code: {status_code}"
                     if response_text:
                         error_details += f", Response: {response_text[:200]}"
-                    
+
                     error_msg = (
                         f"Failed to connect to Hyperliquid API after {max_retries} attempts. "
                         f"Error: {str(e)}. {error_details}. "
@@ -355,14 +361,18 @@ class HyperliquidClient:
                     )
                     logger.error(f"Authentication failed: {error_msg}")
                     raise AuthenticationError(error_msg) from e
-                
+
                 logger.warning(
                     f"Unexpected error on attempt {attempt + 1}/{max_retries}: "
                     f"{type(e).__name__}: {e}"
                 )
-                
+
                 if attempt < max_retries - 1:
-                    delay = retry_delays[attempt] if attempt < len(retry_delays) else retry_delays[-1]
+                    delay = (
+                        retry_delays[attempt]
+                        if attempt < len(retry_delays)
+                        else retry_delays[-1]
+                    )
                     logger.info(f"Retrying in {delay}s...")
                     time.sleep(delay)
                 else:
@@ -473,15 +483,18 @@ class HyperliquidClient:
                 # Rate limit exceeded - raise exception immediately for API endpoints
                 # 超出速率限制 - 对于 API 端点立即抛出异常
                 retry_after = 60  # Default retry delay in seconds / 默认重试延迟（秒）
-                
+
                 # Try to get Retry-After header from response
                 # 尝试从响应中获取 Retry-After header
-                if hasattr(e.response, "headers") and "Retry-After" in e.response.headers:
+                if (
+                    hasattr(e.response, "headers")
+                    and "Retry-After" in e.response.headers
+                ):
                     try:
                         retry_after = int(e.response.headers["Retry-After"])
                     except (ValueError, TypeError):
                         pass
-                
+
                 # Store rate limit error for API endpoints to return quickly
                 # 存储速率限制错误，以便 API 端点快速返回
                 self.last_api_error = {
@@ -490,13 +503,13 @@ class HyperliquidClient:
                     "status_code": 429,
                     "retry_after": retry_after,
                 }
-                
+
                 logger.warning(
                     f"Rate limit exceeded (429) for {endpoint}. "
                     f"Retry after {retry_after}s. "
                     f"速率限制已超出 (429) {endpoint}。{retry_after} 秒后重试。"
                 )
-                
+
                 # Raise exception immediately instead of waiting
                 # 立即抛出异常而不是等待
                 # This allows API endpoints to return error response quickly
@@ -716,9 +729,15 @@ class HyperliquidClient:
                             if isinstance(price_value, dict):
                                 # If it's a dict, try to extract price from common keys
                                 # 如果是字典，尝试从常见键中提取价格
-                                price_value = price_value.get("price") or price_value.get("px") or price_value.get(0)
+                                price_value = (
+                                    price_value.get("price")
+                                    or price_value.get("px")
+                                    or price_value.get(0)
+                                )
                                 if price_value is None:
-                                    logger.warning(f"Could not extract price from bid dict: {bids[0][0]}")
+                                    logger.warning(
+                                        f"Could not extract price from bid dict: {bids[0][0]}"
+                                    )
                                 else:
                                     best_bid = float(price_value)
                             else:
@@ -728,13 +747,21 @@ class HyperliquidClient:
                         elif isinstance(bids[0], dict):
                             # Handle dict format: {"price": 1234.5, "size": 1.0} or {"px": 1234.5, "sz": 1.0}
                             # 处理字典格式: {"price": 1234.5, "size": 1.0} 或 {"px": 1234.5, "sz": 1.0}
-                            price_value = bids[0].get("price") or bids[0].get("px") or bids[0].get(0)
+                            price_value = (
+                                bids[0].get("price")
+                                or bids[0].get("px")
+                                or bids[0].get(0)
+                            )
                             if price_value is not None:
                                 best_bid = float(price_value)
                             else:
-                                logger.warning(f"Could not extract price from bid dict: {bids[0]}")
+                                logger.warning(
+                                    f"Could not extract price from bid dict: {bids[0]}"
+                                )
                     except (ValueError, TypeError, IndexError) as e:
-                        logger.warning(f"Error parsing bid price: {e}, bids[0]={bids[0] if bids else None}")
+                        logger.warning(
+                            f"Error parsing bid price: {e}, bids[0]={bids[0] if bids else None}"
+                        )
 
                 if asks and len(asks) > 0:
                     try:
@@ -745,9 +772,15 @@ class HyperliquidClient:
                             if isinstance(price_value, dict):
                                 # If it's a dict, try to extract price from common keys
                                 # 如果是字典，尝试从常见键中提取价格
-                                price_value = price_value.get("price") or price_value.get("px") or price_value.get(0)
+                                price_value = (
+                                    price_value.get("price")
+                                    or price_value.get("px")
+                                    or price_value.get(0)
+                                )
                                 if price_value is None:
-                                    logger.warning(f"Could not extract price from ask dict: {asks[0][0]}")
+                                    logger.warning(
+                                        f"Could not extract price from ask dict: {asks[0][0]}"
+                                    )
                                 else:
                                     best_ask = float(price_value)
                             else:
@@ -757,13 +790,21 @@ class HyperliquidClient:
                         elif isinstance(asks[0], dict):
                             # Handle dict format: {"price": 1234.5, "size": 1.0} or {"px": 1234.5, "sz": 1.0}
                             # 处理字典格式: {"price": 1234.5, "size": 1.0} 或 {"px": 1234.5, "sz": 1.0}
-                            price_value = asks[0].get("price") or asks[0].get("px") or asks[0].get(0)
+                            price_value = (
+                                asks[0].get("price")
+                                or asks[0].get("px")
+                                or asks[0].get(0)
+                            )
                             if price_value is not None:
                                 best_ask = float(price_value)
                             else:
-                                logger.warning(f"Could not extract price from ask dict: {asks[0]}")
+                                logger.warning(
+                                    f"Could not extract price from ask dict: {asks[0]}"
+                                )
                     except (ValueError, TypeError, IndexError) as e:
-                        logger.warning(f"Error parsing ask price: {e}, asks[0]={asks[0] if asks else None}")
+                        logger.warning(
+                            f"Error parsing ask price: {e}, asks[0]={asks[0] if asks else None}"
+                        )
 
             # If we have both bid and ask, calculate mid price
             # 如果我们有买价和卖价，计算中间价
@@ -840,10 +881,10 @@ class HyperliquidClient:
         """
         Fetch mid prices for multiple symbols efficiently using allMids endpoint.
         使用 allMids 端点高效获取多个交易对的中间价。
-        
+
         Args:
             symbols: List of trading symbols (e.g., ["ETH/USDT:USDT", "BTC/USDT:USDT"])
-            
+
         Returns:
             Dictionary mapping symbol to mid_price (or None if not found)
         """
@@ -856,18 +897,22 @@ class HyperliquidClient:
                 data=mids_payload,
                 public=True,
             )
-            
+
             if not mids_response or not isinstance(mids_response, dict):
-                logger.warning("Failed to fetch allMids from Hyperliquid / 从 Hyperliquid 获取 allMids 失败")
+                logger.warning(
+                    "Failed to fetch allMids from Hyperliquid / 从 Hyperliquid 获取 allMids 失败"
+                )
                 return {symbol: None for symbol in symbols}
-            
+
             # Parse allMids response / 解析 allMids 响应
             # Format: {"mid_prices": {"ETH": 3000.0, "BTC": 50000.0, ...}} or {"ETH": 3000.0, ...}
             mid_prices = mids_response.get("mid_prices", mids_response)
             if not isinstance(mid_prices, dict):
-                logger.warning("Unexpected allMids response format / 意外的 allMids 响应格式")
+                logger.warning(
+                    "Unexpected allMids response format / 意外的 allMids 响应格式"
+                )
                 return {symbol: None for symbol in symbols}
-            
+
             # Convert symbols to coin names and map to prices / 将交易对转换为币种名称并映射到价格
             result = {}
             for symbol in symbols:
@@ -877,8 +922,13 @@ class HyperliquidClient:
                     if "/" in symbol
                     else symbol.split(":")[0] if ":" in symbol else symbol
                 )
-                coin = symbol_base.replace("USDT", "").replace("/", "").replace(":", "").upper()
-                
+                coin = (
+                    symbol_base.replace("USDT", "")
+                    .replace("/", "")
+                    .replace(":", "")
+                    .upper()
+                )
+
                 # Get price from allMids / 从 allMids 获取价格
                 price = mid_prices.get(coin)
                 if price is not None:
@@ -888,8 +938,10 @@ class HyperliquidClient:
                         result[symbol] = None
                 else:
                     result[symbol] = None
-                    logger.debug(f"Price not found for {coin} (symbol: {symbol}) / 未找到 {coin} 的价格（交易对：{symbol}）")
-            
+                    logger.debug(
+                        f"Price not found for {coin} (symbol: {symbol}) / 未找到 {coin} 的价格（交易对：{symbol}）"
+                    )
+
             return result
         except Exception as e:
             logger.error(f"Error fetching multiple prices: {e}")

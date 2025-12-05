@@ -67,7 +67,9 @@ class ErrorMapper:
 
     # Initialize exception mappings / 初始化异常映射
     if HyperliquidAuthenticationError:
-        EXCEPTION_TO_ERROR_TYPE[HyperliquidAuthenticationError] = ErrorType.AUTHENTICATION
+        EXCEPTION_TO_ERROR_TYPE[HyperliquidAuthenticationError] = (
+            ErrorType.AUTHENTICATION
+        )
     if HyperliquidConnectionError:
         EXCEPTION_TO_ERROR_TYPE[HyperliquidConnectionError] = ErrorType.CONNECTION
     if InsufficientBalanceError:
@@ -250,7 +252,9 @@ class ErrorMapper:
         if details is None:
             details = {}
         details["exception_type"] = exception.__class__.__name__
-        details["exception_module"] = getattr(exception.__class__, "__module__", "unknown")
+        details["exception_module"] = getattr(
+            exception.__class__, "__module__", "unknown"
+        )
 
         return StandardErrorResponse(
             error=exception.__class__.__name__,
@@ -291,7 +295,11 @@ class ErrorMapper:
 
         # Check exception message for hints / 检查异常消息中的提示
         error_msg = str(exception).lower()
-        if "authentication" in error_msg or "auth" in error_msg or "credential" in error_msg:
+        if (
+            "authentication" in error_msg
+            or "auth" in error_msg
+            or "credential" in error_msg
+        ):
             return ErrorType.AUTHENTICATION
         if "connection" in error_msg or "connect" in error_msg:
             return ErrorType.CONNECTION
@@ -310,7 +318,9 @@ class ErrorMapper:
         return ErrorType.UNKNOWN
 
     @classmethod
-    def _determine_severity(cls, exception: Exception, error_type: ErrorType) -> ErrorSeverity:
+    def _determine_severity(
+        cls, exception: Exception, error_type: ErrorType
+    ) -> ErrorSeverity:
         """
         Determine error severity / 确定错误严重程度
 
@@ -475,11 +485,15 @@ class ErrorMapper:
         Returns:
             Tuple of (English suggestion, Chinese suggestion) / （英文建议，中文建议）元组
         """
-        suggestions = cls.ERROR_SUGGESTIONS.get(error_type, cls.ERROR_SUGGESTIONS[ErrorType.UNKNOWN])
+        suggestions = cls.ERROR_SUGGESTIONS.get(
+            error_type, cls.ERROR_SUGGESTIONS[ErrorType.UNKNOWN]
+        )
         return (suggestions["en"], suggestions["zh"])
 
     @classmethod
-    def _get_remediation(cls, error_type: ErrorType) -> Tuple[Optional[str], Optional[str]]:
+    def _get_remediation(
+        cls, error_type: ErrorType
+    ) -> Tuple[Optional[str], Optional[str]]:
         """
         Get bilingual remediation steps / 获取双语修复步骤
 
@@ -518,4 +532,3 @@ def map_exception(
         StandardErrorResponse object / StandardErrorResponse 对象
     """
     return ErrorMapper.map_exception(exception, error_code, details, trace_id)
-

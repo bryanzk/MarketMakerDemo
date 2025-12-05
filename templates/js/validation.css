@@ -1,0 +1,68 @@
+/* Validation Error Styles / 验证错误样式 */
+
+.validation-errors {
+    padding: 16px;
+    border-radius: 8px;
+    margin: 16px 0;
+    border-left: 4px solid #f59e0b;
+    background: #fffbeb;
+    color: #92400e;
+}
+
+.validation-errors strong {
+    display: block;
+    margin-bottom: 12px;
+    font-size: 15px;
+    color: #92400e;
+}
+
+.validation-errors ul {
+    margin: 0;
+    padding-left: 20px;
+    list-style-type: disc;
+}
+
+.validation-errors li {
+    margin: 8px 0;
+    font-size: 14px;
+    line-height: 1.5;
+}
+
+.validation-errors li strong {
+    display: inline;
+    font-weight: 600;
+    color: #78350f;
+}
+
+/* Field-specific error styles / 字段特定错误样式 */
+.field-error {
+    border: 2px solid #ef4444 !important;
+    background: #fef2f2 !important;
+}
+
+.field-error:focus {
+    outline: none;
+    border-color: #dc2626 !important;
+    box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.1) !important;
+}
+
+.field-success {
+    border: 2px solid #22c55e !important;
+    background: #f0fdf4 !important;
+}
+
+/* Inline error message / 内联错误消息 */
+.field-error-message {
+    color: #dc2626;
+    font-size: 12px;
+    margin-top: 4px;
+    display: block;
+}
+
+.field-success-message {
+    color: #16a34a;
+    font-size: 12px;
+    margin-top: 4px;
+    display: block;
+}
+

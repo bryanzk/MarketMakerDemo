@@ -16,3 +16,4 @@ anthropic
 pytest
 pytest-cov
 pytest-mock
+playwright

@@ -199,6 +199,11 @@
             font-size: 11px;
         }
     </style>
+    <!-- Error handling styles / 错误处理样式 -->
+    <link rel="stylesheet" href="/static/error_styles.css">
+    <!-- API Diagnostics and Error Handler / API 诊断和错误处理 -->
+    <script src="/static/api_diagnostics.js"></script>
+    <script src="/static/error_handler.js"></script>
 </head>
 
 <body>
@@ -433,9 +438,17 @@
         }
 
         async function loadStatus() {
+            const errorBox = document.getElementById('evaluationErrorBox') || document.getElementById('controlMessage');
+            clearError(errorBox);
+            
             try {
-                const res = await fetch('/api/status');
+                const res = await diagnosticFetch('/api/status');
                 const data = await res.json();
+                
+                if (data.error || !data.ok) {
+                    handleApiError(data, errorBox);
+                    return;
+                }
                 if (data.spread !== undefined) {
                     document.getElementById('spreadInput').value = (data.spread * 100).toFixed(3);
                 }
@@ -456,11 +469,15 @@
                     }
                 }
             } catch (err) {
+                displayError(err, errorBox);
                 showMessage(controlMessage, `Failed to load status: ${err.message}`, true);
             }
         }
 
         async function updateConfig() {
+            const errorBox = document.getElementById('evaluationErrorBox') || document.getElementById('controlMessage');
+            clearError(errorBox);
+            
             try {
                 const payload = {
                     spread: parseFloat(document.getElementById('spreadInput').value || '0'),
@@ -469,15 +486,19 @@
                     strategy_id: 'default',
                     skew_factor: parseFloat(document.getElementById('skewInput').value || '0'),
                 };
-                const res = await fetch('/api/config', {
+                const res = await diagnosticFetch('/api/config', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(payload),
                 });
                 const data = await res.json();
-                if (data.error) throw new Error(data.error);
+                if (data.error || !data.ok) {
+                    handleApiError(data, errorBox);
+                    return;
+                }
                 showMessage(controlMessage, 'Strategy config updated.');
             } catch (err) {
+                displayError(err, errorBox);
                 showMessage(controlMessage, err.message || 'Failed to update config', true);
             }
         }
@@ -485,7 +506,7 @@
         async function updateLeverage() {
             try {
                 const leverage = parseInt(document.getElementById('leverageInput').value || '1', 10);
-                const res = await fetch('/api/leverage', {
+                const res = await diagnosticFetch('/api/leverage', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(leverage),
@@ -501,7 +522,7 @@
         async function switchPair() {
             try {
                 const symbol = document.getElementById('pairSelect').value;
-                const res = await fetch('/api/pair', {
+                const res = await diagnosticFetch('/api/pair', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ symbol }),
@@ -632,7 +653,7 @@
             evaluationState.lastError = null;
             updateEvaluationUI();
             try {
-                const res = await fetch('/api/evaluation/run', {
+                const res = await diagnosticFetch('/api/evaluation/run', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ symbol: getEvaluationSymbol() }),
@@ -689,7 +710,7 @@
                 // Market context is the same for all models, so we can use any result
                 // 所有模型的市场上下文相同，可以使用任何结果
                 try {
-                    const statusRes = await fetch('/api/status');
+                    const statusRes = await diagnosticFetch('/api/status');
                     const status = await statusRes.json();
                     
                     const symbol = evaluationState.symbol || status.symbol || 'ETH/USDT:USDT';
@@ -806,7 +827,7 @@
             try {
                 const payload = { source };
                 if (providerName) payload.provider_name = providerName;
-                const res = await fetch('/api/evaluation/apply', {
+                const res = await diagnosticFetch('/api/evaluation/apply', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(payload),
@@ -826,7 +847,7 @@
                 await applyEvaluation('consensus');
                 
                 // Then start the bot
-                const res = await fetch('/api/control?action=start', {
+                const res = await diagnosticFetch('/api/control?action=start', {
                     method: 'POST',
                 });
                 const data = await res.json();

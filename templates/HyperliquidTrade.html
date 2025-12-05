@@ -163,6 +163,11 @@
             margin-top: 12px;
         }
     </style>
+    <!-- Error handling styles / 错误处理样式 -->
+    <link rel="stylesheet" href="/static/error_styles.css">
+    <!-- API Diagnostics and Error Handler / API 诊断和错误处理 -->
+    <script src="/static/api_diagnostics.js"></script>
+    <script src="/static/error_handler.js"></script>
 </head>
 
 <body>
@@ -397,10 +402,13 @@
 
         // Connection Status / 连接状态
         async function checkConnection() {
+            const errorBox = document.getElementById('evaluationErrorBox');
+            clearError(errorBox);
+            
             try {
                 // Try to get exchange status by calling evaluation API with hyperliquid
                 // 尝试通过调用 hyperliquid 的评估 API 获取交易所状态
-                const res = await fetch('/api/evaluation/run', {
+                const res = await diagnosticFetch('/api/evaluation/run', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ 
@@ -414,15 +422,15 @@
                 const statusEl = document.getElementById('connectionStatus');
                 const detailsEl = document.getElementById('connectionDetails');
                 
-                if (data.error) {
-                    if (data.error.includes('not connected') || data.error.includes('未连接')) {
+                if (data.error || !data.ok) {
+                    handleApiError(data, errorBox);
+                    if (data.error && (data.error.includes('not connected') || data.error.includes('未连接'))) {
                         statusEl.className = 'status-badge status-disconnected';
                         statusEl.innerText = 'Disconnected / 未连接';
                         detailsEl.innerHTML = '<span style="color:#991b1b;">Hyperliquid exchange is not connected. Please connect first. / Hyperliquid 交易所未连接，请先连接。</span>';
                     } else {
                         statusEl.className = 'status-badge status-disconnected';
                         statusEl.innerText = 'Error / 错误';
-                        detailsEl.innerHTML = `<span style="color:#991b1b;">${data.error}</span>`;
                     }
                 } else {
                     statusEl.className = 'status-badge status-connected';
@@ -432,22 +440,25 @@
                     detailsEl.innerHTML = `Symbol: <strong>${symbol}</strong> | Price: <strong>$${price.toFixed(2)}</strong>`;
                 }
             } catch (err) {
+                displayError(err, errorBox);
                 const statusEl = document.getElementById('connectionStatus');
                 const detailsEl = document.getElementById('connectionDetails');
                 statusEl.className = 'status-badge status-disconnected';
                 statusEl.innerText = 'Error / 错误';
-                detailsEl.innerHTML = `<span style="color:#991b1b;">Failed to check connection: ${err.message}</span>`;
             }
         }
 
         // Position and Balance / 仓位与余额
         async function refreshPosition() {
+            const errorBox = document.getElementById('evaluationErrorBox');
+            clearError(errorBox);
+            
             try {
                 const statusEl = document.getElementById('positionStatus');
                 statusEl.innerText = 'Loading position data...';
                 
                 // Get status which should include position info
-                const res = await fetch('/api/status');
+                const res = await diagnosticFetch('/api/hyperliquid/status');
                 const data = await res.json();
                 
                 const positionData = document.getElementById('positionData');
@@ -468,6 +479,7 @@
                     statusEl.innerText = 'Position data not available / 仓位数据不可用';
                 }
             } catch (err) {
+                displayError(err, errorBox);
                 const statusEl = document.getElementById('positionStatus');
                 statusEl.innerText = `Error: ${err.message}`;
                 statusEl.classList.add('error');
@@ -475,9 +487,17 @@
         }
 
         async function loadStatus() {
+            const errorBox = document.getElementById('evaluationErrorBox');
+            clearError(errorBox);
+            
             try {
-                const res = await fetch('/api/status');
+                const res = await diagnosticFetch('/api/status');
                 const data = await res.json();
+                
+                if (data.error || !data.ok) {
+                    handleApiError(data, errorBox);
+                    return;
+                }
                 if (data.spread !== undefined) {
                     document.getElementById('spreadInput').value = (data.spread * 100).toFixed(3);
                 }
@@ -498,11 +518,15 @@
                     }
                 }
             } catch (err) {
+                displayError(err, errorBox);
                 showMessage(controlMessage, `Failed to load status: ${err.message}`, true);
             }
         }
 
         async function updateConfig() {
+            const errorBox = document.getElementById('evaluationErrorBox');
+            clearError(errorBox);
+            
             try {
                 const payload = {
                     spread: parseFloat(document.getElementById('spreadInput').value || '0'),
@@ -511,49 +535,67 @@
                     strategy_id: 'default',
                     skew_factor: parseFloat(document.getElementById('skewInput').value || '0'),
                 };
-                const res = await fetch('/api/config', {
+                const res = await diagnosticFetch('/api/hyperliquid/config', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(payload),
                 });
                 const data = await res.json();
-                if (data.error) throw new Error(data.error);
+                if (data.error || !data.ok) {
+                    handleApiError(data, errorBox);
+                    return;
+                }
                 showMessage(controlMessage, 'Strategy config updated. / 策略配置已更新。');
             } catch (err) {
+                displayError(err, errorBox);
                 showMessage(controlMessage, err.message || 'Failed to update config / 更新配置失败', true);
             }
         }
 
         async function updateLeverage() {
+            const errorBox = document.getElementById('evaluationErrorBox');
+            clearError(errorBox);
+            
             try {
                 const leverage = parseInt(document.getElementById('leverageInput').value || '1', 10);
-                const res = await fetch('/api/leverage', {
+                const res = await diagnosticFetch('/api/hyperliquid/leverage', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(leverage),
                 });
                 const data = await res.json();
-                if (data.error) throw new Error(data.error);
+                if (data.error || !data.ok) {
+                    handleApiError(data, errorBox);
+                    return;
+                }
                 showMessage(controlMessage, `Leverage updated to ${data.leverage}x / 杠杆已更新至 ${data.leverage}x`);
             } catch (err) {
+                displayError(err, errorBox);
                 showMessage(controlMessage, err.message || 'Failed to update leverage / 更新杠杆失败', true);
             }
         }
 
         async function switchPair() {
+            const errorBox = document.getElementById('evaluationErrorBox');
+            clearError(errorBox);
+            
             try {
                 const symbol = document.getElementById('pairSelect').value;
-                const res = await fetch('/api/pair', {
+                const res = await diagnosticFetch('/api/hyperliquid/pair', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ symbol }),
                 });
                 const data = await res.json();
-                if (data.error) throw new Error(data.error);
+                if (data.error || !data.ok) {
+                    handleApiError(data, errorBox);
+                    return;
+                }
                 currentEvalSymbol = normalizeSymbol(symbol);
                 showMessage(controlMessage, `Switched to ${symbol} / 已切换到 ${symbol}`);
                 loadStatus();
             } catch (err) {
+                displayError(err, errorBox);
                 showMessage(controlMessage, err.message || 'Failed to switch pair / 切换交易对失败', true);
             }
         }
@@ -661,11 +703,14 @@
 
         async function runEvaluation() {
             if (evaluationState.loading) return;
+            const errorBox = document.getElementById('evaluationErrorBox');
+            clearError(errorBox);
+            
             evaluationState.loading = true;
             evaluationState.lastError = null;
             updateEvaluationUI();
             try {
-                const res = await fetch('/api/evaluation/run', {
+                const res = await diagnosticFetch('/api/evaluation/run', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ 
@@ -675,12 +720,17 @@
                     }),
                 });
                 const data = await res.json();
-                if (data.error) throw new Error(data.error);
-                evaluationState.results = data.individual_results || [];
-                evaluationState.aggregated = data.aggregated || null;
-                evaluationState.lastRunSymbol = data.symbol || getEvaluationSymbol();
-                evaluationState.lastRunAt = new Date().toISOString();
+                if (data.error || !data.ok) {
+                    handleApiError(data, errorBox);
+                    evaluationState.lastError = data.message || data.error || 'Failed to run evaluation / 运行评估失败';
+                } else {
+                    evaluationState.results = data.individual_results || [];
+                    evaluationState.aggregated = data.aggregated || null;
+                    evaluationState.lastRunSymbol = data.symbol || getEvaluationSymbol();
+                    evaluationState.lastRunAt = new Date().toISOString();
+                }
             } catch (err) {
+                displayError(err, errorBox);
                 evaluationState.lastError = err.message || 'Failed to run evaluation / 运行评估失败';
             } finally {
                 evaluationState.loading = false;
@@ -689,42 +739,59 @@
         }
 
         async function applyEvaluation(source, providerName = null) {
+            const errorBox = document.getElementById('evaluationErrorBox');
+            clearError(errorBox);
+            
             try {
                 const payload = { 
                     source,
                     exchange: 'hyperliquid'  // Always use hyperliquid exchange
                 };
                 if (providerName) payload.provider_name = providerName;
-                const res = await fetch('/api/evaluation/apply', {
+                const res = await diagnosticFetch('/api/evaluation/apply', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(payload),
                 });
                 const data = await res.json();
-                if (data.error) throw new Error(data.error);
+                if (data.error || !data.ok) {
+                    handleApiError(data, errorBox);
+                    return;
+                }
                 showMessage(controlMessage, 'Applied evaluation proposal. / 已应用评估建议。');
                 loadStatus();
             } catch (err) {
+                displayError(err, errorBox);
                 showMessage(controlMessage, err.message || 'Failed to apply proposal / 应用建议失败', true);
             }
         }
 
         async function startBotWithLLMSuggestion() {
+            const errorBox = document.getElementById('evaluationErrorBox');
+            clearError(errorBox);
+            
             try {
                 await applyEvaluation('consensus');
-                const res = await fetch('/api/control?action=start', {
+                const res = await diagnosticFetch('/api/control?action=start', {
                     method: 'POST',
                 });
                 const data = await res.json();
-                if (data.error) throw new Error(data.error);
+                if (data.error || !data.ok) {
+                    handleApiError(data, errorBox);
+                    return;
+                }
                 showMessage(controlMessage, '✅ Bot started with LLM suggestion! / Bot 已使用 LLM 建议启动！');
                 setTimeout(refreshOrders, 1000);
             } catch (err) {
+                displayError(err, errorBox);
                 showMessage(controlMessage, err.message || 'Failed to start bot / 启动 Bot 失败', true);
             }
         }
 
         async function refreshOrders() {
+            const errorBox = document.getElementById('evaluationErrorBox');
+            clearError(errorBox);
+            
             try {
                 const statusEl = document.getElementById('ordersStatusText');
                 const tableWrapper = document.getElementById('ordersTableWrapper');
@@ -733,8 +800,13 @@
                 
                 statusEl.innerText = 'Loading orders... / 正在加载订单...';
                 
-                const res = await fetch('/api/status');
+                const res = await diagnosticFetch('/api/hyperliquid/status');
                 const data = await res.json();
+                
+                if (data.error || !data.ok) {
+                    handleApiError(data, errorBox);
+                    return;
+                }
                 
                 const orders = data.orders || [];
                 
@@ -772,6 +844,7 @@
                     tableBody.innerHTML = rows;
                 }
             } catch (err) {
+                displayError(err, errorBox);
                 const statusEl = document.getElementById('ordersStatusText');
                 statusEl.innerText = `Error loading orders: ${err.message} / 加载订单错误: ${err.message}`;
                 statusEl.classList.add('error');
@@ -779,11 +852,24 @@
         }
 
         async function cancelOrder(orderId) {
+            const errorBox = document.getElementById('evaluationErrorBox');
+            clearError(errorBox);
+            
             try {
-                // Note: This would need a cancel order API endpoint
-                // 注意：这需要一个取消订单的 API 端点
-                showMessage(controlMessage, `Cancel order functionality not yet implemented / 取消订单功能尚未实现`, true);
+                const res = await diagnosticFetch('/api/hyperliquid/cancel-order', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ order_id: orderId }),
+                });
+                const data = await res.json();
+                if (data.error || !data.ok) {
+                    handleApiError(data, errorBox);
+                    return;
+                }
+                showMessage(controlMessage, 'Order cancelled successfully. / 订单已成功取消。');
+                setTimeout(refreshOrders, 500);
             } catch (err) {
+                displayError(err, errorBox);
                 showMessage(controlMessage, err.message || 'Failed to cancel order / 取消订单失败', true);
             }
         }

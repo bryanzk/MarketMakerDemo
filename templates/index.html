@@ -305,6 +305,11 @@
             color: #4A4A4A;
         }
     </style>
+    <!-- Error handling styles / 错误处理样式 -->
+    <link rel="stylesheet" href="/static/error_styles.css">
+    <!-- API Diagnostics and Error Handler / API 诊断和错误处理 -->
+    <script src="/static/api_diagnostics.js"></script>
+    <script src="/static/error_handler.js"></script>
 </head>
 
 <body>
@@ -1669,7 +1674,7 @@
                 const controller = new AbortController();
                 const timeoutId = setTimeout(() => controller.abort(), 5000); // 5s timeout for status
                 
-                const res = await fetch('/api/status', { signal: controller.signal });
+                const res = await diagnosticFetch('/api/status', { signal: controller.signal });
                 clearTimeout(timeoutId);
                 
                 const data = await res.json();
@@ -2144,7 +2149,7 @@
             }
 
             try {
-                await fetch(`/api/control?action=${action}`, { method: 'POST' });
+                await diagnosticFetch(`/api/control?action=${action}`, { method: 'POST' });
                 fetchStatus();
             } catch (e) {
                 console.error(e);
@@ -2195,7 +2200,7 @@
             }
 
             try {
-                const res = await fetch('/api/config', {
+                const res = await diagnosticFetch('/api/config', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
@@ -2236,7 +2241,7 @@
             const strategy = 'funding_rate';
 
             try {
-                const res = await fetch('/api/config', {
+                const res = await diagnosticFetch('/api/config', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({

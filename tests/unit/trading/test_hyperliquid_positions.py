@@ -914,3 +914,4 @@ class TestHyperliquidClientErrorHandling:
             error_msg = str(e)
             # Check if error message is bilingual (contains both languages or is handled gracefully)
             assert len(error_msg) > 0
+

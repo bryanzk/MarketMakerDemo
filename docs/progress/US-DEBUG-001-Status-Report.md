@@ -65,23 +65,34 @@ Error handling improvement is in progress with Phase 1 and Phase 2 (partial) com
 
 ---
 
-### 🔄 Phase 3: Structured Logging & Observability / 阶段 3：结构化日志与可观测性 - **PARTIALLY COMPLETED**
+### ✅ Phase 3: Structured Logging & Observability / 阶段 3：结构化日志与可观测性 - **COMPLETED**
 
-**Status**: 33% Complete / 33% 完成
+**Status**: 100% Complete / 100% 完成
 
 **Completed Tasks / 已完成任务**:
 - ✅ Updated `src/shared/logger.py` with JSON formatter (`JsonFormatter`)
+- ✅ Added trace_id to all log entries (automatic integration via `get_trace_id()`)
 - ✅ Implemented structured logging for API requests (server.py uses structured logging)
+- ✅ Implemented structured logging for exchange calls (via `track_exchange_operation` decorator)
+- ✅ Added `/metrics` endpoint for exchange health (`GET /api/metrics`)
+- ✅ Track latency buckets and error rates (via `MetricsCollector` and `ExchangeMetrics`)
+- ✅ Test structured logging output (all tests passing)
 
-**Pending Tasks / 待完成任务**:
-- ⏳ Add trace_id to all log entries (logger.py needs trace_id integration)
-- ⏳ Implement structured logging for exchange calls
-- ⏳ Add `/metrics` endpoint for exchange health
-- ⏳ Track latency buckets and error rates
-- ⏳ Test structured logging output
+**Files Created / 创建的文件**:
+- `src/shared/exchange_metrics.py` (309 lines) - Exchange metrics tracking module
+- `tests/unit/shared/test_metrics.py` (242 lines) - Comprehensive unit tests
 
 **Files Modified / 修改的文件**:
-- `src/shared/logger.py` (has JSON formatter, needs trace_id integration)
+- `src/shared/logger.py` - Added trace_id integration to JsonFormatter
+- `src/shared/__init__.py` - Exported exchange metrics components
+- `server.py` - Added `/api/metrics` endpoint
+
+**Key Features / 关键功能**:
+1. **Automatic trace_id in logs** - All log entries automatically include trace_id from context
+2. **Exchange metrics tracking** - Tracks latency, error rates, and health for each exchange
+3. **Structured logging decorator** - `@track_exchange_operation` decorator for easy instrumentation
+4. **Metrics API endpoint** - `/api/metrics` provides comprehensive observability data
+5. **Health monitoring** - Automatic health status calculation based on error rates and recent activity
 
 ---
 

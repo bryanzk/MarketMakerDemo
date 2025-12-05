@@ -468,19 +468,19 @@ async def read_root(request: Request):
     exchange = get_default_exchange()
     if exchange and hasattr(exchange, "last_order_error"):
         exchange.last_order_error = None
-    return templates.TemplateResponse("index.html", {"request": request})
+    return templates.TemplateResponse(request, "index.html")
 
 
 @app.get("/evaluation", response_class=HTMLResponse)
 async def llm_trade_page(request: Request):
     """Render dedicated LLM Trade Lab page / 渲染专用 LLM 交易实验室页面"""
-    return templates.TemplateResponse("LLMTrade.html", {"request": request})
+    return templates.TemplateResponse(request, "LLMTrade.html")
 
 
 @app.get("/hyperliquid", response_class=HTMLResponse)
 async def hyperliquid_trade_page(request: Request):
     """Render dedicated Hyperliquid Trading page / 渲染专用 Hyperliquid 交易页面"""
-    return templates.TemplateResponse("HyperliquidTrade.html", {"request": request})
+    return templates.TemplateResponse(request, "HyperliquidTrade.html")
 
 
 @app.get("/api/debug/balance")

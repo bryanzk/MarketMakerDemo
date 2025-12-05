@@ -8,10 +8,15 @@ Tests for Phase 8: Add Error History Display
 Owner: Agent QA
 """
 
+import warnings
 import pytest
 from fastapi.testclient import TestClient
 
 import server
+
+# Filter out FastAPI deprecation warnings from server.py / 过滤来自 server.py 的 FastAPI 弃用警告
+warnings.filterwarnings("ignore", category=DeprecationWarning, module="server")
+warnings.filterwarnings("ignore", category=DeprecationWarning, module="starlette.templating")
 
 
 class TestErrorHistoryPanelIntegration:
@@ -286,4 +291,174 @@ class TestErrorHistoryPanelIntegration:
         assert "ErrorHistoryPanel" in html_content
         assert "new ErrorHistoryPanel" in html_content
         assert "DOMContentLoaded" in html_content or "addEventListener" in html_content
+
+    def test_error_history_fetches_from_status_api(self):
+        """
+        Test AC: Error history fetches from /api/status endpoint
+        测试 AC: 错误历史从 /api/status 端点获取数据
+        
+        Given: Error history JavaScript is loaded
+        When: I check the code
+        Then: It should fetch from /api/status endpoint
+        """
+        client = TestClient(server.app)
+        response = client.get("/static/error_history.js")
+        
+        assert response.status_code == 200
+        js_content = response.text
+        
+        # Check for API endpoint / 检查 API 端点
+        assert "/api/status" in js_content
+        assert "fetch" in js_content.lower() or "diagnosticFetch" in js_content
+
+    def test_error_history_handles_api_errors(self):
+        """
+        Test AC: Error history handles API errors gracefully
+        测试 AC: 错误历史优雅处理 API 错误
+        
+        Given: Error history JavaScript is loaded
+        When: I check the code
+        Then: It should have error handling for API failures
+        """
+        client = TestClient(server.app)
+        response = client.get("/static/error_history.js")
+        
+        assert response.status_code == 200
+        js_content = response.text
+        
+        # Check for error handling / 检查错误处理
+        assert "catch" in js_content or "error" in js_content.lower()
+        assert "error-history-error" in js_content or "errorHistoryError" in js_content
+
+    def test_error_history_renders_global_errors(self):
+        """
+        Test AC: Error history renders global errors
+        测试 AC: 错误历史渲染全局错误
+        
+        Given: Error history JavaScript is loaded
+        When: I check the code
+        Then: It should have logic to render global errors
+        """
+        client = TestClient(server.app)
+        response = client.get("/static/error_history.js")
+        
+        assert response.status_code == 200
+        js_content = response.text
+        
+        # Check for global error rendering / 检查全局错误渲染
+        assert "global_alert" in js_content or "globalAlert" in js_content
+        assert "global_error_history" in js_content or "globalErrorHistory" in js_content
+
+    def test_error_history_renders_instance_errors(self):
+        """
+        Test AC: Error history renders instance errors
+        测试 AC: 错误历史渲染实例错误
+        
+        Given: Error history JavaScript is loaded
+        When: I check the code
+        Then: It should have logic to render instance errors
+        """
+        client = TestClient(server.app)
+        response = client.get("/static/error_history.js")
+        
+        assert response.status_code == 200
+        js_content = response.text
+        
+        # Check for instance error rendering / 检查实例错误渲染
+        assert "instance_errors" in js_content or "instanceErrors" in js_content
+
+    def test_error_history_has_copy_trace_id_functionality(self):
+        """
+        Test AC: Error history has copy trace_id functionality
+        测试 AC: 错误历史具有复制 trace_id 功能
+        
+        Given: Error history JavaScript is loaded
+        When: I check the code
+        Then: It should have copy to clipboard functionality
+        """
+        client = TestClient(server.app)
+        response = client.get("/static/error_history.js")
+        
+        assert response.status_code == 200
+        js_content = response.text
+        
+        # Check for copy functionality / 检查复制功能
+        assert "copyToClipboard" in js_content or "copy" in js_content.lower()
+        assert "clipboard" in js_content.lower()
+
+    def test_error_history_has_bilingual_support(self):
+        """
+        Test AC: Error history has bilingual support
+        测试 AC: 错误历史具有双语支持
+        
+        Given: Error history JavaScript is loaded
+        When: I check the code
+        Then: It should have English and Chinese text
+        """
+        client = TestClient(server.app)
+        response = client.get("/static/error_history.js")
+        
+        assert response.status_code == 200
+        js_content = response.text
+        
+        # Check for bilingual support / 检查双语支持
+        assert "detectLanguage" in js_content or "language" in js_content.lower()
+        assert "zh" in js_content.lower() or "chinese" in js_content.lower()
+
+    def test_error_history_limits_displayed_errors(self):
+        """
+        Test AC: Error history limits displayed errors
+        测试 AC: 错误历史限制显示的错误数量
+        
+        Given: Error history JavaScript is loaded
+        When: I check the code
+        Then: It should have maxDisplayErrors option
+        """
+        client = TestClient(server.app)
+        response = client.get("/static/error_history.js")
+        
+        assert response.status_code == 200
+        js_content = response.text
+        
+        # Check for error limiting / 检查错误限制
+        assert "maxDisplayErrors" in js_content or "max_display" in js_content.lower()
+        assert "slice" in js_content or "limit" in js_content.lower()
+
+    def test_error_history_has_error_type_display(self):
+        """
+        Test AC: Error history displays error types
+        测试 AC: 错误历史显示错误类型
+        
+        Given: Error history JavaScript is loaded
+        When: I check the code
+        Then: It should display error types
+        """
+        client = TestClient(server.app)
+        response = client.get("/static/error_history.js")
+        
+        assert response.status_code == 200
+        js_content = response.text
+        
+        # Check for error type display / 检查错误类型显示
+        assert "error.type" in js_content or "error_type" in js_content.lower()
+        assert "error-type-" in js_content or "errorType" in js_content
+
+    def test_error_history_has_timestamp_formatting(self):
+        """
+        Test AC: Error history formats timestamps
+        测试 AC: 错误历史格式化时间戳
+        
+        Given: Error history JavaScript is loaded
+        When: I check the code
+        Then: It should format timestamps for display
+        """
+        client = TestClient(server.app)
+        response = client.get("/static/error_history.js")
+        
+        assert response.status_code == 200
+        js_content = response.text
+        
+        # Check for timestamp formatting / 检查时间戳格式化
+        assert "timestamp" in js_content.lower()
+        assert "Date" in js_content or "toLocaleString" in js_content or "toLocaleTimeString" in js_content
 

@@ -3,7 +3,7 @@ import os
 import threading
 import time
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Any, Dict, Optional
 
 import uvicorn
 
@@ -26,7 +26,43 @@ from src.ai.evaluation.evaluator import MultiLLMEvaluator
 from src.ai.evaluation.schemas import MarketContext
 from src.ai import create_all_providers
 
+# Import tracing utilities / 导入追踪工具
+from src.shared.tracing import generate_trace_id, set_trace_id, get_trace_id, create_request_context, hash_payload
+from src.shared.error_mapper import ErrorMapper
+from src.shared.errors import StandardErrorResponse
+
 app = FastAPI()
+
+
+@app.middleware("http")
+async def add_trace_id(request: Request, call_next):
+    """
+    Add trace_id to all requests / 为所有请求添加 trace_id
+    
+    Trace ID is included in:
+    - Request context (for logging)
+    - Response headers
+    - Error responses
+    - Strategy instance error_history entries
+    
+    追踪ID包含在：
+    - 请求上下文（用于日志记录）
+    - 响应头
+    - 错误响应
+    - 策略实例 error_history 条目
+    """
+    trace_id = generate_trace_id()
+    set_trace_id(trace_id)
+    
+    # Add trace_id to request state / 将 trace_id 添加到请求状态
+    request.state.trace_id = trace_id
+    
+    response = await call_next(request)
+    
+    # Add trace_id to response headers / 将 trace_id 添加到响应头
+    response.headers["X-Trace-ID"] = trace_id
+    
+    return response
 
 
 @app.on_event("startup")
@@ -201,6 +237,28 @@ def _format_symbol_with_exchange(symbol: str, exchange_name: str) -> str:
         Formatted symbol string with exchange name
     """
     return f"{symbol} ({exchange_name.upper()})"
+
+
+def create_error_response(
+    exception: Exception,
+    error_code: Optional[str] = None,
+    details: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """
+    Create standardized error response / 创建标准化错误响应
+    
+    Automatically includes trace_id from request context.
+    自动包含来自请求上下文的 trace_id。
+    
+    Usage / 用法:
+        try:
+            # ... API logic ...
+        except Exception as e:
+            return create_error_response(e).to_dict()
+    """
+    trace_id = get_trace_id()
+    error_response = ErrorMapper.map_exception(exception, error_code, details, trace_id)
+    return error_response.to_dict()
 
 # Portfolio Manager for multi-strategy management
 # Initial capital will be fetched from Binance on startup
@@ -434,29 +492,55 @@ async def debug_balance():
 
 
 @app.get("/api/status")
-async def get_status():
-    status = bot_engine.get_status()
-    status["active"] = is_running
-    status["stage"] = bot_engine.current_stage
+async def get_status(request: Request):
+    """Get bot status / 获取 Bot 状态"""
+    trace_id = get_trace_id()
+    request_context = create_request_context("/api/status", "GET")
+    
+    try:
+        status = bot_engine.get_status()
+        status["active"] = is_running
+        status["stage"] = bot_engine.current_stage
 
-    # Add strategy info & core config for UI display
-    strategy_type_name = type(bot_engine.strategy).__name__
-    status["strategy_type"] = (
-        "funding_rate"
-        if strategy_type_name == "FundingRateStrategy"
-        else "fixed_spread"
-    )
+        # Add strategy info & core config for UI display
+        strategy_type_name = type(bot_engine.strategy).__name__
+        status["strategy_type"] = (
+            "funding_rate"
+            if strategy_type_name == "FundingRateStrategy"
+            else "fixed_spread"
+        )
 
-    # Expose current spread, quantity, leverage from engine strategy when they are simple numeric types.
-    spread = getattr(bot_engine.strategy, "spread", None)
-    quantity = getattr(bot_engine.strategy, "quantity", None)
-    leverage = getattr(bot_engine.strategy, "leverage", None)
-    if isinstance(spread, (int, float)):
-        status["spread"] = spread
-    if isinstance(quantity, (int, float)):
-        status["quantity"] = quantity
-    if isinstance(leverage, (int, float)):
-        status["leverage"] = leverage
+        # Expose current spread, quantity, leverage from engine strategy when they are simple numeric types.
+        spread = getattr(bot_engine.strategy, "spread", None)
+        quantity = getattr(bot_engine.strategy, "quantity", None)
+        leverage = getattr(bot_engine.strategy, "leverage", None)
+        if isinstance(spread, (int, float)):
+            status["spread"] = spread
+        if isinstance(quantity, (int, float)):
+            status["quantity"] = quantity
+        if isinstance(leverage, (int, float)):
+            status["leverage"] = leverage
+        
+        # Add trace_id to success response / 将 trace_id 添加到成功响应
+        status["trace_id"] = trace_id
+        status["ok"] = True
+        
+        return status
+    except Exception as e:
+        logger.error(
+            "Error getting status",
+            exc_info=True,
+            extra={
+                "trace_id": trace_id,
+                **request_context,
+                "error": str(e),
+            }
+        )
+        return create_error_response(
+            e,
+            error_code="STATUS_FETCH_ERROR",
+            details=request_context
+        )
 
     # Only add skew_factor for funding strategies and when it's numeric
     skew = getattr(bot_engine.strategy, "skew_factor", None)
@@ -1418,6 +1502,142 @@ async def apply_evaluation(request: EvaluationApplyRequest):
             "error": f"Apply evaluation error: {str(e)} / 应用评估错误：{str(e)}",
             "exchange": exchange_name,
         }
+
+
+@app.get("/api/hyperliquid/status")
+async def get_hyperliquid_status(request: Request):
+    """
+    Get Hyperliquid-specific status including positions, balance, and orders
+    获取 Hyperliquid 特定状态，包括仓位、余额和订单
+    """
+    trace_id = get_trace_id()
+    request_context = create_request_context("/api/hyperliquid/status", "GET")
+    
+    try:
+        exchange = get_exchange_by_name("hyperliquid")
+        if not exchange:
+            return create_error_response(
+                ValueError("Hyperliquid exchange not initialized"),
+                error_code="EXCHANGE_NOT_INITIALIZED",
+                details=request_context
+            )
+        
+        is_connected, error_response, status_code = _check_exchange_connection("hyperliquid", exchange, "error")
+        if not is_connected:
+            return create_error_response(
+                ValueError(error_response.get("error", "Hyperliquid exchange not connected")),
+                error_code="EXCHANGE_NOT_CONNECTED",
+                details=request_context
+            )
+        
+        account_data = exchange.fetch_account_data()
+        market_data = exchange.fetch_market_data()
+        open_orders = exchange.fetch_open_orders()
+        positions = exchange.fetch_positions()
+        
+        status = {
+            "connected": True,
+            "exchange": "hyperliquid",
+            "symbol": exchange.symbol if hasattr(exchange, "symbol") else None,
+            "mid_price": market_data.get("mid_price", 0.0) if market_data else 0.0,
+            "balance": account_data.get("balance", 0.0) if account_data else 0.0,
+            "available_balance": account_data.get("available_balance", 0.0) if account_data else 0.0,
+            "position": account_data.get("position_amt", 0.0) if account_data else 0.0,
+            "unrealized_pnl": account_data.get("unrealized_pnl", 0.0) if account_data else 0.0,
+            "leverage": account_data.get("leverage", 1.0) if account_data else 1.0,
+            "orders": open_orders,
+            "positions": positions,
+            "trace_id": trace_id,
+            "ok": True,
+        }
+        
+        return status
+    except Exception as e:
+        logger.error(
+            "Error getting Hyperliquid status",
+            exc_info=True,
+            extra={
+                "trace_id": trace_id,
+                **request_context,
+                "error": str(e),
+            }
+        )
+        return create_error_response(
+            e,
+            error_code="STATUS_FETCH_ERROR",
+            details=request_context
+        )
+
+
+@app.get("/api/hyperliquid/connection")
+async def check_hyperliquid_connection(request: Request):
+    """
+    Pre-flight connection check / 预检连接检查
+    
+    Returns market-data freshness, auth status, and warnings.
+    Returns / 返回：市场数据新鲜度、认证状态和警告。
+    """
+    trace_id = get_trace_id()
+    request_context = create_request_context("/api/hyperliquid/connection", "GET")
+    
+    try:
+        exchange = get_exchange_by_name("hyperliquid")
+        if not exchange:
+            return create_error_response(
+                ValueError("Hyperliquid exchange not initialized"),
+                error_code="EXCHANGE_NOT_INITIALIZED",
+                details=request_context
+            )
+        
+        # Check connection status / 检查连接状态
+        connection_status = exchange.get_connection_status() if hasattr(exchange, "get_connection_status") else {"connected": False}
+        is_connected = connection_status.get("connected", False)
+        
+        # Get market data freshness / 获取市场数据新鲜度
+        market_data = None
+        market_data_age_seconds = None
+        if is_connected:
+            try:
+                market_data = exchange.fetch_market_data()
+                if market_data and "timestamp" in market_data:
+                    market_data_age_seconds = time.time() - (market_data["timestamp"] / 1000)
+            except Exception:
+                pass
+        
+        # Check authentication status / 检查认证状态
+        auth_status = "authenticated" if is_connected else "not_authenticated"
+        
+        # Collect warnings / 收集警告
+        warnings = []
+        if not is_connected:
+            warnings.append("Exchange not connected / 交易所未连接")
+        if market_data_age_seconds and market_data_age_seconds > 60:
+            warnings.append(f"Market data is stale ({int(market_data_age_seconds)}s old) / 市场数据已过期（{int(market_data_age_seconds)} 秒前）")
+        
+        return {
+            "connected": is_connected,
+            "auth_status": auth_status,
+            "market_data_fresh": market_data_age_seconds is None or market_data_age_seconds < 60,
+            "market_data_age_seconds": market_data_age_seconds,
+            "warnings": warnings,
+            "trace_id": trace_id,
+            "ok": True,
+        }
+    except Exception as e:
+        logger.error(
+            "Error checking Hyperliquid connection",
+            exc_info=True,
+            extra={
+                "trace_id": trace_id,
+                **request_context,
+                "error": str(e),
+            }
+        )
+        return create_error_response(
+            e,
+            error_code="CONNECTION_CHECK_ERROR",
+            details=request_context
+        )
 
 
 # ============================================================================

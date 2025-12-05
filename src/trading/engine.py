@@ -17,6 +17,7 @@ from src.ai.agents.quant import QuantAgent
 from src.ai.agents.risk import RiskAgent
 from src.shared.config import STRATEGY_TYPE
 from src.shared.logger import setup_logger
+from src.shared.tracing import get_trace_id
 from src.trading.exchange import BinanceClient
 from src.trading.order_manager import OrderManager
 from src.trading.simulation import MarketSimulator
@@ -347,6 +348,7 @@ class AlphaLoop:
                         "details": err.get("details"),
                         "strategy_id": instance.strategy_id,
                         "strategy_type": instance.strategy_type,
+                        "trace_id": get_trace_id(),  # Include trace_id for correlation / 包含 trace_id 用于关联
                     }
                     instance.error_history.append(error_record)
                     self.error_history.append(error_record)
@@ -394,6 +396,7 @@ class AlphaLoop:
                     "details": None,
                     "strategy_id": instance.strategy_id,
                     "strategy_type": instance.strategy_type,
+                    "trace_id": get_trace_id(),  # Include trace_id for correlation / 包含 trace_id 用于关联
                 }
             )
             instance.alert = {
@@ -445,6 +448,7 @@ class AlphaLoop:
                         "message": str(e),
                         "details": None,
                         "strategy_type": "system",
+                        "trace_id": get_trace_id(),  # Include trace_id for correlation / 包含 trace_id 用于关联
                     }
                 )
                 self.alert = {

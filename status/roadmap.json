@@ -118,17 +118,17 @@
           "name": "Error Handling & Debugging Improvement / 错误处理与调试改进",
           "name_zh": "错误处理与调试改进",
           "status": "IN_PROGRESS",
-          "current_step": "spec_defined",
+          "current_step": "code_implemented",
           "branch": "feat/error-handling-improvement",
           "sync_source": "docs/development/error_handling_improvement_plan.md",
           "step_status": {
             "spec_defined": true,
-            "story_defined": false,
-            "ac_defined": false,
-            "contract_defined": false,
-            "plan_approved": false,
-            "unit_test_written": false,
-            "code_implemented": false,
+            "story_defined": true,
+            "ac_defined": true,
+            "contract_defined": true,
+            "plan_approved": true,
+            "unit_test_written": true,
+            "code_implemented": true,
             "code_reviewed": false,
             "unit_test_passed": false,
             "smoke_test_passed": false,
@@ -136,6 +136,14 @@
             "docs_updated": false,
             "progress_logged": false,
             "ci_cd_passed": false
+          },
+          "progress_summary": {
+            "phases_completed": 2,
+            "phases_total": 9,
+            "completion_percentage": 22.2,
+            "completed_phases": ["Phase 1: Standardize Error Response Format", "Phase 2: Request Tracing & Correlation (partial)"],
+            "in_progress_phases": ["Phase 3: Structured Logging & Observability (partial)"],
+            "pending_phases": ["Phase 4: Frontend Error Handling", "Phase 5: Frontend Debug Panel", "Phase 6: Client-Side Validation", "Phase 7: Expose Strategy Instance Errors", "Phase 8: Error History Display", "Phase 9: Testing"]
           }
         }
       ]

@@ -167,11 +167,13 @@
     <link rel="stylesheet" href="/static/error_styles.css">
     <link rel="stylesheet" href="/static/debug_panel.css">
     <link rel="stylesheet" href="/static/validation.css">
+    <link rel="stylesheet" href="/static/error_history.css">
     <!-- API Diagnostics and Error Handler / API 诊断和错误处理 -->
     <script src="/static/api_diagnostics.js"></script>
     <script src="/static/error_handler.js"></script>
     <script src="/static/debug_panel.js"></script>
     <script src="/static/validation.js"></script>
+    <script src="/static/error_history.js"></script>
 </head>
 
 <body>
@@ -377,6 +379,11 @@
                     No active orders / 无活跃订单
                 </div>
             </div>
+        </section>
+
+        <!-- Error History Panel / 错误历史面板 -->
+        <section class="panel">
+            <div id="errorHistoryPanel"></div>
         </section>
     </div>
 
@@ -932,6 +939,15 @@
             refreshPosition();
             refreshOrders();
             startAutoRefresh();
+            
+            // Initialize error history panel / 初始化错误历史面板
+            if (window.ErrorHistoryPanel) {
+                new ErrorHistoryPanel('errorHistoryPanel', {
+                    autoRefresh: true,
+                    refreshInterval: 5000,
+                    showTraceId: true
+                });
+            }
         });
     </script>
 </body>

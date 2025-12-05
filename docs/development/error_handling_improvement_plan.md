@@ -1165,13 +1165,13 @@ setInterval(refreshErrorHistory, 30000);
 - [x] Test error exposure in API responses ✅ (tests/unit/web/test_strategy_instance_errors.py)
 
 ### Phase 8: Add Error History Display / 阶段 8：添加错误历史显示
-- [ ] Add error history panel to `HyperliquidTrade.html`
-- [ ] Add error history panel to `LLMTrade.html`
-- [ ] Add error history panel to `index.html`
-- [ ] Display trace_id in error history
-- [ ] Implement auto-refresh for error history
-- [ ] Add error history styling (CSS)
-- [ ] Test error history display
+- [x] Add error history panel to `HyperliquidTrade.html` ✅
+- [x] Add error history panel to `LLMTrade.html` ✅
+- [x] Add error history panel to `index.html` ✅
+- [x] Display trace_id in error history ✅ (error_history.js:196-200)
+- [x] Implement auto-refresh for error history ✅ (error_history.js:62-64, startAutoRefresh)
+- [x] Add error history styling (CSS) ✅ (error_history.css)
+- [x] Test error history display ✅ (tests/unit/web/test_error_history_panel.py)
 
 ### Phase 9: Testing / 阶段 9：测试
 - [ ] Write contract tests for error envelope structure

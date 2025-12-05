@@ -253,14 +253,11 @@
             <div class="grid">
                 <div>
                     <label>Trading Pair / 交易对</label>
-                    <div style="display:flex; gap:8px;">
-                        <select id="pairSelect">
-                            <option value="ETH/USDT:USDT">ETH/USDT:USDT</option>
-                            <option value="BTC/USDT:USDT">BTC/USDT:USDT</option>
-                            <option value="SOL/USDT:USDT">SOL/USDT:USDT</option>
-                        </select>
-                        <button class="btn btn-secondary" onclick="switchPair()">Switch</button>
-                    </div>
+                    <select id="pairSelect" onchange="switchPair()">
+                        <option value="ETH/USDT:USDT">ETH/USDT:USDT</option>
+                        <option value="BTC/USDT:USDT">BTC/USDT:USDT</option>
+                        <option value="SOL/USDT:USDT">SOL/USDT:USDT</option>
+                    </select>
                 </div>
             </div>
             <div class="grid" style="margin-top: 16px;">
@@ -271,10 +268,6 @@
                 <div>
                     <label>Quantity / 数量</label>
                     <input type="number" id="quantityInput" step="0.01" value="0.1">
-                </div>
-                <div>
-                    <label>Skew Factor / 倾斜因子</label>
-                    <input type="number" id="skewInput" step="5" value="120">
                 </div>
                 <div>
                     <label>Leverage / 杠杆</label>
@@ -423,45 +416,108 @@
             clearError(errorBox);
             
             try {
-                // Try to get exchange status by calling evaluation API with hyperliquid
-                // 尝试通过调用 hyperliquid 的评估 API 获取交易所状态
-                const res = await diagnosticFetch('/api/evaluation/run', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ 
-                        symbol: 'ETH/USDT:USDT',
-                        exchange: 'hyperliquid',
-                        simulation_steps: 1
-                    }),
-                });
+                // Get Hyperliquid status directly (faster than evaluation API)
+                // 直接获取 Hyperliquid 状态（比评估 API 更快）
+                const res = await diagnosticFetch('/api/hyperliquid/status');
                 const data = await res.json();
                 
                 const statusEl = document.getElementById('connectionStatus');
                 const detailsEl = document.getElementById('connectionDetails');
+                const networkEl = document.getElementById('networkBadge');
+                const networkTextEl = document.getElementById('networkText');
                 
-                if (data.error || !data.ok) {
+                // Ensure elements exist before updating
+                // 确保元素存在后再更新
+                if (!statusEl || !detailsEl) {
+                    console.error('Connection status elements not found');
+                    return;
+                }
+                
+                // Check for rate limit error / 检查速率限制错误
+                const isRateLimit = data.error_type === 'rate_limit' || 
+                                   data.error_code === 'RATE_LIMIT_EXCEEDED' ||
+                                   (data.error && (data.error.includes('429') || data.error.includes('Rate limit') || data.error.includes('速率限制')));
+                
+                if (isRateLimit) {
+                    // Display rate limit error in status badge / 在状态徽章中显示速率限制错误
+                    statusEl.className = 'status-badge status-disconnected';
+                    statusEl.innerText = 'API调用超出速率限制';
+                    detailsEl.innerHTML = '<span style="color:#991b1b;">API 调用频率过高，请稍后再试 / API call rate limit exceeded, please try again later</span>';
+                    if (networkEl) {
+                        networkEl.style.display = 'none';
+                    }
+                    // Don't show error in error box for rate limits / 不在错误框中显示速率限制错误
+                } else if (data.error || !data.ok || !data.connected) {
                     handleApiError(data, errorBox);
-                    if (data.error && (data.error.includes('not connected') || data.error.includes('未连接'))) {
-                        statusEl.className = 'status-badge status-disconnected';
-                        statusEl.innerText = 'Disconnected / 未连接';
-                        detailsEl.innerHTML = '<span style="color:#991b1b;">Hyperliquid exchange is not connected. Please connect first. / Hyperliquid 交易所未连接，请先连接。</span>';
+                    statusEl.className = 'status-badge status-disconnected';
+                    statusEl.innerText = 'Disconnected / 未连接';
+                    if (data.error) {
+                        detailsEl.innerHTML = `<span style="color:#991b1b;">${data.error}</span>`;
                     } else {
-                        statusEl.className = 'status-badge status-disconnected';
-                        statusEl.innerText = 'Error / 错误';
+                        detailsEl.innerHTML = '<span style="color:#991b1b;">Hyperliquid exchange is not connected. Please check API credentials. / Hyperliquid 交易所未连接，请检查 API 凭证。</span>';
+                    }
+                    if (networkEl) {
+                        networkEl.style.display = 'none';
                     }
                 } else {
                     statusEl.className = 'status-badge status-connected';
                     statusEl.innerText = 'Connected / 已连接';
-                    const symbol = data.market_data?.symbol || 'N/A';
-                    const price = data.market_data?.mid_price || 0;
-                    detailsEl.innerHTML = `Symbol: <strong>${symbol}</strong> | Price: <strong>$${price.toFixed(2)}</strong>`;
+                    
+                    // Update network badge (Mainnet/Testnet)
+                    // 更新网络徽章（主网/测试网）
+                    if (networkEl && networkTextEl) {
+                        networkEl.style.display = 'inline-block';
+                        if (data.testnet) {
+                            networkEl.className = 'network-badge testnet';
+                            networkTextEl.innerText = '⚠️ TESTNET';
+                        } else {
+                            networkEl.className = 'network-badge mainnet';
+                            networkTextEl.innerText = '✓ MAINNET';
+                        }
+                    }
+                    
+                    // Update connection details
+                    // 更新连接详情
+                    const symbol = (data.symbol || 'N/A').replace('USDT', 'USDC');
+                    const price = data.mid_price || 0;
+                    const balance = data.balance || 0;
+                    detailsEl.innerHTML = `
+                        <div>Symbol: <strong>${symbol}</strong> | Price: <strong>$${price.toFixed(2)}</strong></div>
+                        <div style="margin-top:4px;">Balance: <strong>$${balance.toFixed(2)} USDC</strong></div>
+                    `;
                 }
             } catch (err) {
-                displayError(err, errorBox);
+                console.error('checkConnection error:', err);
+                
+                // Check if error is rate limit related / 检查错误是否与速率限制相关
+                const isRateLimit = err.message && (
+                    err.message.includes('429') || 
+                    err.message.includes('Rate limit') || 
+                    err.message.includes('速率限制')
+                );
+                
+                if (!isRateLimit) {
+                    displayError(err, errorBox);
+                }
+                
                 const statusEl = document.getElementById('connectionStatus');
                 const detailsEl = document.getElementById('connectionDetails');
-                statusEl.className = 'status-badge status-disconnected';
-                statusEl.innerText = 'Error / 错误';
+                if (statusEl) {
+                    if (isRateLimit) {
+                        statusEl.className = 'status-badge status-disconnected';
+                        statusEl.innerText = 'API调用超出速率限制';
+                    } else {
+                        statusEl.className = 'status-badge status-disconnected';
+                        statusEl.innerText = 'Error / 错误';
+                    }
+                }
+                if (detailsEl) {
+                    if (isRateLimit) {
+                        detailsEl.innerHTML = '<span style="color:#991b1b;">API 调用频率过高，请稍后再试 / API call rate limit exceeded, please try again later</span>';
+                    } else {
+                        detailsEl.innerHTML = `<span style="color:#991b1b;">Error loading connection status: ${err.message || 'Unknown error'} / 加载连接状态错误: ${err.message || '未知错误'}</span>`;
+                    }
+                }
             } finally {
                 isCheckingConnection = false;
             }
@@ -529,9 +585,6 @@
                     document.getElementById('spreadInput').value = (data.spread * 100).toFixed(3);
                 }
                 document.getElementById('quantityInput').value = data.quantity ?? 0.1;
-                if (data.skew_factor !== undefined) {
-                    document.getElementById('skewInput').value = data.skew_factor;
-                }
                 document.getElementById('leverageInput').value = data.leverage ?? 5;
                 currentEvalSymbol = normalizeSymbol(data.symbol);
 
@@ -575,7 +628,6 @@
                     quantity: quantity,
                     strategy_type: 'fixed_spread',
                     strategy_id: 'default',
-                    skew_factor: parseFloat(document.getElementById('skewInput').value || '0'),
                 };
                 const res = await diagnosticFetch('/api/hyperliquid/config', {
                     method: 'POST',
@@ -653,7 +705,12 @@
                 }
                 currentEvalSymbol = normalizeSymbol(symbol);
                 showMessage(controlMessage, `Switched to ${symbol} / 已切换到 ${symbol}`);
+                
+                // Auto-refresh all data after switching pair / 切换交易对后自动刷新所有数据
                 loadStatus();
+                refreshPosition();
+                refreshOrders();
+                checkConnection();
             } catch (err) {
                 displayError(err, errorBox);
                 showMessage(controlMessage, err.message || 'Failed to switch pair / 切换交易对失败', true);

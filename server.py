@@ -8,6 +8,7 @@ from typing import Any, Dict, Optional
 import uvicorn
 
 logger = logging.getLogger(__name__)
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, Query, Request
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
@@ -32,7 +33,21 @@ from src.shared.error_mapper import ErrorMapper
 from src.shared.errors import StandardErrorResponse
 from src.shared.exchange_metrics import metrics_collector, ExchangeName
 
-app = FastAPI()
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """
+    Lifespan event handler / 生命周期事件处理器
+    Handles startup and shutdown events / 处理启动和关闭事件
+    """
+    # Startup / 启动
+    init_portfolio_capital()
+    yield
+    # Shutdown / 关闭
+    # Add any cleanup code here if needed / 如果需要，在此添加清理代码
+
+
+app = FastAPI(lifespan=lifespan)
 
 
 @app.middleware("http")
@@ -64,12 +79,6 @@ async def add_trace_id(request: Request, call_next):
     response.headers["X-Trace-ID"] = trace_id
     
     return response
-
-
-@app.on_event("startup")
-async def startup_event():
-    """Initialize portfolio capital from Binance on server startup."""
-    init_portfolio_capital()
 
 
 # Setup Templates

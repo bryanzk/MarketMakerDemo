@@ -470,8 +470,8 @@ class HyperliquidClient:
                 )
                 raise AuthenticationError(error_msg) from e
             elif e.response.status_code == 429:
-                # Rate limit exceeded - implement retry with backoff
-                # 超出速率限制 - 实现退避重试
+                # Rate limit exceeded - raise exception immediately for API endpoints
+                # 超出速率限制 - 对于 API 端点立即抛出异常
                 retry_after = 60  # Default retry delay in seconds / 默认重试延迟（秒）
                 
                 # Try to get Retry-After header from response
@@ -482,57 +482,30 @@ class HyperliquidClient:
                     except (ValueError, TypeError):
                         pass
                 
+                # Store rate limit error for API endpoints to return quickly
+                # 存储速率限制错误，以便 API 端点快速返回
+                self.last_api_error = {
+                    "type": "rate_limit",
+                    "message": f"Rate limit exceeded (429) for {endpoint}. Retry after {retry_after}s. 速率限制已超出 (429) {endpoint}。{retry_after} 秒后重试。",
+                    "status_code": 429,
+                    "retry_after": retry_after,
+                }
+                
                 logger.warning(
                     f"Rate limit exceeded (429) for {endpoint}. "
-                    f"Retrying after {retry_after}s. "
+                    f"Retry after {retry_after}s. "
                     f"速率限制已超出 (429) {endpoint}。{retry_after} 秒后重试。"
                 )
                 
-                # Wait before retry
-                # 重试前等待
-                time.sleep(retry_after)
-                
-                # Retry the request once
-                # 重试一次请求
-                try:
-                    if method.upper() == "GET":
-                        if is_mocked:
-                            response = requests.get(url, headers=headers, timeout=10)
-                        else:
-                            response = self.session.get(url, headers=headers, timeout=10)
-                    elif method.upper() == "POST":
-                        if is_mocked:
-                            response = requests.post(
-                                url, headers=headers, json=data, timeout=10
-                            )
-                        else:
-                            response = self.session.post(
-                                url, headers=headers, json=data, timeout=10
-                            )
-                    
-                    response.raise_for_status()
-                    self.last_successful_call = time.time()
-                    self.is_connected = True
-                    
-                    logger.info(
-                        f"Rate limit retry successful for {endpoint}. "
-                        f"速率限制重试成功 {endpoint}。"
-                    )
-                    
-                    if response.content:
-                        return response.json()
-                    return {"status": "ok"}
-                except Exception as retry_e:
-                    self.last_api_error = {
-                        "type": "rate_limit",
-                        "message": f"Rate limit retry failed: {str(retry_e)}",
-                        "status_code": 429,
-                    }
-                    logger.error(
-                        f"Rate limit retry failed for {endpoint}: {retry_e}. "
-                        f"速率限制重试失败 {endpoint}: {retry_e}。"
-                    )
-                    return None
+                # Raise exception immediately instead of waiting
+                # 立即抛出异常而不是等待
+                # This allows API endpoints to return error response quickly
+                # 这允许 API 端点快速返回错误响应
+                raise ConnectionError(
+                    f"Rate limit exceeded (429) for {endpoint}. "
+                    f"Retry after {retry_after}s. "
+                    f"速率限制已超出 (429) {endpoint}。{retry_after} 秒后重试。"
+                ) from e
             else:
                 self.last_api_error = {
                     "type": "http_error",

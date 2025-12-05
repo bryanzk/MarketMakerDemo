@@ -20,7 +20,7 @@ trace_id_var: ContextVar[Optional[str]] = ContextVar("trace_id", default=None)
 def generate_trace_id() -> str:
     """
     Generate a unique trace ID / 生成唯一的追踪ID
-    
+
     Returns:
         Trace ID string (e.g., "req_abc123def456")
     """
@@ -44,12 +44,12 @@ def create_request_context(
 ) -> Dict[str, Any]:
     """
     Create minimal request context for logging / 创建用于日志记录的最小请求上下文
-    
+
     Args:
         endpoint: API endpoint path
         method: HTTP method
         payload_hash: Hash of request payload (for repro without secrets)
-        
+
     Returns:
         Context dictionary
     """
@@ -64,10 +64,10 @@ def create_request_context(
 def hash_payload(payload: Any) -> str:
     """
     Create a hash of request payload for logging (without secrets) / 为日志记录创建请求负载的哈希（不含密钥）
-    
+
     Args:
         payload: Request payload (dict, list, etc.)
-        
+
     Returns:
         Hash string
     """
@@ -80,4 +80,3 @@ def hash_payload(payload: Any) -> str:
         return hashlib.sha256(payload_str.encode()).hexdigest()[:16]
     except Exception:
         return "unknown"
-

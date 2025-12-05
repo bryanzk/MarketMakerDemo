@@ -149,4 +149,3 @@ class StandardErrorResponse:
             f"severity={self.severity.value}"
             f")"
         )
-

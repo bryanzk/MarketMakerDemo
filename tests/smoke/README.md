@@ -95,3 +95,33 @@ US-API-004 冒烟测试：Hyperliquid LLM 评估支持
 pytest tests/smoke/test_hyperliquid_llm_evaluation.py -v
 ```
 
+### `test_hyperliquid_trade_page.py`
+Smoke tests for US-UI-004: Hyperliquid Trading Page Business Logic  
+US-UI-004 冒烟测试：Hyperliquid 交易页面业务逻辑
+
+**Coverage / 覆盖范围:**
+- `/api/hyperliquid/status` endpoint functionality / `/api/hyperliquid/status` 端点功能
+- `/api/hyperliquid/config` endpoint without skew_factor / `/api/hyperliquid/config` 端点（无 skew_factor）
+- `/api/hyperliquid/pair` endpoint for trading pair updates / `/api/hyperliquid/pair` 交易对更新端点
+- Trading pair switching functionality with auto-refresh / 交易对切换功能（带自动刷新）
+- Rate limit error handling in UI / UI 中的速率限制错误处理
+- Optimized refresh intervals (10s, 15s, 30s) / 优化的刷新间隔（10秒、15秒、30秒）
+- Request deduplication mechanism / 请求去重机制
+- Correct API endpoint usage (`/api/hyperliquid/status` for checkConnection and loadStatus) / 正确的 API 端点使用
+- Key UI elements presence / 关键 UI 元素存在性
+- Skew factor removal verification / 倾斜因子移除验证
+- `switchPair` function auto-refresh logic (checkConnection, loadStatus, refreshPosition, refreshOrders) / `switchPair` 函数自动刷新逻辑
+- `switchPair` function delays for backend updates (500ms, 300ms) / `switchPair` 函数后端更新延迟
+- `switchPair` function connection flag reset / `switchPair` 函数连接标志重置
+- `switchPair` function double-check connection pattern / `switchPair` 函数双重检查连接模式
+- `switchPair` function error handling and flag reset / `switchPair` 函数错误处理和标志重置
+- `switchPair` function symbol validation / `switchPair` 函数交易对验证
+- `userManuallySwitchedPair` flag implementation / `userManuallySwitchedPair` 标志实现
+- Trading pair select `data-price` attributes / 交易对选择器 `data-price` 属性
+- `loadStatus` function uses `/api/hyperliquid/status` endpoint / `loadStatus` 函数使用 `/api/hyperliquid/status` 端点
+
+**Run specific test / 运行特定测试:**
+```bash
+pytest tests/smoke/test_hyperliquid_trade_page.py -v
+```
+

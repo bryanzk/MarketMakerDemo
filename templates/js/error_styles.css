@@ -1,0 +1,170 @@
+/* Error Display Styles / 错误显示样式 */
+
+.error-message {
+    padding: 16px;
+    border-radius: 8px;
+    margin: 16px 0;
+    border-left: 4px solid;
+    background: #fef2f2;
+}
+
+.error-message[data-severity="info"] {
+    background: #eff6ff;
+    border-left-color: #3b82f6;
+    color: #1e40af;
+}
+
+.error-message[data-severity="warning"] {
+    background: #fffbeb;
+    border-left-color: #f59e0b;
+    color: #92400e;
+}
+
+.error-message[data-severity="error"] {
+    background: #fef2f2;
+    border-left-color: #ef4444;
+    color: #991b1b;
+}
+
+.error-message[data-severity="critical"] {
+    background: #fee2e2;
+    border-left-color: #dc2626;
+    color: #7f1d1d;
+    animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+    0%, 100% {
+        opacity: 1;
+    }
+    50% {
+        opacity: 0.8;
+    }
+}
+
+.error-message strong {
+    display: block;
+    margin-bottom: 8px;
+    font-size: 15px;
+}
+
+.error-suggestion {
+    margin-top: 8px;
+    padding: 8px;
+    background: rgba(255, 255, 255, 0.5);
+    border-radius: 4px;
+    font-size: 14px;
+}
+
+.error-remediation {
+    margin-top: 8px;
+    padding: 8px;
+    background: rgba(255, 255, 255, 0.5);
+    border-radius: 4px;
+    font-size: 14px;
+}
+
+.error-details {
+    margin-top: 12px;
+}
+
+.error-details summary {
+    cursor: pointer;
+    font-size: 13px;
+    color: #6b7280;
+    user-select: none;
+}
+
+.error-details summary:hover {
+    color: #374151;
+}
+
+.error-details pre {
+    margin-top: 8px;
+    padding: 12px;
+    background: #f9fafb;
+    border-radius: 4px;
+    overflow-x: auto;
+    font-size: 12px;
+    line-height: 1.5;
+    color: #374151;
+}
+
+.error-timestamp {
+    margin-top: 8px;
+    font-size: 12px;
+    color: #6b7280;
+}
+
+.error-trace-id {
+    margin-top: 12px;
+    padding: 8px;
+    background: rgba(255, 255, 255, 0.7);
+    border-radius: 4px;
+    font-size: 13px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.error-trace-id code {
+    background: #f3f4f6;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+    font-size: 12px;
+    color: #1f2937;
+}
+
+.copy-trace-id-btn {
+    background: none;
+    border: 1px solid #d1d5db;
+    border-radius: 4px;
+    padding: 4px 8px;
+    cursor: pointer;
+    font-size: 12px;
+    transition: all 0.2s;
+}
+
+.copy-trace-id-btn:hover {
+    background: #f3f4f6;
+    border-color: #9ca3af;
+}
+
+.copy-trace-id-btn:active {
+    transform: scale(0.95);
+}
+
+/* Message box styles (for compatibility with existing templates) / 消息框样式（与现有模板兼容） */
+.message {
+    padding: 12px 16px;
+    border-radius: 8px;
+    margin: 12px 0;
+    font-size: 14px;
+    line-height: 1.5;
+}
+
+.message.success {
+    background: #d1fae5;
+    color: #065f46;
+    border-left: 4px solid #10b981;
+}
+
+.message.error {
+    background: #fee2e2;
+    color: #991b1b;
+    border-left: 4px solid #ef4444;
+}
+
+.message.info {
+    background: #dbeafe;
+    color: #1e40af;
+    border-left: 4px solid #3b82f6;
+}
+
+.message.warning {
+    background: #fef3c7;
+    color: #92400e;
+    border-left: 4px solid #f59e0b;
+}
+

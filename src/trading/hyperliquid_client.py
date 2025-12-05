@@ -182,6 +182,10 @@ class HyperliquidClient:
         max_retries = self.max_retries
         retry_delays = self.retry_delays
 
+        logger.info(
+            f"Attempting to connect to Hyperliquid API (testnet={self.testnet}, base_url={self.base_url}, max_retries={max_retries})"
+        )
+
         for attempt in range(max_retries):
             try:
                 # Test connection with a simple API call
@@ -189,6 +193,10 @@ class HyperliquidClient:
                 # Use requests module directly for test compatibility
                 url = f"{self.base_url}/info"
                 headers = {"Content-Type": "application/json"}
+
+                logger.debug(
+                    f"Connection attempt {attempt + 1}/{max_retries}: POST {url}"
+                )
 
                 # Make POST request to /info endpoint (public endpoint)
                 # Hyperliquid uses POST for /info, not GET
@@ -200,15 +208,29 @@ class HyperliquidClient:
                     verify=self.session.verify,
                 )
 
+                logger.debug(
+                    f"Response from /info: status_code={response.status_code}, "
+                    f"text={response.text[:200] if hasattr(response, 'text') else 'N/A'}"
+                )
+
                 # Then try POST for authentication (if needed)
                 # This ensures requests.post is called for test compatibility
                 auth_url = f"{self.base_url}/exchange"
+                logger.debug(
+                    f"Connection attempt {attempt + 1}/{max_retries}: POST {auth_url}"
+                )
+
                 auth_response = requests.post(
                     auth_url,
                     headers=headers,
                     json={},
                     timeout=10,
                     verify=self.session.verify,
+                )
+
+                logger.debug(
+                    f"Response from /exchange: status_code={auth_response.status_code}, "
+                    f"text={auth_response.text[:200] if hasattr(auth_response, 'text') else 'N/A'}"
                 )
 
                 # If we get 401, it's an authentication error (check before other status codes)
@@ -224,6 +246,7 @@ class HyperliquidClient:
                         f"Error: {error_text}. "
                         f"认证失败。无效的 API 凭证。错误: {error_text}。"
                     )
+                    logger.error(f"Authentication failed: {error_msg}")
                     # Don't wrap in ConnectionError, raise AuthenticationError directly
                     raise AuthenticationError(error_msg)
 
@@ -232,26 +255,36 @@ class HyperliquidClient:
                     self.is_connected = True
                     self.last_successful_call = time.time()
                     logger.info(
-                        f"Hyperliquid client connected successfully (testnet={self.testnet})"
+                        f"Hyperliquid client connected successfully (testnet={self.testnet}, attempt={attempt + 1})"
                     )
                     return
+                else:
+                    # Log non-200 status codes for debugging
+                    logger.warning(
+                        f"Connection attempt {attempt + 1} returned non-200 status: "
+                        f"/info={response.status_code}, /exchange={auth_response.status_code}"
+                    )
 
             except AuthenticationError:
                 # Don't retry authentication errors, re-raise immediately
                 raise
             except RequestsConnectionError as e:
+                logger.warning(
+                    f"Connection attempt {attempt + 1}/{max_retries} failed (RequestsConnectionError): {e}"
+                )
                 if attempt < max_retries - 1:
-                    delay = retry_delays[attempt]
-                    logger.warning(
-                        f"Connection attempt {attempt + 1} failed, retrying in {delay}s: {e}"
-                    )
+                    delay = retry_delays[attempt] if attempt < len(retry_delays) else retry_delays[-1]
+                    logger.info(f"Retrying in {delay}s...")
                     time.sleep(delay)
                 else:
                     error_msg = (
                         f"Failed to connect to Hyperliquid API after {max_retries} attempts. "
                         f"Network error: {str(e)}. "
+                        f"Base URL: {self.base_url}. "
                         f"连接 Hyperliquid API 失败，已重试 {max_retries} 次。网络错误: {str(e)}。"
+                        f"基础 URL: {self.base_url}。"
                     )
+                    logger.error(error_msg)
                     raise ConnectionError(error_msg) from e
             except RequestException as e:
                 # Check if it's an HTTP error with 401 status
@@ -268,19 +301,42 @@ class HyperliquidClient:
                         f"Error: {error_text}. "
                         f"认证失败。无效的 API 凭证。错误: {error_text}。"
                     )
+                    logger.error(f"Authentication failed: {error_msg}")
                     raise AuthenticationError(error_msg) from e
-                elif attempt < max_retries - 1:
-                    delay = retry_delays[attempt]
-                    logger.warning(
-                        f"Request attempt {attempt + 1} failed, retrying in {delay}s: {e}"
+                
+                # Log detailed error information
+                status_code = None
+                response_text = None
+                if hasattr(e, "response") and e.response:
+                    status_code = e.response.status_code
+                    response_text = (
+                        e.response.text[:500]
+                        if hasattr(e.response, "text")
+                        else "N/A"
                     )
+                
+                logger.warning(
+                    f"Request attempt {attempt + 1}/{max_retries} failed (RequestException): "
+                    f"{e}, status_code={status_code}, response={response_text}"
+                )
+                
+                if attempt < max_retries - 1:
+                    delay = retry_delays[attempt] if attempt < len(retry_delays) else retry_delays[-1]
+                    logger.info(f"Retrying in {delay}s...")
                     time.sleep(delay)
                 else:
+                    error_details = f"Base URL: {self.base_url}"
+                    if status_code:
+                        error_details += f", Status Code: {status_code}"
+                    if response_text:
+                        error_details += f", Response: {response_text[:200]}"
+                    
                     error_msg = (
                         f"Failed to connect to Hyperliquid API after {max_retries} attempts. "
-                        f"Error: {str(e)}. "
-                        f"连接 Hyperliquid API 失败，已重试 {max_retries} 次。错误: {str(e)}。"
+                        f"Error: {str(e)}. {error_details}. "
+                        f"连接 Hyperliquid API 失败，已重试 {max_retries} 次。错误: {str(e)}。{error_details}。"
                     )
+                    logger.error(error_msg)
                     raise ConnectionError(error_msg) from e
             except Exception as e:
                 # Check if it's an HTTP error with 401 status
@@ -297,25 +353,36 @@ class HyperliquidClient:
                         f"Error: {error_text}. "
                         f"认证失败。无效的 API 凭证。错误: {error_text}。"
                     )
+                    logger.error(f"Authentication failed: {error_msg}")
                     raise AuthenticationError(error_msg) from e
-                elif attempt < max_retries - 1:
-                    delay = retry_delays[attempt]
-                    logger.warning(
-                        f"Unexpected error on attempt {attempt + 1}, retrying in {delay}s: {e}"
-                    )
+                
+                logger.warning(
+                    f"Unexpected error on attempt {attempt + 1}/{max_retries}: "
+                    f"{type(e).__name__}: {e}"
+                )
+                
+                if attempt < max_retries - 1:
+                    delay = retry_delays[attempt] if attempt < len(retry_delays) else retry_delays[-1]
+                    logger.info(f"Retrying in {delay}s...")
                     time.sleep(delay)
                 else:
                     error_msg = (
-                        f"Unexpected error connecting to Hyperliquid API: {str(e)}. "
-                        f"连接 Hyperliquid API 时发生意外错误: {str(e)}。"
+                        f"Unexpected error connecting to Hyperliquid API: {type(e).__name__}: {str(e)}. "
+                        f"Base URL: {self.base_url}. "
+                        f"连接 Hyperliquid API 时发生意外错误: {type(e).__name__}: {str(e)}。"
+                        f"基础 URL: {self.base_url}。"
                     )
+                    logger.error(error_msg, exc_info=True)
                     raise ConnectionError(error_msg) from e
 
-        # If we get here, all retries failed
+        # If we get here, all retries failed (should not reach here due to raises above)
+        # 如果到达这里，所有重试都失败了（由于上面的 raise，不应该到达这里）
         error_msg = (
             f"Failed to connect to Hyperliquid API after {max_retries} attempts. "
-            f"连接 Hyperliquid API 失败，已重试 {max_retries} 次。"
+            f"Base URL: {self.base_url}. "
+            f"连接 Hyperliquid API 失败，已重试 {max_retries} 次。基础 URL: {self.base_url}。"
         )
+        logger.error(error_msg)
         raise ConnectionError(error_msg)
 
     def _make_request(
@@ -402,6 +469,43 @@ class HyperliquidClient:
                     f"认证失败。无效的 API 凭证。错误: {str(e)}。"
                 )
                 raise AuthenticationError(error_msg) from e
+            elif e.response.status_code == 429:
+                # Rate limit exceeded - raise exception immediately for API endpoints
+                # 超出速率限制 - 对于 API 端点立即抛出异常
+                retry_after = 60  # Default retry delay in seconds / 默认重试延迟（秒）
+                
+                # Try to get Retry-After header from response
+                # 尝试从响应中获取 Retry-After header
+                if hasattr(e.response, "headers") and "Retry-After" in e.response.headers:
+                    try:
+                        retry_after = int(e.response.headers["Retry-After"])
+                    except (ValueError, TypeError):
+                        pass
+                
+                # Store rate limit error for API endpoints to return quickly
+                # 存储速率限制错误，以便 API 端点快速返回
+                self.last_api_error = {
+                    "type": "rate_limit",
+                    "message": f"Rate limit exceeded (429) for {endpoint}. Retry after {retry_after}s. 速率限制已超出 (429) {endpoint}。{retry_after} 秒后重试。",
+                    "status_code": 429,
+                    "retry_after": retry_after,
+                }
+                
+                logger.warning(
+                    f"Rate limit exceeded (429) for {endpoint}. "
+                    f"Retry after {retry_after}s. "
+                    f"速率限制已超出 (429) {endpoint}。{retry_after} 秒后重试。"
+                )
+                
+                # Raise exception immediately instead of waiting
+                # 立即抛出异常而不是等待
+                # This allows API endpoints to return error response quickly
+                # 这允许 API 端点快速返回错误响应
+                raise ConnectionError(
+                    f"Rate limit exceeded (429) for {endpoint}. "
+                    f"Retry after {retry_after}s. "
+                    f"速率限制已超出 (429) {endpoint}。{retry_after} 秒后重试。"
+                ) from e
             else:
                 self.last_api_error = {
                     "type": "http_error",
@@ -604,16 +708,62 @@ class HyperliquidClient:
                 # Get best bid and ask (first level)
                 # 获取最佳买价和卖价（第一档）
                 if bids and len(bids) > 0:
-                    if isinstance(bids[0], (list, tuple)) and len(bids[0]) > 0:
-                        best_bid = float(bids[0][0])
-                    elif isinstance(bids[0], (int, float)):
-                        best_bid = float(bids[0])
+                    try:
+                        if isinstance(bids[0], (list, tuple)) and len(bids[0]) > 0:
+                            # Check if first element is a number or dict
+                            # 检查第一个元素是数字还是字典
+                            price_value = bids[0][0]
+                            if isinstance(price_value, dict):
+                                # If it's a dict, try to extract price from common keys
+                                # 如果是字典，尝试从常见键中提取价格
+                                price_value = price_value.get("price") or price_value.get("px") or price_value.get(0)
+                                if price_value is None:
+                                    logger.warning(f"Could not extract price from bid dict: {bids[0][0]}")
+                                else:
+                                    best_bid = float(price_value)
+                            else:
+                                best_bid = float(price_value)
+                        elif isinstance(bids[0], (int, float)):
+                            best_bid = float(bids[0])
+                        elif isinstance(bids[0], dict):
+                            # Handle dict format: {"price": 1234.5, "size": 1.0} or {"px": 1234.5, "sz": 1.0}
+                            # 处理字典格式: {"price": 1234.5, "size": 1.0} 或 {"px": 1234.5, "sz": 1.0}
+                            price_value = bids[0].get("price") or bids[0].get("px") or bids[0].get(0)
+                            if price_value is not None:
+                                best_bid = float(price_value)
+                            else:
+                                logger.warning(f"Could not extract price from bid dict: {bids[0]}")
+                    except (ValueError, TypeError, IndexError) as e:
+                        logger.warning(f"Error parsing bid price: {e}, bids[0]={bids[0] if bids else None}")
 
                 if asks and len(asks) > 0:
-                    if isinstance(asks[0], (list, tuple)) and len(asks[0]) > 0:
-                        best_ask = float(asks[0][0])
-                    elif isinstance(asks[0], (int, float)):
-                        best_ask = float(asks[0])
+                    try:
+                        if isinstance(asks[0], (list, tuple)) and len(asks[0]) > 0:
+                            # Check if first element is a number or dict
+                            # 检查第一个元素是数字还是字典
+                            price_value = asks[0][0]
+                            if isinstance(price_value, dict):
+                                # If it's a dict, try to extract price from common keys
+                                # 如果是字典，尝试从常见键中提取价格
+                                price_value = price_value.get("price") or price_value.get("px") or price_value.get(0)
+                                if price_value is None:
+                                    logger.warning(f"Could not extract price from ask dict: {asks[0][0]}")
+                                else:
+                                    best_ask = float(price_value)
+                            else:
+                                best_ask = float(price_value)
+                        elif isinstance(asks[0], (int, float)):
+                            best_ask = float(asks[0])
+                        elif isinstance(asks[0], dict):
+                            # Handle dict format: {"price": 1234.5, "size": 1.0} or {"px": 1234.5, "sz": 1.0}
+                            # 处理字典格式: {"price": 1234.5, "size": 1.0} 或 {"px": 1234.5, "sz": 1.0}
+                            price_value = asks[0].get("price") or asks[0].get("px") or asks[0].get(0)
+                            if price_value is not None:
+                                best_ask = float(price_value)
+                            else:
+                                logger.warning(f"Could not extract price from ask dict: {asks[0]}")
+                    except (ValueError, TypeError, IndexError) as e:
+                        logger.warning(f"Error parsing ask price: {e}, asks[0]={asks[0] if asks else None}")
 
             # If we have both bid and ask, calculate mid price
             # 如果我们有买价和卖价，计算中间价
@@ -685,6 +835,65 @@ class HyperliquidClient:
         except Exception as e:
             logger.error(f"Error fetching market data: {e}", exc_info=True)
             return None
+
+    def fetch_multiple_prices(self, symbols: list) -> dict:
+        """
+        Fetch mid prices for multiple symbols efficiently using allMids endpoint.
+        使用 allMids 端点高效获取多个交易对的中间价。
+        
+        Args:
+            symbols: List of trading symbols (e.g., ["ETH/USDT:USDT", "BTC/USDT:USDT"])
+            
+        Returns:
+            Dictionary mapping symbol to mid_price (or None if not found)
+        """
+        try:
+            # Fetch all mids at once / 一次性获取所有中间价
+            mids_payload = {"type": "allMids"}
+            mids_response = self._make_request(
+                method="POST",
+                endpoint="/info",
+                data=mids_payload,
+                public=True,
+            )
+            
+            if not mids_response or not isinstance(mids_response, dict):
+                logger.warning("Failed to fetch allMids from Hyperliquid / 从 Hyperliquid 获取 allMids 失败")
+                return {symbol: None for symbol in symbols}
+            
+            # Parse allMids response / 解析 allMids 响应
+            # Format: {"mid_prices": {"ETH": 3000.0, "BTC": 50000.0, ...}} or {"ETH": 3000.0, ...}
+            mid_prices = mids_response.get("mid_prices", mids_response)
+            if not isinstance(mid_prices, dict):
+                logger.warning("Unexpected allMids response format / 意外的 allMids 响应格式")
+                return {symbol: None for symbol in symbols}
+            
+            # Convert symbols to coin names and map to prices / 将交易对转换为币种名称并映射到价格
+            result = {}
+            for symbol in symbols:
+                # Extract coin name from symbol (e.g., "ETH/USDT:USDT" -> "ETH")
+                symbol_base = (
+                    symbol.split("/")[0]
+                    if "/" in symbol
+                    else symbol.split(":")[0] if ":" in symbol else symbol
+                )
+                coin = symbol_base.replace("USDT", "").replace("/", "").replace(":", "").upper()
+                
+                # Get price from allMids / 从 allMids 获取价格
+                price = mid_prices.get(coin)
+                if price is not None:
+                    try:
+                        result[symbol] = float(price)
+                    except (ValueError, TypeError):
+                        result[symbol] = None
+                else:
+                    result[symbol] = None
+                    logger.debug(f"Price not found for {coin} (symbol: {symbol}) / 未找到 {coin} 的价格（交易对：{symbol}）")
+            
+            return result
+        except Exception as e:
+            logger.error(f"Error fetching multiple prices: {e}")
+            return {symbol: None for symbol in symbols}
 
     def fetch_funding_rate(self) -> float:
         """Fetches the funding rate signal for the symbol / 获取交易对的资金费率信号"""

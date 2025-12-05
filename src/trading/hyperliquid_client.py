@@ -863,6 +863,65 @@ class HyperliquidClient:
             logger.error(f"Error fetching market data: {e}", exc_info=True)
             return None
 
+    def fetch_multiple_prices(self, symbols: list) -> dict:
+        """
+        Fetch mid prices for multiple symbols efficiently using allMids endpoint.
+        使用 allMids 端点高效获取多个交易对的中间价。
+        
+        Args:
+            symbols: List of trading symbols (e.g., ["ETH/USDT:USDT", "BTC/USDT:USDT"])
+            
+        Returns:
+            Dictionary mapping symbol to mid_price (or None if not found)
+        """
+        try:
+            # Fetch all mids at once / 一次性获取所有中间价
+            mids_payload = {"type": "allMids"}
+            mids_response = self._make_request(
+                method="POST",
+                endpoint="/info",
+                data=mids_payload,
+                public=True,
+            )
+            
+            if not mids_response or not isinstance(mids_response, dict):
+                logger.warning("Failed to fetch allMids from Hyperliquid / 从 Hyperliquid 获取 allMids 失败")
+                return {symbol: None for symbol in symbols}
+            
+            # Parse allMids response / 解析 allMids 响应
+            # Format: {"mid_prices": {"ETH": 3000.0, "BTC": 50000.0, ...}} or {"ETH": 3000.0, ...}
+            mid_prices = mids_response.get("mid_prices", mids_response)
+            if not isinstance(mid_prices, dict):
+                logger.warning("Unexpected allMids response format / 意外的 allMids 响应格式")
+                return {symbol: None for symbol in symbols}
+            
+            # Convert symbols to coin names and map to prices / 将交易对转换为币种名称并映射到价格
+            result = {}
+            for symbol in symbols:
+                # Extract coin name from symbol (e.g., "ETH/USDT:USDT" -> "ETH")
+                symbol_base = (
+                    symbol.split("/")[0]
+                    if "/" in symbol
+                    else symbol.split(":")[0] if ":" in symbol else symbol
+                )
+                coin = symbol_base.replace("USDT", "").replace("/", "").replace(":", "").upper()
+                
+                # Get price from allMids / 从 allMids 获取价格
+                price = mid_prices.get(coin)
+                if price is not None:
+                    try:
+                        result[symbol] = float(price)
+                    except (ValueError, TypeError):
+                        result[symbol] = None
+                else:
+                    result[symbol] = None
+                    logger.debug(f"Price not found for {coin} (symbol: {symbol}) / 未找到 {coin} 的价格（交易对：{symbol}）")
+            
+            return result
+        except Exception as e:
+            logger.error(f"Error fetching multiple prices: {e}")
+            return {symbol: None for symbol in symbols}
+
     def fetch_funding_rate(self) -> float:
         """Fetches the funding rate signal for the symbol / 获取交易对的资金费率信号"""
         try:

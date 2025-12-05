@@ -194,7 +194,7 @@
             <h2>Connection Status / 连接状态</h2>
             <div id="connectionInfo" class="info-card">
                 <div>Exchange: <strong>Hyperliquid</strong></div>
-                <div id="connectionDetails" style="margin-top:8px; font-size:13px; color:#6b7280;">Loading connection status...</div>
+                <div id="connectionDetails" style="margin-top:8px; font-size:13px; color:#6b7280; display:none;"></div>
             </div>
         </section>
 
@@ -254,9 +254,9 @@
                 <div>
                     <label>Trading Pair / 交易对</label>
                     <select id="pairSelect" onchange="switchPair()">
-                        <option value="ETH/USDT:USDT">ETH/USDT:USDT</option>
-                        <option value="BTC/USDT:USDT">BTC/USDT:USDT</option>
-                        <option value="SOL/USDT:USDT">SOL/USDT:USDT</option>
+                        <option value="ETH/USDT:USDT" data-price="">ETH/USDT:USDT</option>
+                        <option value="BTC/USDT:USDT" data-price="">BTC/USDT:USDT</option>
+                        <option value="SOL/USDT:USDT" data-price="">SOL/USDT:USDT</option>
                     </select>
                 </div>
             </div>
@@ -383,6 +383,7 @@
     <script>
         const controlMessage = document.getElementById('controlMessage');
         let currentEvalSymbol = 'ETHUSDT';
+        let userManuallySwitchedPair = false; // Track if user manually switched pair / 跟踪用户是否手动切换交易对
         let evaluationState = {
             loading: false,
             results: [],
@@ -442,7 +443,7 @@
                     // Display rate limit error in status badge / 在状态徽章中显示速率限制错误
                     statusEl.className = 'status-badge status-disconnected';
                     statusEl.innerText = 'API调用超出速率限制';
-                    detailsEl.innerHTML = '<span style="color:#991b1b;">API 调用频率过高，请稍后再试 / API call rate limit exceeded, please try again later</span>';
+                    detailsEl.style.display = 'none';
                     if (networkEl) {
                         networkEl.style.display = 'none';
                     }
@@ -451,11 +452,7 @@
                     handleApiError(data, errorBox);
                     statusEl.className = 'status-badge status-disconnected';
                     statusEl.innerText = 'Disconnected / 未连接';
-                    if (data.error) {
-                        detailsEl.innerHTML = `<span style="color:#991b1b;">${data.error}</span>`;
-                    } else {
-                        detailsEl.innerHTML = '<span style="color:#991b1b;">Hyperliquid exchange is not connected. Please check API credentials. / Hyperliquid 交易所未连接，请检查 API 凭证。</span>';
-                    }
+                    detailsEl.style.display = 'none';
                     if (networkEl) {
                         networkEl.style.display = 'none';
                     }
@@ -476,15 +473,8 @@
                         }
                     }
                     
-                    // Update connection details
-                    // 更新连接详情
-                    const symbol = (data.symbol || 'N/A').replace('USDT', 'USDC');
-                    const price = data.mid_price || 0;
-                    const balance = data.balance || 0;
-                    detailsEl.innerHTML = `
-                        <div>Symbol: <strong>${symbol}</strong> | Price: <strong>$${price.toFixed(2)}</strong></div>
-                        <div style="margin-top:4px;">Balance: <strong>$${balance.toFixed(2)} USDC</strong></div>
-                    `;
+                    // Hide connection details / 隐藏连接详情
+                    detailsEl.style.display = 'none';
                 }
             } catch (err) {
                 console.error('checkConnection error:', err);
@@ -512,11 +502,7 @@
                     }
                 }
                 if (detailsEl) {
-                    if (isRateLimit) {
-                        detailsEl.innerHTML = '<span style="color:#991b1b;">API 调用频率过高，请稍后再试 / API call rate limit exceeded, please try again later</span>';
-                    } else {
-                        detailsEl.innerHTML = `<span style="color:#991b1b;">Error loading connection status: ${err.message || 'Unknown error'} / 加载连接状态错误: ${err.message || '未知错误'}</span>`;
-                    }
+                    detailsEl.style.display = 'none';
                 }
             } finally {
                 isCheckingConnection = false;
@@ -574,7 +560,8 @@
             clearError(errorBox);
             
             try {
-                const res = await diagnosticFetch('/api/status');
+                // Use Hyperliquid-specific status endpoint / 使用 Hyperliquid 特定状态端点
+                const res = await diagnosticFetch('/api/hyperliquid/status');
                 const data = await res.json();
                 
                 if (data.error || !data.ok) {
@@ -588,8 +575,9 @@
                 document.getElementById('leverageInput').value = data.leverage ?? 5;
                 currentEvalSymbol = normalizeSymbol(data.symbol);
 
+                // Only update pairSelect if user hasn't manually switched / 仅在用户未手动切换时更新 pairSelect
                 const pairSelect = document.getElementById('pairSelect');
-                if (pairSelect && data.symbol) {
+                if (pairSelect && data.symbol && !userManuallySwitchedPair) {
                     for (const option of pairSelect.options) {
                         if (option.value.toUpperCase() === data.symbol.toUpperCase()) {
                             pairSelect.value = option.value;
@@ -693,6 +681,9 @@
             }
             
             try {
+                // Mark that user manually switched pair / 标记用户手动切换了交易对
+                userManuallySwitchedPair = true;
+                
                 const res = await diagnosticFetch('/api/hyperliquid/pair', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -701,19 +692,35 @@
                 const data = await res.json();
                 if (data.error || !data.ok) {
                     handleApiError(data, errorBox);
+                    userManuallySwitchedPair = false; // Reset on error / 错误时重置
                     return;
                 }
                 currentEvalSymbol = normalizeSymbol(symbol);
                 showMessage(controlMessage, `Switched to ${symbol} / 已切换到 ${symbol}`);
                 
+                // Wait longer for backend to update symbol and fetch new market data / 等待更长时间让后端更新交易对并获取新的市场数据
+                await new Promise(resolve => setTimeout(resolve, 500));
+                
+                // Force refresh connection status to get updated price / 强制刷新连接状态以获取更新的价格
+                // Clear the checking flag to ensure checkConnection runs / 清除检查标志以确保 checkConnection 运行
+                isCheckingConnection = false;
+                await checkConnection();
+                
+                // Wait a bit more to ensure market data is fetched / 再等待一下确保市场数据已获取
+                await new Promise(resolve => setTimeout(resolve, 300));
+                
+                // Refresh connection status again to ensure we have the latest data / 再次刷新连接状态以确保有最新数据
+                isCheckingConnection = false;
+                await checkConnection();
+                
                 // Auto-refresh all data after switching pair / 切换交易对后自动刷新所有数据
-                loadStatus();
+                await loadStatus();
                 refreshPosition();
                 refreshOrders();
-                checkConnection();
             } catch (err) {
                 displayError(err, errorBox);
                 showMessage(controlMessage, err.message || 'Failed to switch pair / 切换交易对失败', true);
+                userManuallySwitchedPair = false; // Reset on error / 错误时重置
             }
         }
 
@@ -1023,6 +1030,50 @@
             ordersRefreshInterval = setInterval(refreshOrders, 10000);  // 10 seconds instead of 3
             positionRefreshInterval = setInterval(refreshPosition, 15000);  // 15 seconds instead of 5
             connectionRefreshInterval = setInterval(checkConnection, 30000);  // 30 seconds instead of 10
+            
+            // Update pair prices periodically / 定期更新交易对价格
+            setInterval(updatePairPrices, 15000);  // Update every 15 seconds / 每 15 秒更新一次
+        }
+
+        // Update pair prices in dropdown / 更新下拉列表中的交易对价格
+        async function updatePairPrices() {
+            const pairSelect = document.getElementById('pairSelect');
+            if (!pairSelect) return;
+            
+            // Get all symbols from options / 从选项获取所有交易对
+            const symbols = Array.from(pairSelect.options).map(opt => opt.value);
+            
+            try {
+                const symbolsParam = symbols.join(',');
+                const res = await diagnosticFetch(`/api/hyperliquid/prices?symbols=${encodeURIComponent(symbolsParam)}`);
+                const data = await res.json();
+                
+                if (data.error || !data.ok || !data.prices) {
+                    console.warn('Failed to fetch pair prices / 获取交易对价格失败');
+                    return;
+                }
+                
+                // Update prices cache / 更新价格缓存
+                pairPrices = data.prices;
+                
+                // Update option text with prices / 使用价格更新选项文本
+                Array.from(pairSelect.options).forEach(option => {
+                    const symbol = option.value;
+                    const price = pairPrices[symbol];
+                    if (price !== null && price !== undefined) {
+                        const priceStr = `$${price.toFixed(2)}`;
+                        option.textContent = `${symbol} (${priceStr})`;
+                        option.setAttribute('data-price', priceStr);
+                    } else {
+                        // Keep original text if price not available / 如果价格不可用，保持原始文本
+                        if (!option.getAttribute('data-price')) {
+                            option.textContent = symbol;
+                        }
+                    }
+                });
+            } catch (err) {
+                console.error('Error updating pair prices:', err);
+            }
         }
 
         document.addEventListener('DOMContentLoaded', () => {
@@ -1031,6 +1082,7 @@
             checkConnection();
             refreshPosition();
             refreshOrders();
+            updatePairPrices(); // Load initial prices / 加载初始价格
             startAutoRefresh();
             
             // Initialize error history panel / 初始化错误历史面板

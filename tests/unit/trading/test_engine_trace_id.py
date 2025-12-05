@@ -29,6 +29,7 @@ class TestEngineErrorHistoryTraceId:
         """Test order error includes trace_id / 测试订单错误包含 trace_id"""
         # Setup mocks
         mock_client = Mock()
+        mock_client.symbol = "ETH/USDT:USDT"
         mock_client.fetch_market_data.return_value = {"mid_price": 100.0}
         mock_client.fetch_account_data.return_value = {
             "balance": 1000.0,
@@ -36,12 +37,20 @@ class TestEngineErrorHistoryTraceId:
             "entry_price": 0.0,
         }
         mock_client.fetch_open_orders.return_value = []
+        # Simulate order placement failure by returning empty list and setting error
+        # 通过返回空列表并设置错误来模拟订单放置失败
         mock_client.place_orders.return_value = []
-        mock_client.last_order_error = {
+        # Set last_order_error to simulate order error
+        # 设置 last_order_error 以模拟订单错误
+        # Use a property to ensure it's always accessible
+        # 使用属性确保它始终可访问
+        type(mock_client).last_order_error = {
             "type": "insufficient_funds",
             "message": "Insufficient balance",
             "symbol": "ETH/USDT:USDT",
         }
+        # Ensure place_orders is called but returns empty (simulating failure)
+        # 确保 place_orders 被调用但返回空（模拟失败）
         mock_client_cls.return_value = mock_client
 
         mock_data_cls.return_value = Mock()
@@ -82,7 +91,15 @@ class TestEngineErrorHistoryTraceId:
         """Test cycle error includes trace_id / 测试循环错误包含 trace_id"""
         # Setup mocks
         mock_client = Mock()
+        # Ensure exchange has symbol attribute to avoid format string issues
+        # 确保 exchange 有 symbol 属性以避免格式化字符串问题
+        mock_client.symbol = "ETH/USDT:USDT"
+        # Make fetch_market_data raise an exception to trigger cycle_error
+        # 使 fetch_market_data 抛出异常以触发 cycle_error
         mock_client.fetch_market_data.side_effect = Exception("Network timeout")
+        # Also mock other required methods to avoid additional errors
+        # 同时 mock 其他必需的方法以避免额外错误
+        mock_client.fetch_account_data.side_effect = Exception("Network timeout")
         mock_client_cls.return_value = mock_client
 
         mock_data_cls.return_value = Mock()

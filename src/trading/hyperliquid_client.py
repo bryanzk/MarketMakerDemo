@@ -483,7 +483,9 @@ class HyperliquidClient:
                     raise AuthenticationError(error_msg) from e
                 elif e.response.status_code == 429:
                     # Rate limit exceeded - retry with backoff / 超出速率限制 - 使用退避重试
-                    retry_after = 60  # Default retry delay in seconds / 默认重试延迟（秒）
+                    retry_after = (
+                        60  # Default retry delay in seconds / 默认重试延迟（秒）
+                    )
 
                     # Try to get Retry-After header from response
                     # 尝试从响应中获取 Retry-After header
@@ -546,7 +548,7 @@ class HyperliquidClient:
                 }
                 logger.error(f"Unexpected error: {e}")
                 return None
-        
+
         # If we get here, all retries failed / 如果到达这里，所有重试都失败了
         return None
 

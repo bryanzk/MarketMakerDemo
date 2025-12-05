@@ -11,6 +11,7 @@ Owner: Agent QA
 import time
 from collections import deque
 from unittest.mock import Mock, patch
+import warnings
 
 import pytest
 from fastapi.testclient import TestClient
@@ -18,6 +19,9 @@ from fastapi.testclient import TestClient
 import server
 from src.trading.engine import AlphaLoop
 from src.trading.strategy_instance import StrategyInstance
+
+# Filter out FastAPI deprecation warnings from server.py / 过滤来自 server.py 的 FastAPI 弃用警告
+warnings.filterwarnings("ignore", category=DeprecationWarning, module="server")
 
 
 class TestStrategyInstanceErrorsExposure:

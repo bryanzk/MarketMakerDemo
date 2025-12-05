@@ -854,14 +854,15 @@ class TestHyperliquidClientRateLimitRetry:
         # Note: The implementation uses the Retry-After from the current response
         # 注意：实现使用当前响应的 Retry-After
         assert mock_sleep.call_count == 2, f"Expected 2 sleep calls, got {mock_sleep.call_count}"
-        # Both retries use Retry-After: 10 from the first response
-        # 两次重试都使用第一个响应的 Retry-After: 10
-        # The second response's Retry-After: 60 is only used if there's a third retry
-        # 第二个响应的 Retry-After: 60 只在有第三次重试时使用
-        mock_sleep.assert_any_call(10)
-        # Check that at least one call was with 10 (both should be 10 in this case)
-        # 检查至少有一次调用是 10（在这种情况下两次都应该是 10）
-        assert all(call[0][0] == 10 for call in mock_sleep.call_args_list), "All sleep calls should be with 10"
+        # First retry uses Retry-After: 10 from the first response
+        # 第一次重试使用第一个响应的 Retry-After: 10
+        # Second retry uses Retry-After: 10 from the second response (which also has Retry-After: 10)
+        # 第二次重试使用第二个响应的 Retry-After: 10（第二个响应也有 Retry-After: 10）
+        # The third response's Retry-After: 60 is only used if there's a third retry
+        # 第三个响应的 Retry-After: 60 只在有第三次重试时使用
+        # Check that both calls were with 10 (since first two responses both have Retry-After: 10)
+        # 检查两次调用都是 10（因为前两个响应都有 Retry-After: 10）
+        assert all(call[0][0] == 10 for call in mock_sleep.call_args_list), f"All sleep calls should be with 10, got {[call[0][0] for call in mock_sleep.call_args_list]}"
         
         # Verify error state is tracked
         # 验证错误状态被跟踪

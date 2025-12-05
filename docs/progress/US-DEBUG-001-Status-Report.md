@@ -5,7 +5,7 @@
 **Branch**: `feat/error-handling-improvement`  
 **Status**: IN_PROGRESS  
 **Current Step**: code_implemented  
-**Completion**: 66.7% (6/9 phases)
+**Completion**: 77.8% (7/9 phases)
 
 ---
 
@@ -188,18 +188,36 @@ Error handling improvement is in progress with Phase 1 and Phase 2 (partial) com
 
 ---
 
-### ⏳ Phase 8: Add Error History Display / 阶段 8：添加错误历史显示 - **NOT STARTED**
+### ✅ Phase 8: Add Error History Display / 阶段 8：添加错误历史显示 - **COMPLETED**
 
-**Status**: 0% Complete / 0% 完成
+**Status**: 100% Complete / 100% 完成
 
-**Pending Tasks / 待完成任务**:
-- ⏳ Add error history panel to `HyperliquidTrade.html`
-- ⏳ Add error history panel to `LLMTrade.html`
-- ⏳ Add error history panel to `index.html`
-- ⏳ Display trace_id in error history
-- ⏳ Implement auto-refresh for error history
-- ⏳ Add error history styling (CSS)
-- ⏳ Test error history display
+**Completed Tasks / 已完成任务**:
+- ✅ Added error history panel to `HyperliquidTrade.html`
+- ✅ Added error history panel to `LLMTrade.html`
+- ✅ Added error history panel to `index.html`
+- ✅ Displayed trace_id in error history (error_history.js:196-200)
+- ✅ Implemented auto-refresh for error history (error_history.js:62-64, startAutoRefresh)
+- ✅ Added error history styling (CSS) (error_history.css)
+- ✅ Tested error history display (tests/unit/web/test_error_history_panel.py)
+
+**Files Created / 创建的文件**:
+- `templates/js/error_history.js` - ErrorHistoryPanel component
+- `templates/js/error_history.css` - Error history styling
+- `tests/unit/web/test_error_history_panel.py` - Unit tests
+
+**Files Modified / 修改的文件**:
+- `templates/HyperliquidTrade.html` - Integrated error history panel
+- `templates/LLMTrade.html` - Integrated error history panel
+- `templates/index.html` - Integrated error history panel
+
+**Features / 功能**:
+- ErrorHistoryPanel class with configurable options
+- Auto-refresh with toggle control
+- Trace ID display with copy button
+- Global and instance error history display
+- Bilingual support (English/Chinese)
+- Responsive styling
 
 **Responsible Agent**: Agent WEB
 

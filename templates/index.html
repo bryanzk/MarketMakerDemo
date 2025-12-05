@@ -309,11 +309,13 @@
     <link rel="stylesheet" href="/static/error_styles.css">
     <link rel="stylesheet" href="/static/debug_panel.css">
     <link rel="stylesheet" href="/static/validation.css">
+    <link rel="stylesheet" href="/static/error_history.css">
     <!-- API Diagnostics and Error Handler / API 诊断和错误处理 -->
     <script src="/static/api_diagnostics.js"></script>
     <script src="/static/error_handler.js"></script>
     <script src="/static/debug_panel.js"></script>
     <script src="/static/validation.js"></script>
+    <script src="/static/error_history.js"></script>
 </head>
 
 <body>
@@ -1017,9 +1019,9 @@
                     </div>
                 </div>
 
-                <!-- Error History -->
+                <!-- Error History (Legacy) -->
                 <div class="card" style="grid-column: span 2;">
-                    <h3>Error History</h3>
+                    <h3>Error History (Legacy)</h3>
                     <div style="margin-bottom: 10px; display: flex; gap: 10px; flex-wrap: wrap;">
                         <select id="errorTypeFilter" onchange="fetchErrorHistory()"
                             style="padding: 5px; border-radius: 4px;">
@@ -1058,6 +1060,11 @@
                             </tbody>
                         </table>
                     </div>
+                </div>
+
+                <!-- Error History Panel (Phase 8) / 错误历史面板 (阶段 8) -->
+                <div class="card" style="grid-column: span 2;">
+                    <div id="errorHistoryPanel"></div>
                 </div>
 
                 <!-- Strategy Settings -->
@@ -3744,6 +3751,15 @@
         
         // Also initialize tooltips after a short delay to ensure all elements are rendered
         setTimeout(initializeTooltips, 500);
+        
+        // Initialize error history panel / 初始化错误历史面板
+        if (window.ErrorHistoryPanel) {
+            new ErrorHistoryPanel('errorHistoryPanel', {
+                autoRefresh: true,
+                refreshInterval: 5000,
+                showTraceId: true
+            });
+        }
     </script>
 </body>
 

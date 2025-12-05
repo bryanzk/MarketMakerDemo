@@ -76,7 +76,9 @@ class ExchangeMetrics:
     latency_buckets: Dict[OperationType, LatencyBucket] = field(
         default_factory=lambda: defaultdict(LatencyBucket)
     )
-    error_counts: Dict[OperationType, int] = field(default_factory=lambda: defaultdict(int))
+    error_counts: Dict[OperationType, int] = field(
+        default_factory=lambda: defaultdict(int)
+    )
     recent_errors: deque = field(default_factory=lambda: deque(maxlen=100))
     last_success_time: Optional[float] = None
     last_error_time: Optional[float] = None
@@ -144,7 +146,9 @@ class ExchangeMetrics:
             "operations": {
                 op.value: {
                     "count": self.latency_buckets[op].count,
-                    "avg_latency_ms": round(self.latency_buckets[op].avg_latency * 1000, 2),
+                    "avg_latency_ms": round(
+                        self.latency_buckets[op].avg_latency * 1000, 2
+                    ),
                     "min_latency_ms": (
                         round(self.latency_buckets[op].min_latency * 1000, 2)
                         if self.latency_buckets[op].min_latency is not None
@@ -225,9 +229,7 @@ class MetricsCollector:
 metrics_collector = MetricsCollector()
 
 
-def track_exchange_operation(
-    exchange: ExchangeName, operation: OperationType
-):
+def track_exchange_operation(exchange: ExchangeName, operation: OperationType):
     """
     Decorator to track exchange operations with metrics and structured logging.
     用于跟踪交易所操作（带指标和结构化日志）的装饰器。
@@ -311,4 +313,3 @@ def track_exchange_operation(
         return wrapper
 
     return decorator
-

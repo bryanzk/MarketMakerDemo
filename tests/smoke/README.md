@@ -95,7 +95,7 @@ US-API-004 冒烟测试：Hyperliquid LLM 评估支持
 pytest tests/smoke/test_hyperliquid_llm_evaluation.py -v
 ```
 
-### `test_hyperliquid_trade_page.py`
+### `test_hyperliquid_trade_page_smoke.py`
 Smoke tests for US-UI-004: Hyperliquid Trading Page Business Logic  
 US-UI-004 冒烟测试：Hyperliquid 交易页面业务逻辑
 
@@ -122,6 +122,6 @@ US-UI-004 冒烟测试：Hyperliquid 交易页面业务逻辑
 
 **Run specific test / 运行特定测试:**
 ```bash
-pytest tests/smoke/test_hyperliquid_trade_page.py -v
+pytest tests/smoke/test_hyperliquid_trade_page_smoke.py -v
 ```
 

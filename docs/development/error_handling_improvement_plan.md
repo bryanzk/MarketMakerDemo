@@ -1140,22 +1140,22 @@ setInterval(refreshErrorHistory, 30000);
 - [ ] Test error display in all templates
 
 ### Phase 5: Frontend Debug Panel / 阶段 5：前端调试面板
-- [ ] Create `templates/js/debug_panel.js` component
-- [ ] Add debug panel to `HyperliquidTrade.html`
-- [ ] Add debug panel to `LLMTrade.html`
-- [ ] Add debug panel to `index.html`
-- [ ] Implement filters (errors only / all)
-- [ ] Add debug panel styling (CSS)
-- [ ] Test debug panel functionality
+- [x] Create `templates/js/debug_panel.js` component ✅
+- [x] Add debug panel to `HyperliquidTrade.html` ✅
+- [x] Add debug panel to `LLMTrade.html` ✅
+- [x] Add debug panel to `index.html` ✅
+- [x] Implement filters (errors only / all) ✅
+- [x] Add debug panel styling (CSS) ✅
+- [x] Test debug panel functionality ✅
 
 ### Phase 6: Client-Side Validation / 阶段 6：客户端验证
-- [ ] Create `templates/js/validation.js` validation layer
-- [ ] Validate order parameters before submission
-- [ ] Validate symbol format
-- [ ] Validate quantity and price
-- [ ] Validate leverage range
-- [ ] Display validation errors in UI
-- [ ] Test validation prevents invalid orders
+- [x] Create `templates/js/validation.js` validation layer ✅
+- [x] Validate order parameters before submission ✅
+- [x] Validate symbol format ✅
+- [x] Validate quantity and price ✅
+- [x] Validate leverage range ✅
+- [x] Display validation errors in UI ✅
+- [x] Test validation prevents invalid orders ✅
 
 ### Phase 7: Expose Strategy Instance Errors / 阶段 7：暴露策略实例错误
 - [ ] Update `/api/bot/status` to include error information

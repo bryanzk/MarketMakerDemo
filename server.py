@@ -30,6 +30,7 @@ from src.ai import create_all_providers
 from src.shared.tracing import generate_trace_id, set_trace_id, get_trace_id, create_request_context, hash_payload
 from src.shared.error_mapper import ErrorMapper
 from src.shared.errors import StandardErrorResponse
+from src.shared.exchange_metrics import metrics_collector, ExchangeName
 
 app = FastAPI()
 
@@ -74,6 +75,9 @@ async def startup_event():
 # Setup Templates
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "templates"))
+
+# Mount static files / 挂载静态文件
+app.mount("/static", StaticFiles(directory=os.path.join(BASE_DIR, "templates", "js")), name="static")
 
 # Global Bot Instance
 bot_engine = AlphaLoop()
@@ -958,6 +962,53 @@ async def get_performance():
         "pnl_history": pnl_history,
         "session_start_time": start_time_ms,
     }
+
+
+@app.get("/api/metrics")
+async def get_metrics(request: Request):
+    """
+    Get exchange health metrics and observability data / 获取交易所健康指标和可观测性数据
+    
+    Returns metrics for all exchanges including:
+    - Latency buckets per operation type
+    - Error rates and counts
+    - Recent errors with trace_ids
+    - Health status
+    
+    返回所有交易所的指标，包括：
+    - 每种操作类型的延迟桶
+    - 错误率和计数
+    - 带 trace_id 的最近错误
+    - 健康状态
+    """
+    trace_id = get_trace_id()
+    
+    try:
+        # Get all metrics / 获取所有指标
+        all_metrics = metrics_collector.get_all_metrics()
+        health_summary = metrics_collector.get_health_summary()
+        
+        return {
+            "ok": True,
+            "trace_id": trace_id,
+            "timestamp": time.time(),
+            "exchanges": all_metrics,
+            "health_summary": health_summary,
+        }
+    except Exception as e:
+        logger.error(
+            "Error getting metrics",
+            exc_info=True,
+            extra={
+                "trace_id": trace_id,
+                "error": str(e),
+            }
+        )
+        return create_error_response(
+            e,
+            error_code="METRICS_FETCH_ERROR",
+            details={"trace_id": trace_id}
+        )
 
 
 @app.get("/api/session-start")

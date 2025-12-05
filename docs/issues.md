@@ -60,4 +60,61 @@
 
 ---
 
+## Issue #019: TypeError in fetch_market_data - dict instead of number / fetch_market_data 中的 TypeError - 字典而不是数字
+
+**Date / 日期**: 2025-01-XX  
+**Status / 状态**: ✅ Fixed / 已修复  
+**Priority / 优先级**: High / 高  
+**Module / 模块**: trading (Agent TRADING)  
+**Related Feature / 相关功能**: Hyperliquid Market Data Fetching / Hyperliquid 市场数据获取
+
+### Description / 描述
+
+在获取 Hyperliquid 市场数据时，出现 `TypeError: float() argument must be a string or a real number, not 'dict'` 错误。
+
+**Error Message / 错误消息**:
+```
+Error fetching market data: float() argument must be a string or a real number, not 'dict'
+Traceback (most recent call last):
+  File "src/trading/hyperliquid_client.py", line 608, in fetch_market_data
+    best_bid = float(bids[0][0])
+TypeError: float() argument must be a string or a real number, not 'dict'
+```
+
+**Root Cause / 根本原因**:
+- Hyperliquid API 返回的 `bids` 和 `asks` 数据格式可能包含字典结构
+- 代码只处理了列表/元组和数字格式，没有处理字典格式
+- 当 `bids[0][0]` 是字典时，尝试转换为 float 会失败
+
+### Solution / 解决方案
+
+增强了 `fetch_market_data` 方法中的类型检查和错误处理：
+
+1. **添加字典格式支持**:
+   - 检查 `bids[0][0]` 或 `asks[0][0]` 是否为字典
+   - 如果是字典，尝试从常见键（`price`, `px`, `0`）中提取价格
+
+2. **添加字典格式的 bids/asks 支持**:
+   - 处理 `bids[0]` 或 `asks[0]` 直接是字典的情况
+   - 支持 `{"price": 1234.5, "size": 1.0}` 或 `{"px": 1234.5, "sz": 1.0}` 格式
+
+3. **增强错误处理**:
+   - 使用 try-except 捕获所有解析错误
+   - 添加详细的警告日志，记录无法解析的数据格式
+
+### Files Modified / 修改的文件
+
+- `src/trading/hyperliquid_client.py`: 增强 `fetch_market_data` 方法的类型检查和错误处理
+
+### Testing / 测试
+
+- ✅ 代码修复完成
+- ⏳ 需要验证：观察服务器日志，确认不再出现此错误
+
+### Related Documentation / 相关文档
+
+- `src/trading/hyperliquid_client.py` (fetch_market_data method)
+
+---
+
 

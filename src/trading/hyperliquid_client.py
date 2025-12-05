@@ -604,16 +604,62 @@ class HyperliquidClient:
                 # Get best bid and ask (first level)
                 # 获取最佳买价和卖价（第一档）
                 if bids and len(bids) > 0:
-                    if isinstance(bids[0], (list, tuple)) and len(bids[0]) > 0:
-                        best_bid = float(bids[0][0])
-                    elif isinstance(bids[0], (int, float)):
-                        best_bid = float(bids[0])
+                    try:
+                        if isinstance(bids[0], (list, tuple)) and len(bids[0]) > 0:
+                            # Check if first element is a number or dict
+                            # 检查第一个元素是数字还是字典
+                            price_value = bids[0][0]
+                            if isinstance(price_value, dict):
+                                # If it's a dict, try to extract price from common keys
+                                # 如果是字典，尝试从常见键中提取价格
+                                price_value = price_value.get("price") or price_value.get("px") or price_value.get(0)
+                                if price_value is None:
+                                    logger.warning(f"Could not extract price from bid dict: {bids[0][0]}")
+                                else:
+                                    best_bid = float(price_value)
+                            else:
+                                best_bid = float(price_value)
+                        elif isinstance(bids[0], (int, float)):
+                            best_bid = float(bids[0])
+                        elif isinstance(bids[0], dict):
+                            # Handle dict format: {"price": 1234.5, "size": 1.0} or {"px": 1234.5, "sz": 1.0}
+                            # 处理字典格式: {"price": 1234.5, "size": 1.0} 或 {"px": 1234.5, "sz": 1.0}
+                            price_value = bids[0].get("price") or bids[0].get("px") or bids[0].get(0)
+                            if price_value is not None:
+                                best_bid = float(price_value)
+                            else:
+                                logger.warning(f"Could not extract price from bid dict: {bids[0]}")
+                    except (ValueError, TypeError, IndexError) as e:
+                        logger.warning(f"Error parsing bid price: {e}, bids[0]={bids[0] if bids else None}")
 
                 if asks and len(asks) > 0:
-                    if isinstance(asks[0], (list, tuple)) and len(asks[0]) > 0:
-                        best_ask = float(asks[0][0])
-                    elif isinstance(asks[0], (int, float)):
-                        best_ask = float(asks[0])
+                    try:
+                        if isinstance(asks[0], (list, tuple)) and len(asks[0]) > 0:
+                            # Check if first element is a number or dict
+                            # 检查第一个元素是数字还是字典
+                            price_value = asks[0][0]
+                            if isinstance(price_value, dict):
+                                # If it's a dict, try to extract price from common keys
+                                # 如果是字典，尝试从常见键中提取价格
+                                price_value = price_value.get("price") or price_value.get("px") or price_value.get(0)
+                                if price_value is None:
+                                    logger.warning(f"Could not extract price from ask dict: {asks[0][0]}")
+                                else:
+                                    best_ask = float(price_value)
+                            else:
+                                best_ask = float(price_value)
+                        elif isinstance(asks[0], (int, float)):
+                            best_ask = float(asks[0])
+                        elif isinstance(asks[0], dict):
+                            # Handle dict format: {"price": 1234.5, "size": 1.0} or {"px": 1234.5, "sz": 1.0}
+                            # 处理字典格式: {"price": 1234.5, "size": 1.0} 或 {"px": 1234.5, "sz": 1.0}
+                            price_value = asks[0].get("price") or asks[0].get("px") or asks[0].get(0)
+                            if price_value is not None:
+                                best_ask = float(price_value)
+                            else:
+                                logger.warning(f"Could not extract price from ask dict: {asks[0]}")
+                    except (ValueError, TypeError, IndexError) as e:
+                        logger.warning(f"Error parsing ask price: {e}, asks[0]={asks[0] if asks else None}")
 
             # If we have both bid and ask, calculate mid price
             # 如果我们有买价和卖价，计算中间价

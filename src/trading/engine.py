@@ -280,6 +280,19 @@ class AlphaLoop:
                     "message": "Failed to refresh exchange data.",
                     "suggestion": "Check Binance connectivity / API credentials.",
                 }
+                # Add error to error_history / 将错误添加到 error_history
+                error_record = {
+                    "timestamp": time.time(),
+                    "symbol": getattr(instance.exchange, "symbol", "unknown") if instance.exchange else "unknown",
+                    "type": "cycle_error",
+                    "message": "Failed to refresh exchange data.",
+                    "details": None,
+                    "strategy_id": instance.strategy_id,
+                    "strategy_type": instance.strategy_type,
+                    "trace_id": get_trace_id(),
+                }
+                instance.error_history.append(error_record)
+                self.error_history.append(error_record)
                 return
 
             market_data = instance.latest_market_data
@@ -333,43 +346,47 @@ class AlphaLoop:
                     instance.order_history.append(order_record)
                     self.order_history.append(order_record)
 
-                if hasattr(instance.exchange, "last_order_error") and getattr(
-                    instance.exchange, "last_order_error"
-                ):
-                    err = instance.exchange.last_order_error
-                    error_type = err.get("type", "unknown")
-                    error_message = err.get("message", "")
+            # Check for order errors after placing orders (even if no orders were placed) / 在下单后检查订单错误（即使没有下单）
+            if hasattr(instance.exchange, "last_order_error") and getattr(
+                instance.exchange, "last_order_error"
+            ):
+                err = instance.exchange.last_order_error
+                error_type = err.get("type", "unknown")
+                error_message = err.get("message", "")
 
-                    error_record = {
-                        "timestamp": time.time(),
-                        "symbol": err.get("symbol", instance.exchange.symbol),
-                        "type": error_type,
+                error_record = {
+                    "timestamp": time.time(),
+                    "symbol": err.get("symbol", instance.exchange.symbol),
+                    "type": error_type,
+                    "message": error_message,
+                    "details": err.get("details"),
+                    "strategy_id": instance.strategy_id,
+                    "strategy_type": instance.strategy_type,
+                    "trace_id": get_trace_id(),  # Include trace_id for correlation / 包含 trace_id 用于关联
+                }
+                instance.error_history.append(error_record)
+                self.error_history.append(error_record)
+
+                if error_type in [
+                    "insufficient_funds",
+                    "invalid_order",
+                    "exchange_error",
+                ]:
+                    instance.alert = {
+                        "type": (
+                            "error"
+                            if error_type == "insufficient_funds"
+                            else "warning"
+                        ),
                         "message": error_message,
-                        "details": err.get("details"),
-                        "strategy_id": instance.strategy_id,
-                        "strategy_type": instance.strategy_type,
-                        "trace_id": get_trace_id(),  # Include trace_id for correlation / 包含 trace_id 用于关联
+                        "suggestion": self._get_error_suggestion(error_type, err),
                     }
-                    instance.error_history.append(error_record)
-                    self.error_history.append(error_record)
-
-                    if error_type in [
-                        "insufficient_funds",
-                        "invalid_order",
-                        "exchange_error",
-                    ]:
-                        instance.alert = {
-                            "type": (
-                                "error"
-                                if error_type == "insufficient_funds"
-                                else "warning"
-                            ),
-                            "message": error_message,
-                            "suggestion": self._get_error_suggestion(error_type, err),
-                        }
-                        logger.warning(
-                            f"Strategy '{instance.strategy_id}' error: {error_type} - {error_message}"
-                        )
+                    logger.warning(
+                        f"Strategy '{instance.strategy_id}' error: {error_type} - {error_message}"
+                    )
+                
+                # Clear last_order_error after processing / 处理完后清除 last_order_error
+                instance.exchange.last_order_error = None
 
                 all_orders = instance.exchange.fetch_open_orders()
                 instance.active_orders = [
@@ -385,20 +402,26 @@ class AlphaLoop:
             logger.error(
                 f"Error in strategy instance '{instance.strategy_id}' cycle: {e}"
             )
-            instance.error_history.append(
-                {
-                    "timestamp": time.time(),
-                    "symbol": (
-                        instance.exchange.symbol if instance.exchange else "unknown"
-                    ),
-                    "type": "cycle_error",
-                    "message": str(e),
-                    "details": None,
-                    "strategy_id": instance.strategy_id,
-                    "strategy_type": instance.strategy_type,
-                    "trace_id": get_trace_id(),  # Include trace_id for correlation / 包含 trace_id 用于关联
-                }
-            )
+            # Get symbol safely to avoid format string issues with Mock / 安全地获取 symbol 以避免 Mock 的格式化字符串问题
+            symbol = "unknown"
+            if instance.exchange:
+                try:
+                    symbol = str(getattr(instance.exchange, "symbol", "unknown"))
+                except Exception:
+                    symbol = "unknown"
+            
+            error_record = {
+                "timestamp": time.time(),
+                "symbol": symbol,
+                "type": "cycle_error",
+                "message": str(e),
+                "details": None,
+                "strategy_id": instance.strategy_id,
+                "strategy_type": instance.strategy_type,
+                "trace_id": get_trace_id(),  # Include trace_id for correlation / 包含 trace_id 用于关联
+            }
+            instance.error_history.append(error_record)
+            self.error_history.append(error_record)
             instance.alert = {
                 "type": "error",
                 "message": f"Strategy '{instance.strategy_id}' error: {e}",

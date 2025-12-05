@@ -11,6 +11,7 @@ class DebugPanel {
         this.isVisible = false;
         this.filter = 'all'; // 'all' or 'errors'
         this.panel = null;
+        this.isPaused = false; // Pause state for auto-refresh / 自动刷新暂停状态
         this.init();
     }
 
@@ -32,6 +33,9 @@ class DebugPanel {
                             <input type="radio" name="debugFilter" value="errors">
                             Errors Only / 仅错误
                         </label>
+                        <button id="debugPanelPauseBtn" class="btn-pause" onclick="debugPanel.togglePause()" title="Pause/Resume auto-refresh / 暂停/继续自动刷新">
+                            ⏸️ Pause / 暂停
+                        </button>
                         <button class="btn-clear" onclick="debugPanel.clear()">Clear / 清除</button>
                         <button class="btn-close" onclick="debugPanel.toggle()">✕</button>
                     </div>
@@ -54,6 +58,9 @@ class DebugPanel {
                 this.render();
             });
         });
+        
+        // Initialize pause button state / 初始化暂停按钮状态
+        this.updatePauseButton();
     }
 
     /**
@@ -170,8 +177,11 @@ class DebugPanel {
                     ${call.payload ? `
                         <div class="debug-call-row">
                             <details>
-                                <summary>Payload / 负载</summary>
-                                <pre>${this.escapeHtml(JSON.stringify(call.payload, null, 2))}</pre>
+                                <summary>
+                                    Payload / 负载
+                                    <button class="btn-copy-payload" onclick="debugPanel.copyPayload('${call.id}')" title="Copy payload / 复制负载">📋</button>
+                                </summary>
+                                <pre id="payload-${call.id}">${this.escapeHtml(JSON.stringify(call.payload, null, 2))}</pre>
                             </details>
                         </div>
                     ` : ''}
@@ -198,6 +208,32 @@ class DebugPanel {
     }
 
     /**
+     * Copy payload to clipboard / 复制负载到剪贴板
+     */
+    copyPayload(callId) {
+        const calls = this.apiDiagnostics ? this.apiDiagnostics.getRecentCalls({}) : [];
+        const call = calls.find(c => c.id === callId);
+        
+        if (!call || !call.payload) {
+            console.error('Call or payload not found');
+            return;
+        }
+        
+        const payloadText = JSON.stringify(call.payload, null, 2);
+        navigator.clipboard.writeText(payloadText).then(() => {
+            // Show feedback / 显示反馈
+            const btn = event.target;
+            const originalText = btn.textContent;
+            btn.textContent = '✓';
+            setTimeout(() => {
+                btn.textContent = originalText;
+            }, 1000);
+        }).catch(err => {
+            console.error('Failed to copy payload:', err);
+        });
+    }
+
+    /**
      * Escape HTML to prevent XSS / 转义 HTML 以防止 XSS
      */
     escapeHtml(text) {
@@ -207,17 +243,54 @@ class DebugPanel {
     }
 
     /**
+     * Toggle pause state / 切换暂停状态
+     */
+    togglePause() {
+        this.isPaused = !this.isPaused;
+        this.updatePauseButton();
+        
+        if (this.isPaused) {
+            this.stopAutoRefresh();
+        } else {
+            this.startAutoRefresh(1000);
+        }
+    }
+
+    /**
+     * Update pause button text and style / 更新暂停按钮文本和样式
+     */
+    updatePauseButton() {
+        const btn = document.getElementById('debugPanelPauseBtn');
+        if (!btn) return;
+        
+        if (this.isPaused) {
+            btn.innerHTML = '▶️ Resume / 继续';
+            btn.classList.remove('btn-pause');
+            btn.classList.add('btn-resume');
+            btn.title = 'Resume auto-refresh / 继续自动刷新';
+        } else {
+            btn.innerHTML = '⏸️ Pause / 暂停';
+            btn.classList.remove('btn-resume');
+            btn.classList.add('btn-pause');
+            btn.title = 'Pause auto-refresh / 暂停自动刷新';
+        }
+    }
+
+    /**
      * Auto-refresh panel / 自动刷新面板
      */
     startAutoRefresh(interval = 1000) {
         if (this.autoRefreshInterval) {
             clearInterval(this.autoRefreshInterval);
         }
-        this.autoRefreshInterval = setInterval(() => {
-            if (this.isVisible) {
-                this.render();
-            }
-        }, interval);
+        // Only start if not paused / 仅在未暂停时启动
+        if (!this.isPaused) {
+            this.autoRefreshInterval = setInterval(() => {
+                if (this.isVisible && !this.isPaused) {
+                    this.render();
+                }
+            }, interval);
+        }
     }
 
     /**

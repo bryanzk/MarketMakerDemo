@@ -182,6 +182,10 @@ class HyperliquidClient:
         max_retries = self.max_retries
         retry_delays = self.retry_delays
 
+        logger.info(
+            f"Attempting to connect to Hyperliquid API (testnet={self.testnet}, base_url={self.base_url}, max_retries={max_retries})"
+        )
+
         for attempt in range(max_retries):
             try:
                 # Test connection with a simple API call
@@ -189,6 +193,10 @@ class HyperliquidClient:
                 # Use requests module directly for test compatibility
                 url = f"{self.base_url}/info"
                 headers = {"Content-Type": "application/json"}
+
+                logger.debug(
+                    f"Connection attempt {attempt + 1}/{max_retries}: POST {url}"
+                )
 
                 # Make POST request to /info endpoint (public endpoint)
                 # Hyperliquid uses POST for /info, not GET
@@ -200,15 +208,29 @@ class HyperliquidClient:
                     verify=self.session.verify,
                 )
 
+                logger.debug(
+                    f"Response from /info: status_code={response.status_code}, "
+                    f"text={response.text[:200] if hasattr(response, 'text') else 'N/A'}"
+                )
+
                 # Then try POST for authentication (if needed)
                 # This ensures requests.post is called for test compatibility
                 auth_url = f"{self.base_url}/exchange"
+                logger.debug(
+                    f"Connection attempt {attempt + 1}/{max_retries}: POST {auth_url}"
+                )
+
                 auth_response = requests.post(
                     auth_url,
                     headers=headers,
                     json={},
                     timeout=10,
                     verify=self.session.verify,
+                )
+
+                logger.debug(
+                    f"Response from /exchange: status_code={auth_response.status_code}, "
+                    f"text={auth_response.text[:200] if hasattr(auth_response, 'text') else 'N/A'}"
                 )
 
                 # If we get 401, it's an authentication error (check before other status codes)
@@ -224,6 +246,7 @@ class HyperliquidClient:
                         f"Error: {error_text}. "
                         f"认证失败。无效的 API 凭证。错误: {error_text}。"
                     )
+                    logger.error(f"Authentication failed: {error_msg}")
                     # Don't wrap in ConnectionError, raise AuthenticationError directly
                     raise AuthenticationError(error_msg)
 
@@ -232,26 +255,36 @@ class HyperliquidClient:
                     self.is_connected = True
                     self.last_successful_call = time.time()
                     logger.info(
-                        f"Hyperliquid client connected successfully (testnet={self.testnet})"
+                        f"Hyperliquid client connected successfully (testnet={self.testnet}, attempt={attempt + 1})"
                     )
                     return
+                else:
+                    # Log non-200 status codes for debugging
+                    logger.warning(
+                        f"Connection attempt {attempt + 1} returned non-200 status: "
+                        f"/info={response.status_code}, /exchange={auth_response.status_code}"
+                    )
 
             except AuthenticationError:
                 # Don't retry authentication errors, re-raise immediately
                 raise
             except RequestsConnectionError as e:
+                logger.warning(
+                    f"Connection attempt {attempt + 1}/{max_retries} failed (RequestsConnectionError): {e}"
+                )
                 if attempt < max_retries - 1:
-                    delay = retry_delays[attempt]
-                    logger.warning(
-                        f"Connection attempt {attempt + 1} failed, retrying in {delay}s: {e}"
-                    )
+                    delay = retry_delays[attempt] if attempt < len(retry_delays) else retry_delays[-1]
+                    logger.info(f"Retrying in {delay}s...")
                     time.sleep(delay)
                 else:
                     error_msg = (
                         f"Failed to connect to Hyperliquid API after {max_retries} attempts. "
                         f"Network error: {str(e)}. "
+                        f"Base URL: {self.base_url}. "
                         f"连接 Hyperliquid API 失败，已重试 {max_retries} 次。网络错误: {str(e)}。"
+                        f"基础 URL: {self.base_url}。"
                     )
+                    logger.error(error_msg)
                     raise ConnectionError(error_msg) from e
             except RequestException as e:
                 # Check if it's an HTTP error with 401 status
@@ -268,19 +301,42 @@ class HyperliquidClient:
                         f"Error: {error_text}. "
                         f"认证失败。无效的 API 凭证。错误: {error_text}。"
                     )
+                    logger.error(f"Authentication failed: {error_msg}")
                     raise AuthenticationError(error_msg) from e
-                elif attempt < max_retries - 1:
-                    delay = retry_delays[attempt]
-                    logger.warning(
-                        f"Request attempt {attempt + 1} failed, retrying in {delay}s: {e}"
+                
+                # Log detailed error information
+                status_code = None
+                response_text = None
+                if hasattr(e, "response") and e.response:
+                    status_code = e.response.status_code
+                    response_text = (
+                        e.response.text[:500]
+                        if hasattr(e.response, "text")
+                        else "N/A"
                     )
+                
+                logger.warning(
+                    f"Request attempt {attempt + 1}/{max_retries} failed (RequestException): "
+                    f"{e}, status_code={status_code}, response={response_text}"
+                )
+                
+                if attempt < max_retries - 1:
+                    delay = retry_delays[attempt] if attempt < len(retry_delays) else retry_delays[-1]
+                    logger.info(f"Retrying in {delay}s...")
                     time.sleep(delay)
                 else:
+                    error_details = f"Base URL: {self.base_url}"
+                    if status_code:
+                        error_details += f", Status Code: {status_code}"
+                    if response_text:
+                        error_details += f", Response: {response_text[:200]}"
+                    
                     error_msg = (
                         f"Failed to connect to Hyperliquid API after {max_retries} attempts. "
-                        f"Error: {str(e)}. "
-                        f"连接 Hyperliquid API 失败，已重试 {max_retries} 次。错误: {str(e)}。"
+                        f"Error: {str(e)}. {error_details}. "
+                        f"连接 Hyperliquid API 失败，已重试 {max_retries} 次。错误: {str(e)}。{error_details}。"
                     )
+                    logger.error(error_msg)
                     raise ConnectionError(error_msg) from e
             except Exception as e:
                 # Check if it's an HTTP error with 401 status
@@ -297,25 +353,36 @@ class HyperliquidClient:
                         f"Error: {error_text}. "
                         f"认证失败。无效的 API 凭证。错误: {error_text}。"
                     )
+                    logger.error(f"Authentication failed: {error_msg}")
                     raise AuthenticationError(error_msg) from e
-                elif attempt < max_retries - 1:
-                    delay = retry_delays[attempt]
-                    logger.warning(
-                        f"Unexpected error on attempt {attempt + 1}, retrying in {delay}s: {e}"
-                    )
+                
+                logger.warning(
+                    f"Unexpected error on attempt {attempt + 1}/{max_retries}: "
+                    f"{type(e).__name__}: {e}"
+                )
+                
+                if attempt < max_retries - 1:
+                    delay = retry_delays[attempt] if attempt < len(retry_delays) else retry_delays[-1]
+                    logger.info(f"Retrying in {delay}s...")
                     time.sleep(delay)
                 else:
                     error_msg = (
-                        f"Unexpected error connecting to Hyperliquid API: {str(e)}. "
-                        f"连接 Hyperliquid API 时发生意外错误: {str(e)}。"
+                        f"Unexpected error connecting to Hyperliquid API: {type(e).__name__}: {str(e)}. "
+                        f"Base URL: {self.base_url}. "
+                        f"连接 Hyperliquid API 时发生意外错误: {type(e).__name__}: {str(e)}。"
+                        f"基础 URL: {self.base_url}。"
                     )
+                    logger.error(error_msg, exc_info=True)
                     raise ConnectionError(error_msg) from e
 
-        # If we get here, all retries failed
+        # If we get here, all retries failed (should not reach here due to raises above)
+        # 如果到达这里，所有重试都失败了（由于上面的 raise，不应该到达这里）
         error_msg = (
             f"Failed to connect to Hyperliquid API after {max_retries} attempts. "
-            f"连接 Hyperliquid API 失败，已重试 {max_retries} 次。"
+            f"Base URL: {self.base_url}. "
+            f"连接 Hyperliquid API 失败，已重试 {max_retries} 次。基础 URL: {self.base_url}。"
         )
+        logger.error(error_msg)
         raise ConnectionError(error_msg)
 
     def _make_request(
@@ -402,6 +469,70 @@ class HyperliquidClient:
                     f"认证失败。无效的 API 凭证。错误: {str(e)}。"
                 )
                 raise AuthenticationError(error_msg) from e
+            elif e.response.status_code == 429:
+                # Rate limit exceeded - implement retry with backoff
+                # 超出速率限制 - 实现退避重试
+                retry_after = 60  # Default retry delay in seconds / 默认重试延迟（秒）
+                
+                # Try to get Retry-After header from response
+                # 尝试从响应中获取 Retry-After header
+                if hasattr(e.response, "headers") and "Retry-After" in e.response.headers:
+                    try:
+                        retry_after = int(e.response.headers["Retry-After"])
+                    except (ValueError, TypeError):
+                        pass
+                
+                logger.warning(
+                    f"Rate limit exceeded (429) for {endpoint}. "
+                    f"Retrying after {retry_after}s. "
+                    f"速率限制已超出 (429) {endpoint}。{retry_after} 秒后重试。"
+                )
+                
+                # Wait before retry
+                # 重试前等待
+                time.sleep(retry_after)
+                
+                # Retry the request once
+                # 重试一次请求
+                try:
+                    if method.upper() == "GET":
+                        if is_mocked:
+                            response = requests.get(url, headers=headers, timeout=10)
+                        else:
+                            response = self.session.get(url, headers=headers, timeout=10)
+                    elif method.upper() == "POST":
+                        if is_mocked:
+                            response = requests.post(
+                                url, headers=headers, json=data, timeout=10
+                            )
+                        else:
+                            response = self.session.post(
+                                url, headers=headers, json=data, timeout=10
+                            )
+                    
+                    response.raise_for_status()
+                    self.last_successful_call = time.time()
+                    self.is_connected = True
+                    
+                    logger.info(
+                        f"Rate limit retry successful for {endpoint}. "
+                        f"速率限制重试成功 {endpoint}。"
+                    )
+                    
+                    if response.content:
+                        return response.json()
+                    return {"status": "ok"}
+                except Exception as retry_e:
+                    self.last_api_error = {
+                        "type": "rate_limit",
+                        "message": f"Rate limit retry failed: {str(retry_e)}",
+                        "status_code": 429,
+                    }
+                    logger.error(
+                        f"Rate limit retry failed for {endpoint}: {retry_e}. "
+                        f"速率限制重试失败 {endpoint}: {retry_e}。"
+                    )
+                    return None
             else:
                 self.last_api_error = {
                     "type": "http_error",

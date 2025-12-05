@@ -20,7 +20,11 @@ logger = logging.getLogger(__name__)
 try:
     from src.trading.hyperliquid_client import (
         AuthenticationError as HyperliquidAuthenticationError,
+    )
+    from src.trading.hyperliquid_client import (
         ConnectionError as HyperliquidConnectionError,
+    )
+    from src.trading.hyperliquid_client import (
         InsufficientBalanceError,
         InvalidOrderError,
         OrderNotFoundError,
@@ -34,8 +38,8 @@ except ImportError:
     OrderNotFoundError = None
 
 try:
+    from ccxt import AuthenticationError as CCXTAuthenticationError
     from ccxt import (
-        AuthenticationError as CCXTAuthenticationError,
         ExchangeError,
         InsufficientFunds,
         InvalidOrder,

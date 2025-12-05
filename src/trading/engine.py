@@ -469,6 +469,7 @@ class AlphaLoop:
                         "symbol": "unknown",
                         "type": "cycle_error",
                         "message": str(e),
+                        "trace_id": get_trace_id(),  # Include trace_id for correlation / 包含 trace_id 用于关联
                         "details": None,
                         "strategy_type": "system",
                         "trace_id": get_trace_id(),  # Include trace_id for correlation / 包含 trace_id 用于关联

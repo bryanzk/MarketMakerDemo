@@ -26,16 +26,16 @@ from src.shared.config import (
     STRATEGY_TYPE,
     SYMBOL,
 )
+from src.shared.error_mapper import ErrorMapper, map_exception
 from src.shared.errors import (
     ErrorSeverity,
     ErrorType,
     StandardErrorResponse,
 )
-from src.shared.error_mapper import ErrorMapper, map_exception
 from src.shared.exchange_metrics import (
     ExchangeName,
-    OperationType,
     MetricsCollector,
+    OperationType,
     metrics_collector,
     track_exchange_operation,
 )

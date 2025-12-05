@@ -77,7 +77,7 @@ class TestErrorType:
     def test_error_type_all_categories(self):
         """Test all error type categories exist / 测试所有错误类型分类存在"""
         categories = [error_type.value for error_type in ErrorType]
-        assert len(categories) == 17  # Total number of error types
+        assert len(categories) == 18  # Total number of error types
 
 
 class TestStandardErrorResponse:

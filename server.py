@@ -525,6 +525,78 @@ async def get_status(request: Request):
         if isinstance(leverage, (int, float)):
             status["leverage"] = leverage
         
+        # Add error information / 添加错误信息
+        # Phase 7: Expose Strategy Instance Errors / 阶段 7：暴露策略实例错误
+        errors = {
+            "global_alert": bot_engine.alert,
+            "global_error_history": list(bot_engine.error_history)[-20:],  # Last 20 errors / 最后 20 个错误
+            "instance_errors": {}
+        }
+        
+        # Add instance-specific errors / 添加实例特定错误
+        if hasattr(bot_engine, "strategy_instances") and bot_engine.strategy_instances:
+            for instance_id, instance in bot_engine.strategy_instances.items():
+                errors["instance_errors"][instance_id] = {
+                    "alert": instance.alert,
+                    "error_history": list(instance.error_history)[-20:],  # Last 20 errors / 最后 20 个错误
+                }
+        
+        status["errors"] = errors
+        
+        # Only add skew_factor for funding strategies and when it's numeric
+        skew = getattr(bot_engine.strategy, "skew_factor", None)
+        if isinstance(skew, (int, float)):
+            status["skew_factor"] = skew
+
+        # Fetch Binance Exchange Limits for current trading pair
+        exchange = get_default_exchange()
+        if exchange is not None:
+            try:
+                limits = exchange.get_symbol_limits()
+                status["limits"] = limits
+            except Exception as e:
+                # If limits fetch fails, set empty limits to avoid breaking UI
+                status["limits"] = {
+                    "minQty": None,
+                    "maxQty": None,
+                    "stepSize": None,
+                    "minNotional": None,
+                }
+                print(f"Error fetching symbol limits: {e}")
+        else:
+            # No exchange connection, set empty limits
+            status["limits"] = {
+                "minQty": None,
+                "maxQty": None,
+                "stepSize": None,
+                "minNotional": None,
+            }
+
+        # Add strategy instance running states (regardless of exchange connection)
+        if hasattr(bot_engine, "strategy_instances"):
+            status["strategy_instances_running"] = {
+                strategy_id: instance.running 
+                for strategy_id, instance in bot_engine.strategy_instances.items()
+            }
+            # Map strategy names to instance IDs for UI
+            status["strategy_instance_status"] = {}
+            
+            # Initialize both strategy types to False
+            status["strategy_instance_status"]["fixed_spread"] = False
+            status["strategy_instance_status"]["funding_rate"] = False
+            
+            # Map instances to their strategy types
+            # If multiple instances of the same type exist, use OR logic (if any is running, mark as running)
+            for strategy_id, instance in bot_engine.strategy_instances.items():
+                if instance.strategy_type == "fixed_spread":
+                    # If any fixed_spread instance is running, mark fixed_spread as running
+                    if instance.running:
+                        status["strategy_instance_status"]["fixed_spread"] = True
+                elif instance.strategy_type == "funding_rate":
+                    # If any funding_rate instance is running, mark funding_rate as running
+                    if instance.running:
+                        status["strategy_instance_status"]["funding_rate"] = True
+        
         # Add trace_id to success response / 将 trace_id 添加到成功响应
         status["trace_id"] = trace_id
         status["ok"] = True
@@ -545,62 +617,6 @@ async def get_status(request: Request):
             error_code="STATUS_FETCH_ERROR",
             details=request_context
         )
-
-    # Only add skew_factor for funding strategies and when it's numeric
-    skew = getattr(bot_engine.strategy, "skew_factor", None)
-    if isinstance(skew, (int, float)):
-        status["skew_factor"] = skew
-
-    # Fetch Binance Exchange Limits for current trading pair
-    exchange = get_default_exchange()
-    if exchange is not None:
-        try:
-            limits = exchange.get_symbol_limits()
-            status["limits"] = limits
-        except Exception as e:
-            # If limits fetch fails, set empty limits to avoid breaking UI
-            status["limits"] = {
-                "minQty": None,
-                "maxQty": None,
-                "stepSize": None,
-                "minNotional": None,
-            }
-            print(f"Error fetching symbol limits: {e}")
-    else:
-        # No exchange connection, set empty limits
-        status["limits"] = {
-            "minQty": None,
-            "maxQty": None,
-            "stepSize": None,
-            "minNotional": None,
-        }
-
-    # Add strategy instance running states (regardless of exchange connection)
-    if hasattr(bot_engine, "strategy_instances"):
-        status["strategy_instances_running"] = {
-            strategy_id: instance.running 
-            for strategy_id, instance in bot_engine.strategy_instances.items()
-        }
-        # Map strategy names to instance IDs for UI
-        status["strategy_instance_status"] = {}
-        
-        # Initialize both strategy types to False
-        status["strategy_instance_status"]["fixed_spread"] = False
-        status["strategy_instance_status"]["funding_rate"] = False
-        
-        # Map instances to their strategy types
-        # If multiple instances of the same type exist, use OR logic (if any is running, mark as running)
-        for strategy_id, instance in bot_engine.strategy_instances.items():
-            if instance.strategy_type == "fixed_spread":
-                # If any fixed_spread instance is running, mark fixed_spread as running
-                if instance.running:
-                    status["strategy_instance_status"]["fixed_spread"] = True
-            elif instance.strategy_type == "funding_rate":
-                # If any funding_rate instance is running, mark funding_rate as running
-                if instance.running:
-                    status["strategy_instance_status"]["funding_rate"] = True
-
-    return status
 
 
 @app.post("/api/control")

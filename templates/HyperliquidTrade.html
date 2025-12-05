@@ -166,10 +166,12 @@
     <!-- Error handling styles / 错误处理样式 -->
     <link rel="stylesheet" href="/static/error_styles.css">
     <link rel="stylesheet" href="/static/debug_panel.css">
+    <link rel="stylesheet" href="/static/validation.css">
     <!-- API Diagnostics and Error Handler / API 诊断和错误处理 -->
     <script src="/static/api_diagnostics.js"></script>
     <script src="/static/error_handler.js"></script>
     <script src="/static/debug_panel.js"></script>
+    <script src="/static/validation.js"></script>
 </head>
 
 <body>
@@ -528,11 +530,26 @@
         async function updateConfig() {
             const errorBox = document.getElementById('evaluationErrorBox');
             clearError(errorBox);
+            clearValidationErrors(errorBox);
+            
+            // Validate inputs / 验证输入
+            const spread = parseFloat(document.getElementById('spreadInput').value || '0');
+            const quantity = parseFloat(document.getElementById('quantityInput').value || '0');
+            
+            const validation = validateOrder({
+                spread: spread,
+                quantity: quantity
+            });
+            
+            if (!validation.valid) {
+                displayValidationErrors(validation, errorBox);
+                return;
+            }
             
             try {
                 const payload = {
-                    spread: parseFloat(document.getElementById('spreadInput').value || '0'),
-                    quantity: parseFloat(document.getElementById('quantityInput').value || '0'),
+                    spread: spread,
+                    quantity: quantity,
                     strategy_type: 'fixed_spread',
                     strategy_id: 'default',
                     skew_factor: parseFloat(document.getElementById('skewInput').value || '0'),
@@ -557,9 +574,18 @@
         async function updateLeverage() {
             const errorBox = document.getElementById('evaluationErrorBox');
             clearError(errorBox);
+            clearValidationErrors(errorBox);
+            
+            // Validate leverage / 验证杠杆
+            const leverage = parseInt(document.getElementById('leverageInput').value || '1', 10);
+            const validation = validateLeverage(leverage);
+            
+            if (!validation.valid) {
+                displayValidationErrors(validation, errorBox);
+                return;
+            }
             
             try {
-                const leverage = parseInt(document.getElementById('leverageInput').value || '1', 10);
                 const res = await diagnosticFetch('/api/hyperliquid/leverage', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -580,9 +606,18 @@
         async function switchPair() {
             const errorBox = document.getElementById('evaluationErrorBox');
             clearError(errorBox);
+            clearValidationErrors(errorBox);
+            
+            // Validate symbol / 验证交易对
+            const symbol = document.getElementById('pairSelect').value;
+            const validation = validateSymbol(symbol);
+            
+            if (!validation.valid) {
+                displayValidationErrors(validation, errorBox);
+                return;
+            }
             
             try {
-                const symbol = document.getElementById('pairSelect').value;
                 const res = await diagnosticFetch('/api/hyperliquid/pair', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },

@@ -1158,11 +1158,11 @@ setInterval(refreshErrorHistory, 30000);
 - [x] Test validation prevents invalid orders ✅
 
 ### Phase 7: Expose Strategy Instance Errors / 阶段 7：暴露策略实例错误
-- [ ] Update `/api/bot/status` to include error information
-- [ ] Add `errors` field with `global_alert`, `global_error_history`, `instance_errors`
-- [ ] Include trace_id in error_history entries
-- [ ] Limit error history to last 10-20 entries for performance
-- [ ] Test error exposure in API responses
+- [x] Update `/api/bot/status` to include error information ✅ (server.py:537-553)
+- [x] Add `errors` field with `global_alert`, `global_error_history`, `instance_errors` ✅ (server.py:539-553)
+- [x] Include trace_id in error_history entries ✅ (engine.py:351, test_engine_trace_id.py)
+- [x] Limit error history to last 10-20 entries for performance ✅ (server.py:541,550 - limited to 20)
+- [x] Test error exposure in API responses ✅ (tests/unit/web/test_strategy_instance_errors.py)
 
 ### Phase 8: Add Error History Display / 阶段 8：添加错误历史显示
 - [ ] Add error history panel to `HyperliquidTrade.html`

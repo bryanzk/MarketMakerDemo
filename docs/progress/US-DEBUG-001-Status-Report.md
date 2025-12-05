@@ -5,7 +5,7 @@
 **Branch**: `feat/error-handling-improvement`  
 **Status**: IN_PROGRESS  
 **Current Step**: code_implemented  
-**Completion**: 55.6% (5/9 phases)
+**Completion**: 66.7% (6/9 phases)
 
 ---
 
@@ -158,16 +158,31 @@ Error handling improvement is in progress with Phase 1 and Phase 2 (partial) com
 
 ---
 
-### ⏳ Phase 7: Expose Strategy Instance Errors / 阶段 7：暴露策略实例错误 - **NOT STARTED**
+### ✅ Phase 7: Expose Strategy Instance Errors / 阶段 7：暴露策略实例错误 - **COMPLETED**
 
-**Status**: 0% Complete / 0% 完成
+**Status**: 100% Complete / 100% 完成
 
-**Pending Tasks / 待完成任务**:
-- ⏳ Update `/api/bot/status` to include error information
-- ⏳ Add `errors` field with `global_alert`, `global_error_history`, `instance_errors`
-- ⏳ Include trace_id in error_history entries
-- ⏳ Limit error history to last 10-20 entries for performance
-- ⏳ Test error exposure in API responses
+**Completed Tasks / 已完成任务**:
+- ✅ Updated `/api/status` endpoint to include error information (server.py:537-553)
+- ✅ Added `errors` field with `global_alert`, `global_error_history`, `instance_errors` (server.py:539-553)
+- ✅ Included trace_id in error_history entries (engine.py:351)
+- ✅ Limited error history to last 20 entries for performance (server.py:541, 550)
+- ✅ Tested error exposure in API responses (tests/unit/web/test_strategy_instance_errors.py)
+
+**Files Modified / 修改的文件**:
+- `server.py` - Added errors field to `/api/status` endpoint
+- `src/trading/engine.py` - Added trace_id to error_history entries
+
+**Files Created / 创建的文件**:
+- `tests/unit/web/test_strategy_instance_errors.py` - Comprehensive unit tests
+
+**Test Coverage / 测试覆盖**:
+- ✅ Tests for errors field presence
+- ✅ Tests for global_alert exposure
+- ✅ Tests for global_error_history (with 20-entry limit)
+- ✅ Tests for instance_errors structure
+- ✅ Tests for trace_id in error_history entries
+- ✅ Tests for error history limiting
 
 **Responsible Agent**: Agent WEB (for API), Agent TRADING (for strategy instance integration)
 

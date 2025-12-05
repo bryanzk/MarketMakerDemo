@@ -26,8 +26,27 @@ class ApiDiagnostics {
             ? this.hashPayload(options.body) 
             : null;
         
+        // Add timeout support (default 30 seconds) / 添加超时支持（默认 30 秒）
+        const timeout = options.timeout || 30000; // 30 seconds default / 默认 30 秒
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), timeout);
+        
+        // Merge abort signal with existing signal / 将 abort signal 与现有 signal 合并
+        const signal = options.signal 
+            ? (() => {
+                const combinedController = new AbortController();
+                options.signal.addEventListener('abort', () => combinedController.abort());
+                controller.signal.addEventListener('abort', () => combinedController.abort());
+                return combinedController.signal;
+            })()
+            : controller.signal;
+        
         try {
-            const response = await window.fetch(url, options);
+            const response = await window.fetch(url, {
+                ...options,
+                signal: signal
+            });
+            clearTimeout(timeoutId);
             const latency = performance.now() - startTime;
             
             // Clone response for reading body / 克隆响应以读取正文
@@ -60,7 +79,17 @@ class ApiDiagnostics {
             
             return response;
         } catch (error) {
+            clearTimeout(timeoutId);
             const latency = performance.now() - startTime;
+            
+            // Determine error type / 确定错误类型
+            let statusText = "Network Error";
+            let errorMessage = error.message;
+            
+            if (error.name === 'AbortError') {
+                statusText = "Timeout";
+                errorMessage = `Request timeout after ${timeout}ms / 请求在 ${timeout}ms 后超时`;
+            }
             
             // Record failed call / 记录失败的调用
             this.recordCall({
@@ -68,13 +97,13 @@ class ApiDiagnostics {
                 url,
                 method: options.method || "GET",
                 status: 0,
-                statusText: "Network Error",
+                statusText: statusText,
                 latency: Math.round(latency),
                 payloadHash,
                 payload: null,
                 timestamp: Date.now(),
                 traceId: null,
-                error: error.message,
+                error: errorMessage,
             });
             
             throw error;

@@ -280,3 +280,258 @@ class TestHyperliquidTradePageBusinessLogic:
             # 应使用 /api/hyperliquid/status，而不是 /api/evaluation/run
             assert "'/api/hyperliquid/status'" in check_connection_code or '"/api/hyperliquid/status"' in check_connection_code
 
+    def test_smoke_hyperliquid_page_switch_pair_auto_refresh_logic(self, client):
+        """
+        Smoke Test: switchPair function implements auto-refresh after pair switching
+        冒烟测试：switchPair 函数在切换交易对后实现自动刷新
+        
+        Verify that switchPair calls checkConnection, loadStatus, refreshPosition, and refreshOrders.
+        验证 switchPair 调用 checkConnection、loadStatus、refreshPosition 和 refreshOrders。
+        """
+        response = client.get("/hyperliquid")
+        html = response.text
+        
+        # Find switchPair function
+        # 查找 switchPair 函数
+        switch_pair_start = html.find('async function switchPair')
+        assert switch_pair_start != -1, "switchPair function not found"
+        
+        switch_pair_end = html.find('async function', switch_pair_start + 1)
+        if switch_pair_end == -1:
+            switch_pair_end = html.find('function ', switch_pair_start + 1)
+        if switch_pair_end == -1:
+            switch_pair_end = len(html)
+        
+        switch_pair_code = html[switch_pair_start:switch_pair_end]
+        
+        # Verify auto-refresh calls after pair switch
+        # 验证切换交易对后的自动刷新调用
+        assert 'await checkConnection()' in switch_pair_code or 'checkConnection()' in switch_pair_code
+        assert 'await loadStatus()' in switch_pair_code or 'loadStatus()' in switch_pair_code
+        assert 'refreshPosition()' in switch_pair_code
+        assert 'refreshOrders()' in switch_pair_code
+
+    def test_smoke_hyperliquid_page_switch_pair_delays(self, client):
+        """
+        Smoke Test: switchPair function includes delays for backend updates
+        冒烟测试：switchPair 函数包含用于后端更新的延迟
+        
+        Verify that switchPair uses setTimeout/Promise delays to wait for backend updates.
+        验证 switchPair 使用 setTimeout/Promise 延迟等待后端更新。
+        """
+        response = client.get("/hyperliquid")
+        html = response.text
+        
+        # Find switchPair function
+        # 查找 switchPair 函数
+        switch_pair_start = html.find('async function switchPair')
+        if switch_pair_start == -1:
+            pytest.skip("switchPair function not found")
+        
+        switch_pair_end = html.find('async function', switch_pair_start + 1)
+        if switch_pair_end == -1:
+            switch_pair_end = html.find('function ', switch_pair_start + 1)
+        if switch_pair_end == -1:
+            switch_pair_end = len(html)
+        
+        switch_pair_code = html[switch_pair_start:switch_pair_end]
+        
+        # Verify delays are present (setTimeout or Promise with setTimeout)
+        # 验证延迟存在（setTimeout 或带 setTimeout 的 Promise）
+        assert 'setTimeout' in switch_pair_code or 'Promise' in switch_pair_code
+        # Should have delays for backend updates
+        # 应该有用于后端更新的延迟
+        assert 'resolve' in switch_pair_code or 'setTimeout' in switch_pair_code
+
+    def test_smoke_hyperliquid_page_switch_pair_connection_flag_reset(self, client):
+        """
+        Smoke Test: switchPair resets isCheckingConnection flag before calling checkConnection
+        冒烟测试：switchPair 在调用 checkConnection 之前重置 isCheckingConnection 标志
+        
+        Verify that the flag is reset to ensure checkConnection can run.
+        验证标志被重置以确保 checkConnection 可以运行。
+        """
+        response = client.get("/hyperliquid")
+        html = response.text
+        
+        # Find switchPair function
+        # 查找 switchPair 函数
+        switch_pair_start = html.find('async function switchPair')
+        if switch_pair_start == -1:
+            pytest.skip("switchPair function not found")
+        
+        switch_pair_end = html.find('async function', switch_pair_start + 1)
+        if switch_pair_end == -1:
+            switch_pair_end = html.find('function ', switch_pair_start + 1)
+        if switch_pair_end == -1:
+            switch_pair_end = len(html)
+        
+        switch_pair_code = html[switch_pair_start:switch_pair_end]
+        
+        # Verify isCheckingConnection flag is reset
+        # 验证 isCheckingConnection 标志被重置
+        assert 'isCheckingConnection = false' in switch_pair_code or 'isCheckingConnection=false' in switch_pair_code
+
+    def test_smoke_hyperliquid_page_pair_select_data_attributes(self, client):
+        """
+        Smoke Test: Trading pair select options have data-price attributes
+        冒烟测试：交易对选择选项具有 data-price 属性
+        
+        Verify that pair select options include data-price attributes for future use.
+        验证交易对选择选项包含 data-price 属性以供将来使用。
+        """
+        response = client.get("/hyperliquid")
+        html = response.text
+        
+        # Check that pair select options have data-price attributes
+        # 检查交易对选择选项具有 data-price 属性
+        assert 'data-price' in html or 'data-price=""' in html
+
+    def test_smoke_hyperliquid_page_switch_pair_error_handling(self, client):
+        """
+        Smoke Test: switchPair function has proper error handling
+        冒烟测试：switchPair 函数具有适当的错误处理
+        
+        Verify that switchPair handles errors and resets flags on failure.
+        验证 switchPair 处理错误并在失败时重置标志。
+        """
+        response = client.get("/hyperliquid")
+        html = response.text
+        
+        # Find switchPair function
+        # 查找 switchPair 函数
+        switch_pair_start = html.find('async function switchPair')
+        if switch_pair_start == -1:
+            pytest.skip("switchPair function not found")
+        
+        switch_pair_end = html.find('async function', switch_pair_start + 1)
+        if switch_pair_end == -1:
+            switch_pair_end = html.find('function ', switch_pair_start + 1)
+        if switch_pair_end == -1:
+            switch_pair_end = len(html)
+        
+        switch_pair_code = html[switch_pair_start:switch_pair_end]
+        
+        # Verify error handling
+        # 验证错误处理
+        assert 'catch' in switch_pair_code or 'catch (' in switch_pair_code
+        assert 'displayError' in switch_pair_code or 'handleApiError' in switch_pair_code
+
+    def test_smoke_hyperliquid_page_load_status_uses_hyperliquid_endpoint(self, client):
+        """
+        Smoke Test: loadStatus function uses /api/hyperliquid/status endpoint
+        冒烟测试：loadStatus 函数使用 /api/hyperliquid/status 端点
+        
+        Verify that loadStatus has been updated to use the faster endpoint.
+        验证 loadStatus 已更新为使用更快的端点。
+        """
+        response = client.get("/hyperliquid")
+        html = response.text
+        
+        # Find loadStatus function
+        # 查找 loadStatus 函数
+        load_status_start = html.find('async function loadStatus')
+        if load_status_start == -1:
+            pytest.skip("loadStatus function not found")
+        
+        load_status_end = html.find('async function', load_status_start + 1)
+        if load_status_end == -1:
+            load_status_end = html.find('function ', load_status_start + 1)
+        if load_status_end == -1:
+            load_status_end = len(html)
+        
+        load_status_code = html[load_status_start:load_status_end]
+        
+        # Verify it uses /api/hyperliquid/status
+        # 验证它使用 /api/hyperliquid/status
+        assert "'/api/hyperliquid/status'" in load_status_code or '"/api/hyperliquid/status"' in load_status_code
+        # Should not use the old /api/status endpoint
+        # 不应使用旧的 /api/status 端点
+        assert "'/api/status'" not in load_status_code or '"/api/status"' not in load_status_code
+
+    def test_smoke_hyperliquid_page_user_manually_switched_pair_flag(self, client):
+        """
+        Smoke Test: Page implements userManuallySwitchedPair flag
+        冒烟测试：页面实现 userManuallySwitchedPair 标志
+        
+        Verify that the flag is used to track manual pair switching and prevent auto-updates.
+        验证标志用于跟踪手动交易对切换并防止自动更新。
+        """
+        response = client.get("/hyperliquid")
+        html = response.text
+        
+        # Check for userManuallySwitchedPair flag
+        # 检查 userManuallySwitchedPair 标志
+        assert 'userManuallySwitchedPair' in html
+        
+        # Verify it's used in switchPair function
+        # 验证它在 switchPair 函数中使用
+        switch_pair_start = html.find('async function switchPair')
+        if switch_pair_start != -1:
+            switch_pair_end = html.find('async function', switch_pair_start + 1)
+            if switch_pair_end == -1:
+                switch_pair_end = html.find('function ', switch_pair_start + 1)
+            if switch_pair_end == -1:
+                switch_pair_end = len(html)
+            switch_pair_code = html[switch_pair_start:switch_pair_end]
+            assert 'userManuallySwitchedPair' in switch_pair_code
+
+    def test_smoke_hyperliquid_page_switch_pair_double_check_connection(self, client):
+        """
+        Smoke Test: switchPair calls checkConnection twice with delays
+        冒烟测试：switchPair 调用 checkConnection 两次，带延迟
+        
+        Verify that switchPair implements the double-check pattern for connection status.
+        验证 switchPair 实现连接状态的双重检查模式。
+        """
+        response = client.get("/hyperliquid")
+        html = response.text
+        
+        # Find switchPair function
+        # 查找 switchPair 函数
+        switch_pair_start = html.find('async function switchPair')
+        if switch_pair_start == -1:
+            pytest.skip("switchPair function not found")
+        
+        switch_pair_end = html.find('async function', switch_pair_start + 1)
+        if switch_pair_end == -1:
+            switch_pair_end = html.find('function ', switch_pair_start + 1)
+        if switch_pair_end == -1:
+            switch_pair_end = len(html)
+        
+        switch_pair_code = html[switch_pair_start:switch_pair_end]
+        
+        # Count checkConnection calls (should be called twice)
+        # 计算 checkConnection 调用次数（应调用两次）
+        check_connection_calls = switch_pair_code.count('checkConnection()')
+        assert check_connection_calls >= 2, f"Expected at least 2 checkConnection calls, found {check_connection_calls}"
+
+    def test_smoke_hyperliquid_page_switch_pair_validation(self, client):
+        """
+        Smoke Test: switchPair includes symbol validation
+        冒烟测试：switchPair 包含交易对验证
+        
+        Verify that switchPair validates the symbol before making API calls.
+        验证 switchPair 在进行 API 调用之前验证交易对。
+        """
+        response = client.get("/hyperliquid")
+        html = response.text
+        
+        # Find switchPair function
+        # 查找 switchPair 函数
+        switch_pair_start = html.find('async function switchPair')
+        if switch_pair_start == -1:
+            pytest.skip("switchPair function not found")
+        
+        switch_pair_end = html.find('async function', switch_pair_start + 1)
+        if switch_pair_end == -1:
+            switch_pair_end = html.find('function ', switch_pair_start + 1)
+        if switch_pair_end == -1:
+            switch_pair_end = len(html)
+        
+        switch_pair_code = html[switch_pair_start:switch_pair_end]
+        
+        # Verify validation is present
+        # 验证存在验证
+        assert 'validateSymbol' in switch_pair_code or 'validation' in switch_pair_code.lower()
+

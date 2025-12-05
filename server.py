@@ -1703,10 +1703,63 @@ async def get_hyperliquid_status(request: Request):
                 "ok": False,
             }
         
-        account_data = exchange.fetch_account_data()
-        market_data = exchange.fetch_market_data()
-        open_orders = exchange.fetch_open_orders()
-        positions = exchange.fetch_positions()
+        # Fetch data with error handling for rate limits / 获取数据，处理速率限制错误
+        try:
+            account_data = exchange.fetch_account_data()
+        except Exception as fetch_error:
+            # Check if it's a rate limit error / 检查是否是速率限制错误
+            if "rate limit" in str(fetch_error).lower() or "429" in str(fetch_error):
+                return create_error_response(
+                    fetch_error,
+                    error_code="RATE_LIMIT_EXCEEDED",
+                    details={
+                        **request_context,
+                        "message": "API rate limit exceeded. Please wait before retrying. / API 速率限制已超出。请稍候再试。",
+                    }
+                )
+            raise
+        
+        try:
+            market_data = exchange.fetch_market_data()
+        except Exception as fetch_error:
+            if "rate limit" in str(fetch_error).lower() or "429" in str(fetch_error):
+                return create_error_response(
+                    fetch_error,
+                    error_code="RATE_LIMIT_EXCEEDED",
+                    details={
+                        **request_context,
+                        "message": "API rate limit exceeded. Please wait before retrying. / API 速率限制已超出。请稍候再试。",
+                    }
+                )
+            raise
+        
+        try:
+            open_orders = exchange.fetch_open_orders()
+        except Exception as fetch_error:
+            if "rate limit" in str(fetch_error).lower() or "429" in str(fetch_error):
+                return create_error_response(
+                    fetch_error,
+                    error_code="RATE_LIMIT_EXCEEDED",
+                    details={
+                        **request_context,
+                        "message": "API rate limit exceeded. Please wait before retrying. / API 速率限制已超出。请稍候再试。",
+                    }
+                )
+            raise
+        
+        try:
+            positions = exchange.fetch_positions()
+        except Exception as fetch_error:
+            if "rate limit" in str(fetch_error).lower() or "429" in str(fetch_error):
+                return create_error_response(
+                    fetch_error,
+                    error_code="RATE_LIMIT_EXCEEDED",
+                    details={
+                        **request_context,
+                        "message": "API rate limit exceeded. Please wait before retrying. / API 速率限制已超出。请稍候再试。",
+                    }
+                )
+            raise
         
         # Get strategy config from Hyperliquid strategy instance / 从 Hyperliquid 策略实例获取策略配置
         spread = None
@@ -1850,7 +1903,7 @@ async def update_hyperliquid_config(request: Request, config: ConfigUpdate):
     Update Hyperliquid strategy configuration / 更新 Hyperliquid 策略配置
     """
     trace_id = get_trace_id()
-    request_context = create_request_context("/api/hyperliquid/config", "POST", hash_payload(config.dict()))
+    request_context = create_request_context("/api/hyperliquid/config", "POST", hash_payload(config.model_dump()))
     
     try:
         exchange = get_exchange_by_name("hyperliquid")
@@ -1907,7 +1960,7 @@ async def update_hyperliquid_config(request: Request, config: ConfigUpdate):
         
         return {
             "status": "updated",
-            "config": config.dict(),
+            "config": config.model_dump(),
             "ok": True,
             "trace_id": trace_id,
         }
@@ -2003,7 +2056,7 @@ async def update_hyperliquid_pair(request: Request, pair: PairUpdate):
     Update Hyperliquid trading pair / 更新 Hyperliquid 交易对
     """
     trace_id = get_trace_id()
-    request_context = create_request_context("/api/hyperliquid/pair", "POST", hash_payload(pair.dict()))
+    request_context = create_request_context("/api/hyperliquid/pair", "POST", hash_payload(pair.model_dump()))
     
     try:
         exchange = get_exchange_by_name("hyperliquid")

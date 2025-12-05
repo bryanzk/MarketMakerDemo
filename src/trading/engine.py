@@ -283,7 +283,11 @@ class AlphaLoop:
                 # Add error to error_history / 将错误添加到 error_history
                 error_record = {
                     "timestamp": time.time(),
-                    "symbol": getattr(instance.exchange, "symbol", "unknown") if instance.exchange else "unknown",
+                    "symbol": (
+                        getattr(instance.exchange, "symbol", "unknown")
+                        if instance.exchange
+                        else "unknown"
+                    ),
                     "type": "cycle_error",
                     "message": "Failed to refresh exchange data.",
                     "details": None,
@@ -384,7 +388,7 @@ class AlphaLoop:
                         logger.warning(
                             f"Strategy '{instance.strategy_id}' error: {error_type} - {error_message}"
                         )
-                    
+
                     # Clear last_order_error after processing / 处理完后清除 last_order_error
                     instance.exchange.last_order_error = None
 
@@ -409,7 +413,7 @@ class AlphaLoop:
                     symbol = str(getattr(instance.exchange, "symbol", "unknown"))
                 except Exception:
                     symbol = "unknown"
-            
+
             error_record = {
                 "timestamp": time.time(),
                 "symbol": symbol,
@@ -505,7 +509,9 @@ class AlphaLoop:
         sharpe = metrics.get("sharpe_ratio", 0)
         # Safely format to avoid Mock.__format__ errors / 安全格式化以避免 Mock.__format__ 错误
         try:
-            volatility_str = f"{volatility:.2%}" if isinstance(volatility, (int, float)) else "0.00%"
+            volatility_str = (
+                f"{volatility:.2%}" if isinstance(volatility, (int, float)) else "0.00%"
+            )
             sharpe_str = f"{sharpe:.2f}" if isinstance(sharpe, (int, float)) else "0.00"
         except (TypeError, ValueError):
             volatility_str = "0.00%"
@@ -577,7 +583,11 @@ class AlphaLoop:
                     approved, reason = validation_result
                 else:
                     # If not a tuple, assume approved / 如果不是元组，假设已批准
-                    approved = bool(validation_result) if validation_result is not None else True
+                    approved = (
+                        bool(validation_result)
+                        if validation_result is not None
+                        else True
+                    )
                     reason = None
             except (TypeError, ValueError) as e:
                 logger.warning(f"Error validating proposal: {e}. Assuming approved.")

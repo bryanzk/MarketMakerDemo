@@ -81,7 +81,9 @@
 }
 
 .debug-panel-controls .btn-clear,
-.debug-panel-controls .btn-close {
+.debug-panel-controls .btn-close,
+.debug-panel-controls .btn-pause,
+.debug-panel-controls .btn-resume {
     background: #e5e7eb;
     border: none;
     border-radius: 6px;
@@ -94,6 +96,24 @@
 
 .debug-panel-controls .btn-clear:hover {
     background: #d1d5db;
+}
+
+.debug-panel-controls .btn-pause {
+    background: #f59e0b;
+    color: white;
+}
+
+.debug-panel-controls .btn-pause:hover {
+    background: #d97706;
+}
+
+.debug-panel-controls .btn-resume {
+    background: #22c55e;
+    color: white;
+}
+
+.debug-panel-controls .btn-resume:hover {
+    background: #16a34a;
 }
 
 .debug-panel-controls .btn-close {
@@ -267,7 +287,8 @@
 }
 
 /* Copy Button / 复制按钮 */
-.btn-copy-trace {
+.btn-copy-trace,
+.btn-copy-payload {
     background: none;
     border: 1px solid #d1d5db;
     border-radius: 4px;
@@ -278,13 +299,27 @@
     transition: all 0.2s;
 }
 
-.btn-copy-trace:hover {
+.btn-copy-trace:hover,
+.btn-copy-payload:hover {
     background: #f3f4f6;
     border-color: #9ca3af;
 }
 
-.btn-copy-trace:active {
+.btn-copy-trace:active,
+.btn-copy-payload:active {
     transform: scale(0.95);
+}
+
+/* Payload copy button in details summary / 详情摘要中的负载复制按钮 */
+.debug-call-row details summary {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.debug-call-row details summary .btn-copy-payload {
+    margin-left: auto;
 }
 
 /* Scrollbar Styling / 滚动条样式 */

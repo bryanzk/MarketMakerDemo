@@ -413,6 +413,12 @@
 
         // Connection Status / 连接状态
         async function checkConnection() {
+            // Request deduplication / 请求去重
+            if (isCheckingConnection) {
+                return;
+            }
+            isCheckingConnection = true;
+            
             const errorBox = document.getElementById('evaluationErrorBox');
             clearError(errorBox);
             
@@ -456,11 +462,19 @@
                 const detailsEl = document.getElementById('connectionDetails');
                 statusEl.className = 'status-badge status-disconnected';
                 statusEl.innerText = 'Error / 错误';
+            } finally {
+                isCheckingConnection = false;
             }
         }
 
         // Position and Balance / 仓位与余额
         async function refreshPosition() {
+            // Request deduplication / 请求去重
+            if (isRefreshingPosition) {
+                return;
+            }
+            isRefreshingPosition = true;
+            
             const errorBox = document.getElementById('evaluationErrorBox');
             clearError(errorBox);
             
@@ -494,6 +508,8 @@
                 const statusEl = document.getElementById('positionStatus');
                 statusEl.innerText = `Error: ${err.message}`;
                 statusEl.classList.add('error');
+            } finally {
+                isRefreshingPosition = false;
             }
         }
 
@@ -833,6 +849,12 @@
         }
 
         async function refreshOrders() {
+            // Request deduplication / 请求去重
+            if (isRefreshingOrders) {
+                return;
+            }
+            isRefreshingOrders = true;
+            
             const errorBox = document.getElementById('evaluationErrorBox');
             clearError(errorBox);
             
@@ -892,6 +914,8 @@
                 const statusEl = document.getElementById('ordersStatusText');
                 statusEl.innerText = `Error loading orders: ${err.message} / 加载订单错误: ${err.message}`;
                 statusEl.classList.add('error');
+            } finally {
+                isRefreshingOrders = false;
             }
         }
 
@@ -918,18 +942,30 @@
             }
         }
 
+        // Request deduplication flags / 请求去重标志
+        let isRefreshingOrders = false;
+        let isRefreshingPosition = false;
+        let isCheckingConnection = false;
+        
         // Auto-refresh
         let ordersRefreshInterval = null;
         let positionRefreshInterval = null;
+        let connectionRefreshInterval = null;
+        
         function startAutoRefresh() {
             if (ordersRefreshInterval) clearInterval(ordersRefreshInterval);
             if (positionRefreshInterval) clearInterval(positionRefreshInterval);
+            if (connectionRefreshInterval) clearInterval(connectionRefreshInterval);
+            
             refreshOrders();
             refreshPosition();
             checkConnection();
-            ordersRefreshInterval = setInterval(refreshOrders, 3000);
-            positionRefreshInterval = setInterval(refreshPosition, 5000);
-            setInterval(checkConnection, 10000);  // Check connection every 10 seconds
+            
+            // Increased intervals to reduce API calls and avoid rate limiting
+            // 增加间隔以减少 API 调用并避免速率限制
+            ordersRefreshInterval = setInterval(refreshOrders, 10000);  // 10 seconds instead of 3
+            positionRefreshInterval = setInterval(refreshPosition, 15000);  // 15 seconds instead of 5
+            connectionRefreshInterval = setInterval(checkConnection, 30000);  // 30 seconds instead of 10
         }
 
         document.addEventListener('DOMContentLoaded', () => {

@@ -117,7 +117,11 @@ def get_exchange_by_name(exchange_name: str):
     Returns:
         Exchange client instance or None if not found/connected
     """
-    from src.trading.hyperliquid_client import HyperliquidClient
+    from src.trading.hyperliquid_client import (
+        HyperliquidClient,
+        AuthenticationError,
+        ConnectionError as HyperliquidConnectionError,
+    )
     from src.trading.exchange import BinanceClient
     
     if exchange_name == "hyperliquid":
@@ -140,12 +144,46 @@ def get_exchange_by_name(exchange_name: str):
         # 如果在实例中未找到，尝试创建新的
         try:
             hyperliquid_client = HyperliquidClient()
-            if hasattr(hyperliquid_client, "is_connected") and hyperliquid_client.is_connected:
-                return hyperliquid_client
+            # Return client even if not connected, let caller decide
+            # 即使未连接也返回客户端，让调用者决定
+            logger.debug(f"HyperliquidClient created: is_connected={getattr(hyperliquid_client, 'is_connected', None)}")
+            return hyperliquid_client
+        except AuthenticationError as e:
+            # Authentication error - credentials missing or invalid
+            # 认证错误 - 凭证缺失或无效
+            logger.warning(f"HyperliquidClient authentication failed: {e}")
+            # Store error info for better error messages
+            # 存储错误信息以便提供更好的错误消息
+            get_exchange_by_name._last_error = {
+                "type": "authentication",
+                "message": str(e),
+                "exception": e,
+            }
+            return None
+        except HyperliquidConnectionError as e:
+            # Connection error - network or API issue
+            # 连接错误 - 网络或 API 问题
+            logger.warning(f"HyperliquidClient connection failed: {e}")
+            # Store error info for better error messages
+            # 存储错误信息以便提供更好的错误消息
+            get_exchange_by_name._last_error = {
+                "type": "connection",
+                "message": str(e),
+                "exception": e,
+            }
+            return None
         except Exception as e:
-            logger.debug(f"Failed to create HyperliquidClient: {e}")
-        
-        return None
+            # Other errors during initialization
+            # 初始化过程中的其他错误
+            logger.warning(f"Failed to create HyperliquidClient: {e}", exc_info=True)
+            # Store error info for better error messages
+            # 存储错误信息以便提供更好的错误消息
+            get_exchange_by_name._last_error = {
+                "type": "unknown",
+                "message": str(e),
+                "exception": e,
+            }
+            return None
     
     elif exchange_name == "binance":
         # For binance, use get_default_exchange which is usually BinanceClient
@@ -155,9 +193,11 @@ def get_exchange_by_name(exchange_name: str):
         return get_default_exchange()
     
     else:
-        # Invalid exchange name, return None
-        # 无效的交易所名称，返回 None
         return None
+
+# Initialize error storage
+# 初始化错误存储
+get_exchange_by_name._last_error = None
 
 
 def _validate_exchange_parameter(exchange: str) -> tuple[bool, Optional[dict]]:
@@ -1592,19 +1632,76 @@ async def get_hyperliquid_status(request: Request):
     try:
         exchange = get_exchange_by_name("hyperliquid")
         if not exchange:
-            return create_error_response(
-                ValueError("Hyperliquid exchange not initialized"),
-                error_code="EXCHANGE_NOT_INITIALIZED",
-                details=request_context
-            )
+            # Get detailed error information if available
+            # 获取详细的错误信息（如果可用）
+            last_error = getattr(get_exchange_by_name, "_last_error", None)
+            
+            if last_error:
+                # Use the actual exception that occurred
+                # 使用实际发生的异常
+                actual_exception = last_error.get("exception")
+                error_type = last_error.get("type", "unknown")
+                
+                if error_type == "authentication":
+                    error_code = "EXCHANGE_AUTHENTICATION_FAILED"
+                    error_msg = (
+                        f"Hyperliquid authentication failed: {last_error['message']}. "
+                        f"Please check HYPERLIQUID_API_KEY and HYPERLIQUID_API_SECRET environment variables. "
+                        f"Hyperliquid 认证失败：{last_error['message']}。"
+                        f"请检查 HYPERLIQUID_API_KEY 和 HYPERLIQUID_API_SECRET 环境变量。"
+                    )
+                elif error_type == "connection":
+                    error_code = "EXCHANGE_CONNECTION_FAILED"
+                    error_msg = (
+                        f"Hyperliquid connection failed: {last_error['message']}. "
+                        f"Please check your network connection and Hyperliquid API status. "
+                        f"Hyperliquid 连接失败：{last_error['message']}。"
+                        f"请检查您的网络连接和 Hyperliquid API 状态。"
+                    )
+                else:
+                    error_code = "EXCHANGE_INITIALIZATION_FAILED"
+                    error_msg = (
+                        f"Hyperliquid initialization failed: {last_error['message']}. "
+                        f"Hyperliquid 初始化失败：{last_error['message']}。"
+                    )
+                
+                return create_error_response(
+                    actual_exception if actual_exception else ValueError(error_msg),
+                    error_code=error_code,
+                    details={
+                        **request_context,
+                        "initialization_error_type": error_type,
+                        "initialization_error_message": last_error['message'],
+                        "suggestion": "Check environment variables HYPERLIQUID_API_KEY and HYPERLIQUID_API_SECRET / 检查环境变量 HYPERLIQUID_API_KEY 和 HYPERLIQUID_API_SECRET",
+                    }
+                )
+            else:
+                # Generic error if no specific error info available
+                # 如果没有特定错误信息，使用通用错误
+                return create_error_response(
+                    ValueError("Hyperliquid exchange not initialized. Please check API credentials and ensure HYPERLIQUID_API_KEY and HYPERLIQUID_API_SECRET are set. / Hyperliquid 交易所未初始化。请检查 API 凭证并确保设置了 HYPERLIQUID_API_KEY 和 HYPERLIQUID_API_SECRET。"),
+                    error_code="EXCHANGE_NOT_INITIALIZED",
+                    details={
+                        **request_context,
+                        "suggestion": "Check environment variables HYPERLIQUID_API_KEY and HYPERLIQUID_API_SECRET / 检查环境变量 HYPERLIQUID_API_KEY 和 HYPERLIQUID_API_SECRET",
+                    }
+                )
+        
+        # Get testnet status / 获取测试网状态
+        testnet = getattr(exchange, "testnet", False) if exchange else False
         
         is_connected, error_response, status_code = _check_exchange_connection("hyperliquid", exchange, "error")
         if not is_connected:
-            return create_error_response(
-                ValueError(error_response.get("error", "Hyperliquid exchange not connected")),
-                error_code="EXCHANGE_NOT_CONNECTED",
-                details=request_context
-            )
+            # Return partial status even if not connected / 即使未连接也返回部分状态
+            return {
+                "connected": False,
+                "exchange": "hyperliquid",
+                "testnet": testnet,
+                "error": error_response.get("error", "Hyperliquid exchange not connected"),
+                "error_type": "connection_error",
+                "trace_id": trace_id,
+                "ok": False,
+            }
         
         account_data = exchange.fetch_account_data()
         market_data = exchange.fetch_market_data()
@@ -1614,6 +1711,7 @@ async def get_hyperliquid_status(request: Request):
         status = {
             "connected": True,
             "exchange": "hyperliquid",
+            "testnet": testnet,
             "symbol": exchange.symbol if hasattr(exchange, "symbol") else None,
             "mid_price": market_data.get("mid_price", 0.0) if market_data else 0.0,
             "balance": account_data.get("balance", 0.0) if account_data else 0.0,

@@ -105,6 +105,40 @@
           "sync_source": "docs/modules/web.json"
         }
       ]
+    },
+    {
+      "id": "EPIC-03",
+      "name": "Error Handling & Debugging Improvement / 错误处理与调试改进",
+      "name_zh": "错误处理与调试改进",
+      "status": "IN_PROGRESS",
+      "module_id": "shared",
+      "stories": [
+        {
+          "id": "US-DEBUG-001",
+          "name": "Error Handling & Debugging Improvement / 错误处理与调试改进",
+          "name_zh": "错误处理与调试改进",
+          "status": "IN_PROGRESS",
+          "current_step": "spec_defined",
+          "branch": "feat/error-handling-improvement",
+          "sync_source": "docs/development/error_handling_improvement_plan.md",
+          "step_status": {
+            "spec_defined": true,
+            "story_defined": false,
+            "ac_defined": false,
+            "contract_defined": false,
+            "plan_approved": false,
+            "unit_test_written": false,
+            "code_implemented": false,
+            "code_reviewed": false,
+            "unit_test_passed": false,
+            "smoke_test_passed": false,
+            "integration_passed": false,
+            "docs_updated": false,
+            "progress_logged": false,
+            "ci_cd_passed": false
+          }
+        }
+      ]
     }
   ],
   "features": [

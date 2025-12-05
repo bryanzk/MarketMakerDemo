@@ -1101,32 +1101,32 @@ setInterval(refreshErrorHistory, 30000);
 ## Implementation Checklist / 实施清单
 
 ### Phase 1: Standardize Error Response Format / 阶段 1：标准化错误响应格式
-- [ ] Create `src/shared/errors.py` with `StandardErrorResponse` and enums
-- [ ] Add `trace_id` field to `StandardErrorResponse`
-- [ ] Add `remediation` fields for detailed recovery steps
-- [ ] Create `src/shared/error_mapper.py` with `ErrorMapper` class
-- [ ] Add error type mappings for all custom exceptions
-- [ ] Add bilingual error suggestions for all error types
-- [ ] Test error mapping with sample exceptions
+- [x] Create `src/shared/errors.py` with `StandardErrorResponse` and enums ✅
+- [x] Add `trace_id` field to `StandardErrorResponse` ✅
+- [x] Add `remediation` fields for detailed recovery steps ✅
+- [x] Create `src/shared/error_mapper.py` with `ErrorMapper` class ✅
+- [x] Add error type mappings for all custom exceptions ✅
+- [x] Add bilingual error suggestions for all error types ✅
+- [x] Test error mapping with sample exceptions ✅ (tests/unit/shared/test_errors.py, test_error_mapper.py)
 
 ### Phase 2: Request Tracing & Correlation / 阶段 2：请求追踪与关联
-- [ ] Create `src/shared/tracing.py` with trace_id utilities
-- [ ] Add trace_id middleware to FastAPI
-- [ ] Update `create_error_response()` to include trace_id
-- [ ] Add trace_id to all API responses (success and error)
-- [ ] Update `/api/hyperliquid/status` endpoint with trace_id
-- [ ] Add `/api/hyperliquid/connection` pre-flight endpoint
-- [ ] Include trace_id in strategy instance error_history entries
-- [ ] Test trace_id generation and correlation
+- [x] Create `src/shared/tracing.py` with trace_id utilities ✅
+- [x] Add trace_id middleware to FastAPI ✅
+- [x] Update `create_error_response()` to include trace_id ✅
+- [x] Add trace_id to all API responses (success and error) ✅ (部分端点已更新)
+- [x] Update `/api/hyperliquid/status` endpoint with trace_id ✅
+- [x] Add `/api/hyperliquid/connection` pre-flight endpoint ✅
+- [ ] Include trace_id in strategy instance error_history entries ⏳
+- [ ] Test trace_id generation and correlation ⏳
 
 ### Phase 3: Structured Logging & Observability / 阶段 3：结构化日志与可观测性
-- [ ] Update `src/shared/logger.py` with JSON formatter
-- [ ] Add trace_id to all log entries
-- [ ] Implement structured logging for API requests
-- [ ] Implement structured logging for exchange calls
-- [ ] Add `/metrics` endpoint for exchange health
-- [ ] Track latency buckets and error rates
-- [ ] Test structured logging output
+- [x] Update `src/shared/logger.py` with JSON formatter ✅
+- [ ] Add trace_id to all log entries ⏳ (logger.py 已有 JSON formatter，但需要添加 trace_id)
+- [x] Implement structured logging for API requests ✅ (server.py 中已使用)
+- [ ] Implement structured logging for exchange calls ⏳
+- [ ] Add `/metrics` endpoint for exchange health ⏳
+- [ ] Track latency buckets and error rates ⏳
+- [ ] Test structured logging output ⏳
 
 ### Phase 4: Standardize Frontend Error Handling / 阶段 4：标准化前端错误处理
 - [ ] Create `templates/js/api_diagnostics.js` for API call tracking

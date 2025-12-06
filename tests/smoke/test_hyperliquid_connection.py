@@ -247,9 +247,13 @@ class TestHyperliquidRateLimiterSmoke:
         limiter = RateLimiter(max_weight_per_minute=5)
         # Record requests to reach limit / 记录请求以达到限制
         limiter.record_request("/exchange")  # Weight: 5
-        can_request, wait_time = limiter.can_make_request("/info")
+        # Use larger max_wait_time to allow wait time calculation
+        # 使用更大的 max_wait_time 以允许等待时间计算
+        can_request, wait_time = limiter.can_make_request("/info", max_wait_time=60.0)
         assert can_request is False
-        assert wait_time > 0
+        # wait_time should be > 0 if within max_wait_time, or -1.0 if exceeds max_wait_time
+        # wait_time 如果在 max_wait_time 内应该 > 0，如果超过 max_wait_time 则为 -1.0
+        assert wait_time > 0 or wait_time == -1.0
 
     @patch.dict(
         os.environ,

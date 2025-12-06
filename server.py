@@ -1719,15 +1719,15 @@ async def run_evaluation(request: EvaluationRunRequest):
                     **request_context,
                 },
             )
-            return create_error_response(
-                ValueError(error_msg),
-                error_code="MARKET_DATA_FETCH_ERROR",
-                details={
-                    **request_context,
-                    "symbol": symbol,
-                    "exchange": exchange_name,
-                },
-            )
+            # Return a concise, user-facing error message for tests/UI
+            # 返回简洁的用户错误信息，便于测试和前端展示
+            return {
+                "error": error_msg,
+                "error_code": "MARKET_DATA_FETCH_ERROR",
+                "error_type": "market_data",
+                "trace_id": trace_id,
+                "ok": False,
+            }, 500
         
         if not market_data:
             # Provide more detailed error information / 提供更详细的错误信息
@@ -2183,6 +2183,22 @@ async def apply_evaluation(request: EvaluationApplyRequest):
                 hyperliquid_instance.strategy.skew_factor = proposal.skew_factor
             
             config_result = {"status": "updated"}
+
+            # Apply leverage directly on Hyperliquid exchange to avoid default-exchange dependency
+            # 直接在 Hyperliquid 交易所上设置杠杆，避免依赖默认交易所
+            if proposal.leverage:
+                if hasattr(exchange, "set_leverage"):
+                    leverage_success = exchange.set_leverage(int(proposal.leverage))
+                    if not leverage_success:
+                        return {
+                            "status": "error",
+                            "error": "Failed to update leverage on Hyperliquid / 无法在 Hyperliquid 上更新杠杆",
+                            "exchange": exchange_name,
+                        }
+                else:
+                    logger.warning(
+                        "Hyperliquid client missing set_leverage; skipping leverage apply"
+                    )
         else:
             # For other exchanges (e.g., binance), use the standard update_config
             # 对于其他交易所（例如 binance），使用标准的 update_config
@@ -2204,9 +2220,9 @@ async def apply_evaluation(request: EvaluationApplyRequest):
                     "exchange": exchange_name,
                 }
         
-        # Apply leverage if provided
-        # 如果提供了杠杆，应用杠杆
-        if proposal.leverage:
+        # Apply leverage if provided (non-Hyperliquid path)
+        # 如果提供了杠杆，应用杠杆（非 Hyperliquid 路径）
+        if proposal.leverage and exchange_name != "hyperliquid":
             leverage_result = await update_leverage(int(proposal.leverage))
             if "error" in leverage_result:
                 return {

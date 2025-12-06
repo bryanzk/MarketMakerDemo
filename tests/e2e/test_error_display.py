@@ -32,6 +32,9 @@ try:
 except ImportError:
     PLAYWRIGHT_AVAILABLE = False
     pytestmark = pytest.mark.skip(reason="Playwright not installed / Playwright 未安装")
+    # Provide dummy Page type to satisfy type hints when playwright is absent
+    class Page:  # type: ignore
+        pass
 
 
 def _is_server_available():
@@ -212,4 +215,3 @@ def page(browser):
     page_instance = browser.new_page()
     yield page_instance
     page_instance.close()
-

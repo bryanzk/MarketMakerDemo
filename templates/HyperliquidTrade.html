@@ -372,9 +372,9 @@
                 <div>
                     <label>Trading Pair / 交易对</label>
                     <select id="pairSelect" onchange="switchPair()">
-                        <option value="ETH/USDC:USDC">ETH/USDC:USDC (--)</option>
-                        <option value="BTC/USDC:USDC">BTC/USDC:USDC (--)</option>
-                        <option value="SOL/USDC:USDC">SOL/USDC:USDC (--)</option>
+                        <option value="ETH/USDC:USDC" data-price="">ETH/USDC:USDC (--)</option>
+                        <option value="BTC/USDC:USDC" data-price="">BTC/USDC:USDC (--)</option>
+                        <option value="SOL/USDC:USDC" data-price="">SOL/USDC:USDC (--)</option>
                     </select>
                 </div>
             </div>
@@ -547,6 +547,15 @@
 
         <!-- Error History Panel / 错误历史面板 -->
         <section class="panel">
+            <div style="display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:12px;">
+                <div>
+                    <div style="font-weight:600;">Diagnostics / 调试工具</div>
+                    <div style="font-size:12px; color:#6b7280;">Recent API calls + errors</div>
+                </div>
+                <button class="btn btn-secondary" onclick="downloadDebugBundle()" title="Export recent diagnostics / 导出最近诊断">
+                    ⬇️ Export Debug Bundle
+                </button>
+            </div>
             <div id="errorHistoryPanel"></div>
         </section>
     </div>
@@ -577,6 +586,45 @@
         function normalizeSymbol(symbol) {
             if (!symbol) return 'ETHUSDC';
             return symbol.toUpperCase().replace(/[:\/-]/g, '');
+        }
+
+        async function downloadDebugBundle() {
+            const now = new Date();
+            const filename = `hyperliquid-debug-${now.toISOString().replace(/[:.]/g, '-')}.json`;
+            const fetchFn = window.diagnosticFetch || window.fetch;
+            const bundle = {
+                collected_at: now.toISOString(),
+                trace_id: null,
+                selected_symbol: (document.getElementById('pairSelect') || {}).value || null,
+                api_calls: [],
+                error_history: null,
+            };
+
+            try {
+                bundle.api_calls = (window.apiDiagnostics && window.apiDiagnostics.getRecentCalls)
+                    ? window.apiDiagnostics.getRecentCalls({ limit: 50 })
+                    : [];
+            } catch (e) {
+                console.error('Failed to collect apiDiagnostics', e);
+            }
+
+            try {
+                const res = await fetchFn('/api/status');
+                bundle.error_history = await res.json();
+                bundle.trace_id = res.headers.get('X-Trace-ID') || null;
+            } catch (e) {
+                bundle.error_history = { error: `Failed to fetch /api/status: ${e.message}` };
+            }
+
+            const blob = new Blob([JSON.stringify(bundle, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = filename;
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            URL.revokeObjectURL(url);
         }
 
         // Connection Status / 连接状态
@@ -863,10 +911,26 @@
                     return;
                 }
                 
-                // Note: Hyperliquid status doesn't include strategy config, so we keep defaults
-                // 注意：Hyperliquid 状态不包含策略配置，因此我们保持默认值
-                document.getElementById('quantityInput').value = data.quantity ?? 0.1;
-                document.getElementById('leverageInput').value = data.leverage ?? 5;
+                // Update input fields from status / 从状态更新输入框
+                // Update spread input (convert from decimal to percentage) / 更新价差输入（从小数转换为百分比）
+                if (data.spread !== undefined && data.spread !== null) {
+                    const spreadInput = document.getElementById('spreadInput');
+                    if (spreadInput) {
+                        spreadInput.value = (data.spread * 100).toFixed(2);
+                    }
+                }
+                // Update quantity input / 更新数量输入
+                if (data.quantity !== undefined && data.quantity !== null) {
+                    document.getElementById('quantityInput').value = data.quantity;
+                } else {
+                    document.getElementById('quantityInput').value = 0.1;
+                }
+                // Update leverage input / 更新杠杆输入
+                if (data.leverage !== undefined && data.leverage !== null) {
+                    document.getElementById('leverageInput').value = data.leverage;
+                } else {
+                    document.getElementById('leverageInput').value = 5;
+                }
                 currentEvalSymbol = normalizeSymbol(data.symbol);
 
                 const pairSelect = document.getElementById('pairSelect');
@@ -959,10 +1023,13 @@
                     Array.from(pairSelect.options).forEach(option => {
                         const symbol = option.value;
                         const baseSymbol = symbol.split('/')[0]; // Extract base symbol (e.g., "ETH" from "ETH/USDC:USDC")
+                        // Update data-price attribute / 更新 data-price 属性
                         const price = data.prices[symbol];
                         
                         if (price !== null && price !== undefined && !isNaN(price)) {
                             option.textContent = `${symbol} ($${price.toFixed(2)})`;
+                            // Update data-price attribute / 更新 data-price 属性
+                            option.setAttribute('data-price', price.toFixed(2));
                             // Store price in cache / 将价格存储在缓存中
                             pairPrices[symbol] = price;
                         } else {
@@ -970,8 +1037,12 @@
                             const cachedPrice = pairPrices[symbol];
                             if (cachedPrice !== null && cachedPrice !== undefined) {
                                 option.textContent = `${symbol} ($${cachedPrice.toFixed(2)})`;
+                                // Update data-price attribute with cached price / 使用缓存价格更新 data-price 属性
+                                option.setAttribute('data-price', cachedPrice.toFixed(2));
                             } else {
                                 option.textContent = `${symbol} (--)`;
+                                // Clear data-price if no price available / 如果没有价格则清除 data-price
+                                option.setAttribute('data-price', '');
                             }
                         }
                     });
@@ -1007,6 +1078,10 @@
         }
 
         async function switchPair() {
+            // Reset connection flag to allow checkConnection to run / 重置连接标志以允许 checkConnection 运行
+            isCheckingConnection = false;
+            // Mark that user manually switched pair / 标记用户手动切换了交易对
+            userManuallySwitchedPair = true;
             try {
                 const symbol = document.getElementById('pairSelect').value;
                 
@@ -1043,6 +1118,7 @@
                 if (data.status === 'updated' && !data.warning) {
                     loadStatus();
                     refreshPosition();
+                    refreshOrders();
                 }
             } catch (err) {
                 showMessage(controlMessage, err.message || 'Failed to switch pair / 切换交易对失败', true);
@@ -1552,8 +1628,35 @@
                 });
                 const data = await res.json();
                 if (data.error) throw new Error(data.error);
-                showMessage(controlMessage, 'Applied evaluation proposal. / 已应用评估建议。');
-                loadStatus();
+                
+                // Update input fields with applied config / 使用应用的配置更新输入框
+                if (data.applied_config) {
+                    const config = data.applied_config;
+                    // Update spread input (convert from decimal to percentage) / 更新价差输入（从小数转换为百分比）
+                    if (config.spread !== undefined) {
+                        const spreadInput = document.getElementById('spreadInput');
+                        if (spreadInput) {
+                            spreadInput.value = (config.spread * 100).toFixed(2);
+                        }
+                    }
+                    // Update quantity input / 更新数量输入
+                    if (config.quantity !== undefined) {
+                        const quantityInput = document.getElementById('quantityInput');
+                        if (quantityInput) {
+                            quantityInput.value = config.quantity;
+                        }
+                    }
+                    // Update leverage input / 更新杠杆输入
+                    if (config.leverage !== undefined) {
+                        const leverageInput = document.getElementById('leverageInput');
+                        if (leverageInput) {
+                            leverageInput.value = config.leverage;
+                        }
+                    }
+                }
+                
+                showMessage(controlMessage, data.message || 'Applied evaluation proposal. / 已应用评估建议。');
+                loadStatus(); // Also refresh status to ensure consistency / 同时刷新状态以确保一致性
             } catch (err) {
                 showMessage(controlMessage, err.message || 'Failed to apply proposal / 应用建议失败', true);
             }
@@ -1774,7 +1877,5 @@
 </body>
 
 </html>
-
-
 
 

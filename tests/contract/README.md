@@ -34,3 +34,4 @@ pytest tests/contract/test_error_envelope.py -v
 - ✅ Error type
 - ✅ Endpoint-specific format checks
 
+

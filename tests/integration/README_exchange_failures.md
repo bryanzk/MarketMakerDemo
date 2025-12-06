@@ -61,3 +61,4 @@ These tests use `unittest.mock.patch` to mock `requests.post` calls. The Hyperli
 
 这些测试使用 `unittest.mock.patch` 来模拟 `requests.post` 调用。HyperliquidClient 的 `_connect_and_authenticate` 方法会进行两次 POST 请求（到 `/info` 和 `/exchange`），因此测试必须为连接阶段提供足够的 mock 响应。
 
+

@@ -760,3 +760,272 @@ class TestSelectedModelsFiltering:
                 or "未找到" in data.get("error", "")
             ), "Error should mention no matching providers / 错误应该提到没有匹配的提供商"
 
+
+class TestParseErrorInResponse:
+    """
+    Test parse_error field in evaluation response
+    测试评估响应中的 parse_error 字段
+    """
+
+    @pytest.fixture
+    def mock_hyperliquid_client(self):
+        """Create a mock HyperliquidClient / 创建模拟 HyperliquidClient"""
+        client = Mock(spec=HyperliquidClient)
+        client.is_connected = True
+        client.symbol = "ETH/USDC:USDC"
+        client.fetch_market_data.return_value = {
+            "best_bid": 3000.0,
+            "best_ask": 3002.0,
+            "mid_price": 3001.0,
+            "funding_rate": 0.0001,
+            "timestamp": 1234567890,
+        }
+        client.fetch_account_data.return_value = {
+            "position_amt": 0.1,
+            "entry_price": 3000.0,
+            "balance": 10000.0,
+            "available_balance": 5000.0,
+            "leverage": 5,
+        }
+        client.set_symbol.return_value = True
+        return client
+
+    @pytest.fixture
+    def mock_llm_providers_with_parse_error(self):
+        """Create mock LLM providers with one that fails to parse / 创建模拟 LLM 提供商，其中一个解析失败"""
+        providers = []
+        # Provider with valid JSON response
+        # 具有有效 JSON 响应的提供商
+        valid_provider = Mock()
+        valid_provider.name = "Gemini"
+        valid_provider.generate.return_value = '{"recommended_strategy": "FundingRate", "spread": 0.012, "skew_factor": 120, "confidence": 0.85, "quantity": 0.1, "leverage": 5}'
+        providers.append(valid_provider)
+        
+        # Provider with invalid JSON response (will cause parse_error)
+        # 具有无效 JSON 响应的提供商（将导致 parse_error）
+        invalid_provider = Mock()
+        invalid_provider.name = "OpenAI"
+        invalid_provider.generate.return_value = "This is not valid JSON and cannot be parsed"
+        providers.append(invalid_provider)
+        
+        return providers
+
+    @patch("server.create_all_providers")
+    @patch("server.get_exchange_by_name")
+    def test_parse_error_field_in_response(
+        self,
+        mock_get_exchange,
+        mock_create_providers,
+        mock_hyperliquid_client,
+        mock_llm_providers_with_parse_error,
+    ):
+        """
+        Test: API response includes parse_error field in proposal when parsing fails
+        测试：当解析失败时，API 响应在 proposal 中包含 parse_error 字段
+        
+        Given: An LLM provider returns a response that cannot be parsed
+        When: The evaluation completes
+        Then: The response should include parse_error field in the proposal for that provider
+        """
+        mock_get_exchange.return_value = mock_hyperliquid_client
+        mock_create_providers.return_value = mock_llm_providers_with_parse_error
+
+        mock_bot_engine = Mock()
+        mock_bot_engine.data = Mock()
+        mock_bot_engine.data.calculate_metrics.return_value = {"sharpe_ratio": 1.5}
+        mock_bot_engine.data.trade_history = []
+
+        with patch("server.bot_engine", mock_bot_engine):
+            client = TestClient(server.app)
+
+            response = client.post(
+                "/api/evaluation/run",
+                json={
+                    "symbol": "ETH/USDC:USDC",
+                    "simulation_steps": 100,
+                    "exchange": "hyperliquid",
+                },
+            )
+
+            # Verify API response
+            # 验证 API 响应
+            assert response.status_code == 200, "API should return 200 / API 应该返回 200"
+            data = response.json()
+            
+            # Verify individual_results exist
+            # 验证 individual_results 存在
+            assert "individual_results" in data, "Response should include individual_results / 响应应该包含 individual_results"
+            results = data["individual_results"]
+            assert len(results) > 0, "Should have at least one result / 应该至少有一个结果"
+            
+            # Find the result with parse_error
+            # 查找有 parse_error 的结果
+            results_with_parse_error = [
+                r for r in results 
+                if r.get("proposal", {}).get("parse_error") and r["proposal"]["parse_error"].strip()
+            ]
+            
+            # Verify at least one result has parse_error
+            # 验证至少有一个结果有 parse_error
+            assert len(results_with_parse_error) > 0, (
+                "At least one result should have parse_error when provider fails to parse / "
+                "当提供商解析失败时，至少应该有一个结果有 parse_error"
+            )
+            
+            # Verify parse_error field structure
+            # 验证 parse_error 字段结构
+            for result in results_with_parse_error:
+                assert "proposal" in result, "Result should have proposal / 结果应该有 proposal"
+                proposal = result["proposal"]
+                assert "parse_error" in proposal, "Proposal should have parse_error / proposal 应该有 parse_error"
+                assert "parse_success" in proposal, "Proposal should have parse_success / proposal 应该有 parse_success"
+                assert proposal["parse_success"] is False, "parse_success should be False when parse_error exists / 当存在 parse_error 时，parse_success 应该为 False"
+                assert len(proposal["parse_error"]) > 0, "parse_error should not be empty / parse_error 不应该为空"
+                
+            # Verify successful parse results don't have parse_error (or have empty parse_error)
+            # 验证成功解析的结果没有 parse_error（或有空的 parse_error）
+            results_without_parse_error = [
+                r for r in results 
+                if not r.get("proposal", {}).get("parse_error") or not r["proposal"]["parse_error"].strip()
+            ]
+            for result in results_without_parse_error:
+                proposal = result.get("proposal", {})
+                if "parse_success" in proposal:
+                    # If parse_success is True, parse_error should be empty or not present
+                    # 如果 parse_success 为 True，parse_error 应该为空或不存在
+                    if proposal.get("parse_success") is True:
+                        assert (
+                            "parse_error" not in proposal 
+                            or not proposal.get("parse_error") 
+                            or proposal["parse_error"] == ""
+                        ), "Successful parse should not have parse_error / 成功解析不应该有 parse_error"
+
+    @patch("server.create_all_providers")
+    @patch("server.get_exchange_by_name")
+    def test_parse_error_content_when_json_invalid(
+        self,
+        mock_get_exchange,
+        mock_create_providers,
+        mock_hyperliquid_client,
+    ):
+        """
+        Test: parse_error contains meaningful error message when JSON is invalid
+        测试：当 JSON 无效时，parse_error 包含有意义的错误消息
+        
+        Given: An LLM provider returns invalid JSON
+        When: The evaluation completes
+        Then: The parse_error should contain a descriptive error message
+        """
+        mock_get_exchange.return_value = mock_hyperliquid_client
+        
+        # Create provider that returns invalid JSON
+        # 创建返回无效 JSON 的提供商
+        invalid_provider = Mock()
+        invalid_provider.name = "Claude"
+        invalid_provider.generate.return_value = "This is not JSON at all, just plain text"
+        mock_create_providers.return_value = [invalid_provider]
+
+        mock_bot_engine = Mock()
+        mock_bot_engine.data = Mock()
+        mock_bot_engine.data.calculate_metrics.return_value = {"sharpe_ratio": 1.5}
+        mock_bot_engine.data.trade_history = []
+
+        with patch("server.bot_engine", mock_bot_engine):
+            client = TestClient(server.app)
+
+            response = client.post(
+                "/api/evaluation/run",
+                json={
+                    "symbol": "ETH/USDC:USDC",
+                    "simulation_steps": 100,
+                    "exchange": "hyperliquid",
+                },
+            )
+
+            # Verify API response
+            # 验证 API 响应
+            assert response.status_code == 200, "API should return 200 / API 应该返回 200"
+            data = response.json()
+            
+            # Verify parse_error exists and contains error message
+            # 验证 parse_error 存在并包含错误消息
+            if "individual_results" in data and len(data["individual_results"]) > 0:
+                result = data["individual_results"][0]
+                proposal = result.get("proposal", {})
+                
+                # Should have parse_error with meaningful content
+                # 应该有包含有意义内容的 parse_error
+                if proposal.get("parse_success") is False:
+                    assert "parse_error" in proposal, "Should have parse_error when parse_success is False / 当 parse_success 为 False 时应该有 parse_error"
+                    parse_error = proposal.get("parse_error", "")
+                    assert len(parse_error) > 0, "parse_error should not be empty / parse_error 不应该为空"
+                    # Error message should indicate JSON parsing issue
+                    # 错误消息应该表明 JSON 解析问题
+                    assert (
+                        "json" in parse_error.lower() 
+                        or "invalid" in parse_error.lower()
+                        or "parse" in parse_error.lower()
+                        or "结构" in parse_error
+                        or "无效" in parse_error
+                    ), f"parse_error should mention JSON/parse issue. Got: {parse_error} / parse_error 应该提到 JSON/解析问题。得到：{parse_error}"
+
+    @patch("server.create_all_providers")
+    @patch("server.get_exchange_by_name")
+    def test_parse_error_empty_when_parse_success(
+        self,
+        mock_get_exchange,
+        mock_create_providers,
+        mock_hyperliquid_client,
+    ):
+        """
+        Test: parse_error is empty string when parse_success is True
+        测试：当 parse_success 为 True 时，parse_error 为空字符串
+        
+        Given: An LLM provider returns valid JSON that can be parsed
+        When: The evaluation completes
+        Then: The parse_error should be empty string (not None or missing)
+        """
+        mock_get_exchange.return_value = mock_hyperliquid_client
+        
+        # Create provider with valid JSON
+        # 创建具有有效 JSON 的提供商
+        valid_provider = Mock()
+        valid_provider.name = "Gemini"
+        valid_provider.generate.return_value = '{"recommended_strategy": "FundingRate", "spread": 0.012, "skew_factor": 120, "confidence": 0.85, "quantity": 0.1, "leverage": 5}'
+        mock_create_providers.return_value = [valid_provider]
+
+        mock_bot_engine = Mock()
+        mock_bot_engine.data = Mock()
+        mock_bot_engine.data.calculate_metrics.return_value = {"sharpe_ratio": 1.5}
+        mock_bot_engine.data.trade_history = []
+
+        with patch("server.bot_engine", mock_bot_engine):
+            client = TestClient(server.app)
+
+            response = client.post(
+                "/api/evaluation/run",
+                json={
+                    "symbol": "ETH/USDC:USDC",
+                    "simulation_steps": 100,
+                    "exchange": "hyperliquid",
+                },
+            )
+
+            # Verify API response
+            # 验证 API 响应
+            assert response.status_code == 200, "API should return 200 / API 应该返回 200"
+            data = response.json()
+            
+            # Verify parse_error is empty when parse_success is True
+            # 验证当 parse_success 为 True 时 parse_error 为空
+            if "individual_results" in data and len(data["individual_results"]) > 0:
+                result = data["individual_results"][0]
+                proposal = result.get("proposal", {})
+                
+                if proposal.get("parse_success") is True:
+                    # parse_error should be present but empty
+                    # parse_error 应该存在但为空
+                    assert "parse_error" in proposal, "parse_error field should be present / parse_error 字段应该存在"
+                    parse_error = proposal.get("parse_error", "")
+                    assert parse_error == "", f"parse_error should be empty string when parse_success is True. Got: '{parse_error}' / 当 parse_success 为 True 时，parse_error 应该为空字符串。得到：'{parse_error}'"
+

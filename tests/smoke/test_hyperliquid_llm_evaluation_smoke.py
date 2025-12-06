@@ -399,3 +399,66 @@ class TestHyperliquidLLMEvaluationSmoke:
                     "API should accept selected_models parameter / API 应该接受 selected_models 参数"
                 )
 
+    @patch("server.create_all_providers")
+    @patch("server.get_exchange_by_name")
+    def test_smoke_parse_error_in_response(
+        self,
+        mock_get_exchange,
+        mock_create_providers,
+        mock_hyperliquid_client,
+    ):
+        """
+        Smoke Test: parse_error field is included in API response
+        冒烟测试：API 响应中包含 parse_error 字段
+        
+        Verifies that API response includes parse_error field in proposal when LLM parsing fails.
+        验证当 LLM 解析失败时，API 响应在 proposal 中包含 parse_error 字段。
+        """
+        mock_get_exchange.return_value = mock_hyperliquid_client
+        
+        # Create provider that returns invalid JSON to trigger parse_error
+        # 创建返回无效 JSON 的提供商以触发 parse_error
+        invalid_provider = Mock()
+        invalid_provider.name = "Gemini"
+        invalid_provider.generate.return_value = "Invalid JSON response that cannot be parsed"
+        mock_create_providers.return_value = [invalid_provider]
+
+        mock_bot_engine = Mock()
+        mock_bot_engine.data = Mock()
+        mock_bot_engine.data.calculate_metrics.return_value = {"sharpe_ratio": 1.5}
+        mock_bot_engine.data.trade_history = []
+
+        with patch("server.bot_engine", mock_bot_engine):
+            client = TestClient(server.app)
+
+            response = client.post(
+                "/api/evaluation/run",
+                json={
+                    "symbol": "ETH/USDC:USDC",
+                    "simulation_steps": 100,
+                    "exchange": "hyperliquid",
+                },
+            )
+
+            # Verify API accepts the request
+            # 验证 API 接受请求
+            assert response.status_code != 404, "API endpoint not found / API 端点未找到"
+            
+            # Verify response structure includes parse_error
+            # 验证响应结构包含 parse_error
+            if response.status_code == 200:
+                data = response.json()
+                if "individual_results" in data and len(data["individual_results"]) > 0:
+                    result = data["individual_results"][0]
+                    assert "proposal" in result, "Result should have proposal / 结果应该有 proposal"
+                    proposal = result["proposal"]
+                    assert "parse_error" in proposal, (
+                        "Proposal should include parse_error field / "
+                        "proposal 应该包含 parse_error 字段"
+                    )
+                    # parse_error should be a string (may be empty or contain error message)
+                    # parse_error 应该是字符串（可能为空或包含错误消息）
+                    assert isinstance(proposal["parse_error"], str), (
+                        "parse_error should be a string / parse_error 应该是字符串"
+                    )
+

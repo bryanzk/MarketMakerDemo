@@ -671,7 +671,14 @@ class TestHyperliquidLLMApplyIntegration:
         from src.trading.strategy_instance import StrategyInstance
 
         mock_bot_engine = Mock()
-        mock_bot_engine.strategy_instances = {}
+        
+        # Use MagicMock for strategy_instances to allow get() method mocking
+        # 使用 MagicMock 用于 strategy_instances 以允许 get() 方法模拟
+        mock_strategy_instances = MagicMock()
+        mock_strategy_instances.__iter__ = Mock(return_value=iter([]))
+        mock_strategy_instances.items.return_value = []  # No instances initially
+        mock_strategy_instances.get.return_value = None
+        mock_bot_engine.strategy_instances = mock_strategy_instances
         mock_bot_engine.add_strategy_instance = Mock(return_value=True)
 
         # Create mock instance that will be returned after creation
@@ -685,8 +692,8 @@ class TestHyperliquidLLMApplyIntegration:
         mock_instance.strategy.spread = 0.01
         mock_instance.strategy.quantity = 0.05
 
-        def mock_get_instance(instance_id):
-            if instance_id == "hyperliquid":
+        def side_effect_get(instance_id):
+            if instance_id == "hyperliquid" and mock_bot_engine.add_strategy_instance.called:
                 # After creation, update instance with HyperliquidClient
                 # 创建后，使用 HyperliquidClient 更新实例
                 mock_instance.exchange = mock_client
@@ -694,11 +701,13 @@ class TestHyperliquidLLMApplyIntegration:
                 return mock_instance
             return None
 
-        mock_bot_engine.strategy_instances.get = Mock(side_effect=mock_get_instance)
+        mock_strategy_instances.get.side_effect = side_effect_get
 
         with patch("server.bot_engine", mock_bot_engine), patch(
             "server._last_evaluation_results", []
-        ), patch("server._last_evaluation_aggregated", aggregated):
+        ), patch("server._last_evaluation_aggregated", aggregated), patch(
+            "server.get_exchange_by_name", mock_get_exchange
+        ):
             client = TestClient(server.app)
 
             # Apply consensus suggestion
@@ -823,7 +832,12 @@ class TestHyperliquidLLMApplyIntegration:
         mock_instance.strategy.quantity = 0.05
 
         mock_bot_engine = Mock()
-        mock_bot_engine.strategy_instances = {"hyperliquid": mock_instance}
+        # Use MagicMock for strategy_instances to support items() method
+        # 使用 MagicMock 用于 strategy_instances 以支持 items() 方法
+        mock_strategy_instances = MagicMock()
+        mock_strategy_instances.items.return_value = [("hyperliquid", mock_instance)]
+        mock_strategy_instances.get.return_value = mock_instance
+        mock_bot_engine.strategy_instances = mock_strategy_instances
         mock_bot_engine.add_strategy_instance = Mock(return_value=True)
         mock_bot_engine.risk = Mock()
         mock_bot_engine.risk.validate_proposal = Mock(return_value=(True, "Approved"))
@@ -832,6 +846,8 @@ class TestHyperliquidLLMApplyIntegration:
         with patch("server.bot_engine", mock_bot_engine), patch(
             "server._last_evaluation_results", []
         ), patch("server._last_evaluation_aggregated", aggregated), patch(
+            "server.get_exchange_by_name", mock_get_exchange
+        ), patch(
             "server.is_running", False
         ), patch("server.bot_thread", None), patch(
             "server.run_bot_loop"

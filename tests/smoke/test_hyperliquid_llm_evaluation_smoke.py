@@ -521,7 +521,14 @@ class TestHyperliquidLLMEvaluationSmoke:
         # Mock bot_engine with empty strategy instances
         # 模拟带有空策略实例的 bot_engine
         mock_bot_engine = Mock()
-        mock_bot_engine.strategy_instances = {}
+        
+        # Use MagicMock for strategy_instances to allow get() method mocking
+        # 使用 MagicMock 用于 strategy_instances 以允许 get() 方法模拟
+        mock_strategy_instances = MagicMock()
+        mock_strategy_instances.__iter__ = Mock(return_value=iter([]))
+        mock_strategy_instances.items.return_value = []  # No instances initially
+        mock_strategy_instances.get.return_value = None
+        mock_bot_engine.strategy_instances = mock_strategy_instances
         mock_bot_engine.add_strategy_instance = Mock(return_value=True)
 
         # Mock instance after creation
@@ -533,16 +540,18 @@ class TestHyperliquidLLMEvaluationSmoke:
         mock_instance.strategy.spread = 0.01
         mock_instance.strategy.quantity = 0.05
 
-        def mock_get_instance(instance_id):
-            if instance_id == "hyperliquid":
+        def side_effect_get(instance_id):
+            if instance_id == "hyperliquid" and mock_bot_engine.add_strategy_instance.called:
                 return mock_instance
             return None
 
-        mock_bot_engine.strategy_instances.get = Mock(side_effect=mock_get_instance)
+        mock_strategy_instances.get.side_effect = side_effect_get
 
         with patch("server.bot_engine", mock_bot_engine), patch(
             "server._last_evaluation_results", []
-        ), patch("server._last_evaluation_aggregated", aggregated):
+        ), patch("server._last_evaluation_aggregated", aggregated), patch(
+            "server.get_exchange_by_name", mock_get_exchange
+        ):
             client = TestClient(server.app)
 
             # Apply evaluation

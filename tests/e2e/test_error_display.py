@@ -19,6 +19,9 @@ To run these tests, ensure the server is running on localhost:3000:
 """
 
 import pytest
+import socket
+import urllib.request
+import urllib.error
 
 # Try to import playwright, skip tests if not available
 # 尝试导入 playwright，如果不可用则跳过测试
@@ -31,12 +34,26 @@ except ImportError:
     pytestmark = pytest.mark.skip(reason="Playwright not installed / Playwright 未安装")
 
 
+def _is_server_available():
+    """Check if server is available / 检查服务器是否可用"""
+    try:
+        # Try to connect to the server / 尝试连接到服务器
+        with urllib.request.urlopen("http://localhost:3000/api/status", timeout=2) as response:
+            return response.status == 200
+    except (urllib.error.URLError, socket.timeout, ConnectionRefusedError, OSError):
+        return False
+
+
 @pytest.mark.skipif(not PLAYWRIGHT_AVAILABLE, reason="Playwright not available / Playwright 不可用")
 class TestErrorBannerDisplay:
     """Test error banner display / 测试错误横幅显示"""
 
     def test_error_banner_displays_trace_id(self, page: Page):
         """Test that error banner displays trace_id / 测试错误横幅显示 trace_id"""
+        # Skip if server is not available / 如果服务器不可用则跳过
+        if not _is_server_available():
+            pytest.skip("Server not available on localhost:3000 / 服务器在 localhost:3000 上不可用")
+        
         # Navigate to page / 导航到页面
         page.goto("http://localhost:3000/hyperliquid", timeout=10000)
         
@@ -65,6 +82,10 @@ class TestErrorBannerDisplay:
 
     def test_error_history_panel_exists(self, page: Page):
         """Test that error history panel exists / 测试错误历史面板存在"""
+        # Skip if server is not available / 如果服务器不可用则跳过
+        if not _is_server_available():
+            pytest.skip("Server not available on localhost:3000 / 服务器在 localhost:3000 上不可用")
+        
         page.goto("http://localhost:3000/hyperliquid", timeout=10000)
         page.wait_for_load_state("load", timeout=10000)
         page.wait_for_timeout(2000)
@@ -79,6 +100,10 @@ class TestErrorBannerDisplay:
 
     def test_debug_panel_exists(self, page: Page):
         """Test that debug panel exists / 测试调试面板存在"""
+        # Skip if server is not available / 如果服务器不可用则跳过
+        if not _is_server_available():
+            pytest.skip("Server not available on localhost:3000 / 服务器在 localhost:3000 上不可用")
+        
         page.goto("http://localhost:3000/hyperliquid", timeout=10000)
         page.wait_for_load_state("load", timeout=10000)
         page.wait_for_timeout(2000)
@@ -108,6 +133,10 @@ class TestErrorDisplayFunctionality:
 
     def test_error_messages_are_bilingual(self, page: Page):
         """Test that error messages are bilingual / 测试错误消息是双语的"""
+        # Skip if server is not available / 如果服务器不可用则跳过
+        if not _is_server_available():
+            pytest.skip("Server not available on localhost:3000 / 服务器在 localhost:3000 上不可用")
+        
         page.goto("http://localhost:3000/hyperliquid", timeout=10000)
         page.wait_for_load_state("load", timeout=10000)
         page.wait_for_timeout(2000)
@@ -124,6 +153,10 @@ class TestErrorDisplayFunctionality:
 
     def test_trace_id_is_displayed(self, page: Page):
         """Test that trace_id is displayed in error messages / 测试 trace_id 在错误消息中显示"""
+        # Skip if server is not available / 如果服务器不可用则跳过
+        if not _is_server_available():
+            pytest.skip("Server not available on localhost:3000 / 服务器在 localhost:3000 上不可用")
+        
         page.goto("http://localhost:3000/hyperliquid", timeout=10000)
         page.wait_for_load_state("load", timeout=10000)
         page.wait_for_timeout(2000)

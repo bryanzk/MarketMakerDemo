@@ -401,16 +401,18 @@ class HyperliquidClient:
         endpoint: str,
         data: Optional[Dict] = None,
         public: bool = False,
+        max_retries: int = 2,
     ) -> Optional[Dict]:
         """
-        Make HTTP request to Hyperliquid API.
-        向 Hyperliquid API 发送 HTTP 请求。
+        Make HTTP request to Hyperliquid API with retry logic for rate limits.
+        向 Hyperliquid API 发送 HTTP 请求，带速率限制重试逻辑。
 
         Args:
             method: HTTP method (GET, POST, etc.)
             endpoint: API endpoint path
             data: Request data (for POST requests)
             public: Whether this is a public endpoint (no auth required)
+            max_retries: Maximum number of retries for rate limit errors (default: 2)
 
         Returns:
             Response data as dictionary, or None on error
@@ -428,120 +430,127 @@ class HyperliquidClient:
             # For now, we'll use a simplified approach
             headers["X-API-KEY"] = self.api_key
 
+        # Check if requests module is mocked (for test compatibility)
+        # 检查 requests 模块是否被 mock（用于测试兼容性）
         try:
-            # Use session for actual requests, but allow direct requests.post for testing
-            # 使用 session 进行实际请求，但允许直接使用 requests.post 进行测试
-            # Check if requests module is mocked (for test compatibility)
-            # 检查 requests 模块是否被 mock（用于测试兼容性）
+            from unittest.mock import MagicMock, Mock
+
+            # Check if requests.post is a Mock object (indicating it's been patched)
+            is_mocked = (
+                isinstance(requests.post, (Mock, MagicMock))
+                or hasattr(requests, "_mock_name")
+                or str(type(requests.post)).find("Mock") != -1
+            )
+        except (ImportError, AttributeError):
+            is_mocked = False
+
+        # Retry logic for rate limit errors / 速率限制错误的重试逻辑
+        for attempt in range(max_retries + 1):
             try:
-                from unittest.mock import MagicMock, Mock
-
-                # Check if requests.post is a Mock object (indicating it's been patched)
-                is_mocked = (
-                    isinstance(requests.post, (Mock, MagicMock))
-                    or hasattr(requests, "_mock_name")
-                    or str(type(requests.post)).find("Mock") != -1
-                )
-            except (ImportError, AttributeError):
-                is_mocked = False
-
-            if method.upper() == "GET":
-                if is_mocked:
-                    response = requests.get(url, headers=headers, timeout=10)
+                if method.upper() == "GET":
+                    if is_mocked:
+                        response = requests.get(url, headers=headers, timeout=10)
+                    else:
+                        response = self.session.get(url, headers=headers, timeout=10)
+                elif method.upper() == "POST":
+                    if is_mocked:
+                        # In test environment, use requests.post directly
+                        response = requests.post(
+                            url, headers=headers, json=data, timeout=10
+                        )
+                    else:
+                        response = self.session.post(
+                            url, headers=headers, json=data, timeout=10
+                        )
                 else:
-                    response = self.session.get(url, headers=headers, timeout=10)
-            elif method.upper() == "POST":
-                if is_mocked:
-                    # In test environment, use requests.post directly
-                    response = requests.post(
-                        url, headers=headers, json=data, timeout=10
+                    raise ValueError(f"Unsupported HTTP method: {method}")
+
+                response.raise_for_status()
+                self.last_successful_call = time.time()
+                self.is_connected = True
+
+                if response.content:
+                    return response.json()
+                return {"status": "ok"}
+
+            except requests.exceptions.HTTPError as e:
+                if e.response.status_code == 401:
+                    error_msg = (
+                        f"Authentication failed. Invalid API credentials. "
+                        f"Error: {str(e)}. "
+                        f"认证失败。无效的 API 凭证。错误: {str(e)}。"
                     )
+                    raise AuthenticationError(error_msg) from e
+                elif e.response.status_code == 429:
+                    # Rate limit exceeded - retry with backoff / 超出速率限制 - 使用退避重试
+                    retry_after = (
+                        60  # Default retry delay in seconds / 默认重试延迟（秒）
+                    )
+
+                    # Try to get Retry-After header from response
+                    # 尝试从响应中获取 Retry-After header
+                    if (
+                        hasattr(e.response, "headers")
+                        and "Retry-After" in e.response.headers
+                    ):
+                        try:
+                            retry_after = int(e.response.headers["Retry-After"])
+                        except (ValueError, TypeError):
+                            pass
+
+                    # Store rate limit error for API endpoints to return quickly
+                    # 存储速率限制错误，以便 API 端点快速返回
+                    self.last_api_error = {
+                        "type": "rate_limit",
+                        "message": f"Rate limit exceeded (429) for {endpoint}. Retry after {retry_after}s. 速率限制已超出 (429) {endpoint}。{retry_after} 秒后重试。",
+                        "status_code": 429,
+                        "retry_after": retry_after,
+                    }
+
+                    logger.warning(
+                        f"Rate limit exceeded (429) for {endpoint} (attempt {attempt + 1}/{max_retries + 1}). "
+                        f"Retry after {retry_after}s. "
+                        f"速率限制已超出 (429) {endpoint}（尝试 {attempt + 1}/{max_retries + 1}）。{retry_after} 秒后重试。"
+                    )
+
+                    # Retry if we haven't exceeded max retries / 如果未超过最大重试次数则重试
+                    if attempt < max_retries:
+                        time.sleep(retry_after)
+                        continue
+                    else:
+                        # Raise exception after max retries / 达到最大重试次数后抛出异常
+                        raise ConnectionError(
+                            f"Rate limit exceeded (429) for {endpoint}. "
+                            f"Retry after {retry_after}s. "
+                            f"速率限制已超出 (429) {endpoint}。{retry_after} 秒后重试。"
+                        ) from e
                 else:
-                    response = self.session.post(
-                        url, headers=headers, json=data, timeout=10
-                    )
-            else:
-                raise ValueError(f"Unsupported HTTP method: {method}")
-
-            response.raise_for_status()
-            self.last_successful_call = time.time()
-            self.is_connected = True
-
-            if response.content:
-                return response.json()
-            return {"status": "ok"}
-
-        except requests.exceptions.HTTPError as e:
-            if e.response.status_code == 401:
-                error_msg = (
-                    f"Authentication failed. Invalid API credentials. "
-                    f"Error: {str(e)}. "
-                    f"认证失败。无效的 API 凭证。错误: {str(e)}。"
-                )
-                raise AuthenticationError(error_msg) from e
-            elif e.response.status_code == 429:
-                # Rate limit exceeded - raise exception immediately for API endpoints
-                # 超出速率限制 - 对于 API 端点立即抛出异常
-                retry_after = 60  # Default retry delay in seconds / 默认重试延迟（秒）
-
-                # Try to get Retry-After header from response
-                # 尝试从响应中获取 Retry-After header
-                if (
-                    hasattr(e.response, "headers")
-                    and "Retry-After" in e.response.headers
-                ):
-                    try:
-                        retry_after = int(e.response.headers["Retry-After"])
-                    except (ValueError, TypeError):
-                        pass
-
-                # Store rate limit error for API endpoints to return quickly
-                # 存储速率限制错误，以便 API 端点快速返回
+                    # Other HTTP errors - return None / 其他 HTTP 错误 - 返回 None
+                    self.last_api_error = {
+                        "type": "http_error",
+                        "message": f"HTTP error: {str(e)}",
+                        "status_code": e.response.status_code,
+                    }
+                    logger.error(f"HTTP error: {e}")
+                    return None
+            except RequestsConnectionError as e:
+                self.is_connected = False
                 self.last_api_error = {
-                    "type": "rate_limit",
-                    "message": f"Rate limit exceeded (429) for {endpoint}. Retry after {retry_after}s. 速率限制已超出 (429) {endpoint}。{retry_after} 秒后重试。",
-                    "status_code": 429,
-                    "retry_after": retry_after,
+                    "type": "connection_error",
+                    "message": f"Connection error: {str(e)}",
                 }
-
-                logger.warning(
-                    f"Rate limit exceeded (429) for {endpoint}. "
-                    f"Retry after {retry_after}s. "
-                    f"速率限制已超出 (429) {endpoint}。{retry_after} 秒后重试。"
-                )
-
-                # Raise exception immediately instead of waiting
-                # 立即抛出异常而不是等待
-                # This allows API endpoints to return error response quickly
-                # 这允许 API 端点快速返回错误响应
-                raise ConnectionError(
-                    f"Rate limit exceeded (429) for {endpoint}. "
-                    f"Retry after {retry_after}s. "
-                    f"速率限制已超出 (429) {endpoint}。{retry_after} 秒后重试。"
-                ) from e
-            else:
+                logger.error(f"Connection error: {e}")
+                raise ConnectionError(f"Connection failed: {str(e)}") from e
+            except Exception as e:
                 self.last_api_error = {
-                    "type": "http_error",
-                    "message": f"HTTP error: {str(e)}",
-                    "status_code": e.response.status_code,
+                    "type": "unknown_error",
+                    "message": f"Unexpected error: {str(e)}",
                 }
-                logger.error(f"HTTP error: {e}")
+                logger.error(f"Unexpected error: {e}")
                 return None
-        except RequestsConnectionError as e:
-            self.is_connected = False
-            self.last_api_error = {
-                "type": "connection_error",
-                "message": f"Connection error: {str(e)}",
-            }
-            logger.error(f"Connection error: {e}")
-            raise ConnectionError(f"Connection failed: {str(e)}") from e
-        except Exception as e:
-            self.last_api_error = {
-                "type": "unknown_error",
-                "message": f"Unexpected error: {str(e)}",
-            }
-            logger.error(f"Unexpected error: {e}")
-            return None
+
+        # If we get here, all retries failed / 如果到达这里，所有重试都失败了
+        return None
 
     def _initialize_symbol(self):
         """Initialize symbol-specific data / 初始化交易对特定数据"""

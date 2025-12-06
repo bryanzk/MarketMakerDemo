@@ -371,14 +371,11 @@
             <div class="grid">
                 <div>
                     <label>Trading Pair / 交易对</label>
-                    <div style="display:flex; gap:8px;">
-                        <select id="pairSelect">
-                            <option value="ETH/USDC:USDC">ETH/USDC:USDC</option>
-                            <option value="BTC/USDC:USDC">BTC/USDC:USDC</option>
-                            <option value="SOL/USDC:USDC">SOL/USDC:USDC</option>
-                        </select>
-                        <button class="btn btn-secondary" onclick="switchPair()">Switch</button>
-                    </div>
+                    <select id="pairSelect" onchange="switchPair()">
+                        <option value="ETH/USDC:USDC">ETH/USDC:USDC (--)</option>
+                        <option value="BTC/USDC:USDC">BTC/USDC:USDC (--)</option>
+                        <option value="SOL/USDC:USDC">SOL/USDC:USDC (--)</option>
+                    </select>
                 </div>
             </div>
             <div class="grid" style="margin-top: 16px;">
@@ -560,14 +557,31 @@
         }
 
         // Connection Status / 连接状态
+        let lastConnectionCheckTime = 0;
+        const CONNECTION_CHECK_INTERVAL = 15000; // Check connection every 15 seconds / 每 15 秒检查一次连接
+        
         async function checkConnection() {
             // Prevent duplicate requests / 防止重复请求
             if (isCheckingConnection) return;
+            
+            // Throttle connection checks to avoid excessive API calls / 限制连接检查以避免过多 API 调用
+            const now = Date.now();
+            if (now - lastConnectionCheckTime < CONNECTION_CHECK_INTERVAL) {
+                return;
+            }
+            
             isCheckingConnection = true;
+            lastConnectionCheckTime = now;
             
             try {
+                // Get currently selected pair / 获取当前选中的交易对
+                const pairSelect = document.getElementById('pairSelect');
+                const selectedSymbol = pairSelect ? pairSelect.value : null;
+                
                 // Use Hyperliquid status API to check connection (faster than evaluation API)
                 // 使用 Hyperliquid 状态 API 检查连接（比评估 API 更快）
+                // If a specific symbol is selected, we'll update the status with that symbol's price
+                // 如果选择了特定交易对，我们将使用该交易对的价格更新状态
                 const res = await diagnosticFetch('/api/hyperliquid/status');
                 const data = await res.json();
                 
@@ -630,19 +644,41 @@
                     const errorMsg = data.error || 'Hyperliquid exchange not connected / Hyperliquid 交易所未连接';
                     detailsEl.innerHTML = `<span style="color:#991b1b;">${errorMsg}</span>`;
                 } else {
-                    // Connected
+                    // Connected - show price for currently selected pair / 已连接 - 显示当前选中交易对的价格
                     statusEl.className = 'status-badge status-connected';
                     statusEl.innerText = 'Connected / 已连接';
-                    // Convert USDT to USDC for Hyperliquid display (Hyperliquid uses USDC, not USDT)
-                    // 将 USDT 转换为 USDC 用于 Hyperliquid 显示（Hyperliquid 使用 USDC，不是 USDT）
-                    let symbol = data.symbol || 'N/A';
-                    if (symbol.includes('USDT')) {
-                        symbol = symbol.replace(/USDT/g, 'USDC');
+                    
+                    // Get currently selected symbol / 获取当前选中的交易对
+                    const pairSelect = document.getElementById('pairSelect');
+                    const selectedSymbol = pairSelect ? pairSelect.value : null;
+                    
+                    // Use selected symbol price if available, otherwise use status API price / 如果可用则使用选中交易对价格，否则使用状态 API 价格
+                    let displaySymbol = selectedSymbol || data.symbol || 'N/A';
+                    let displayPrice = null;
+                    
+                    // Try to get price from cache first / 先尝试从缓存获取价格
+                    if (selectedSymbol && pairPrices[selectedSymbol] !== null && pairPrices[selectedSymbol] !== undefined) {
+                        displayPrice = pairPrices[selectedSymbol];
+                    } else if (data.mid_price && data.mid_price > 0) {
+                        // Fallback to status API price / 回退到状态 API 价格
+                        displayPrice = data.mid_price;
+                    } else if (selectedSymbol) {
+                        // Try to fetch price for selected symbol / 尝试获取选中交易对的价格
+                        displayPrice = await getPairPrice(selectedSymbol);
                     }
-                    const price = data.mid_price || 0;
+                    
+                    // Convert USDT to USDC for Hyperliquid display / 将 USDT 转换为 USDC 用于 Hyperliquid 显示
+                    if (displaySymbol.includes('USDT')) {
+                        displaySymbol = displaySymbol.replace(/USDT/g, 'USDC');
+                    }
+                    
                     const balance = data.balance || 0;
+                    const priceText = displayPrice !== null && displayPrice > 0 
+                        ? `$${displayPrice.toFixed(2)}` 
+                        : '--';
+                    
                     detailsEl.innerHTML = `
-                        <div>Symbol: <strong>${symbol}</strong> | Price: <strong>$${price.toFixed(2)}</strong></div>
+                        <div>Symbol: <strong>${displaySymbol}</strong> | Price: <strong>${priceText}</strong></div>
                         <div style="margin-top:4px;">Balance: <strong>${balance.toFixed(2)} USDC</strong></div>
                     `;
                 }
@@ -861,9 +897,88 @@
             }
         }
 
+        // Price update interval (30 seconds) - balanced to avoid excessive API calls while keeping prices fresh
+        // 价格更新间隔（30秒）- 平衡避免过多 API 调用，同时保持价格最新
+        const PRICE_UPDATE_INTERVAL = 30000; // 30 seconds / 30 秒
+        let pairPrices = {}; // Cache for pair prices / 交易对价格缓存
+        
+        // Update prices for all trading pairs in the dropdown / 更新下拉列表中所有交易对的价格
+        async function updateAllPairPrices() {
+            try {
+                const pairSelect = document.getElementById('pairSelect');
+                if (!pairSelect) return;
+                
+                // Get all symbols from options / 从选项中获取所有交易对
+                const symbols = Array.from(pairSelect.options).map(opt => opt.value);
+                if (symbols.length === 0) return;
+                
+                // Fetch prices for all symbols at once / 一次性获取所有交易对的价格
+                const symbolsParam = symbols.map(s => encodeURIComponent(s)).join(',');
+                const res = await diagnosticFetch(`/api/hyperliquid/prices?symbols=${symbolsParam}`);
+                const data = await res.json();
+                
+                if (data.ok && data.prices) {
+                    // Update cache / 更新缓存
+                    pairPrices = { ...pairPrices, ...data.prices };
+                    
+                    // Update option text with prices / 使用价格更新选项文本
+                    Array.from(pairSelect.options).forEach(option => {
+                        const symbol = option.value;
+                        const baseSymbol = symbol.split('/')[0]; // Extract base symbol (e.g., "ETH" from "ETH/USDC:USDC")
+                        const price = data.prices[symbol];
+                        
+                        if (price !== null && price !== undefined && !isNaN(price)) {
+                            option.textContent = `${symbol} ($${price.toFixed(2)})`;
+                            // Store price in cache / 将价格存储在缓存中
+                            pairPrices[symbol] = price;
+                        } else {
+                            // If price not available, show cached price or "--" / 如果价格不可用，显示缓存价格或 "--"
+                            const cachedPrice = pairPrices[symbol];
+                            if (cachedPrice !== null && cachedPrice !== undefined) {
+                                option.textContent = `${symbol} ($${cachedPrice.toFixed(2)})`;
+                            } else {
+                                option.textContent = `${symbol} (--)`;
+                            }
+                        }
+                    });
+                }
+            } catch (err) {
+                console.warn('Failed to update pair prices / 更新交易对价格失败:', err);
+                // On error, keep existing prices in options / 出错时，保持选项中的现有价格
+            }
+        }
+        
+        // Get price for a specific symbol (from cache or fetch) / 获取特定交易对的价格（从缓存或获取）
+        async function getPairPrice(symbol) {
+            // Check cache first / 先检查缓存
+            if (pairPrices[symbol] !== null && pairPrices[symbol] !== undefined) {
+                return pairPrices[symbol];
+            }
+            
+            // If not in cache, fetch it / 如果不在缓存中，获取它
+            try {
+                const symbolsParam = encodeURIComponent(symbol);
+                const res = await diagnosticFetch(`/api/hyperliquid/prices?symbols=${symbolsParam}`);
+                const data = await res.json();
+                
+                if (data.ok && data.prices && data.prices[symbol] !== null && data.prices[symbol] !== undefined) {
+                    pairPrices[symbol] = data.prices[symbol];
+                    return data.prices[symbol];
+                }
+            } catch (err) {
+                console.warn(`Failed to fetch price for ${symbol} / 获取 ${symbol} 价格失败:`, err);
+            }
+            
+            return null;
+        }
+
         async function switchPair() {
             try {
                 const symbol = document.getElementById('pairSelect').value;
+                
+                // Immediately update price for the selected pair / 立即更新选中交易对的价格
+                await getPairPrice(symbol);
+                
                 // Use Hyperliquid-specific pair endpoint / 使用 Hyperliquid 特定交易对端点
                 const res = await diagnosticFetch('/api/hyperliquid/pair', {
                     method: 'POST',
@@ -886,6 +1001,9 @@
                 } else {
                     showMessage(controlMessage, `Switched to ${symbol} / 已切换到 ${symbol}`);
                 }
+                
+                // Refresh connection status to show new pair price / 刷新连接状态以显示新交易对价格
+                checkConnection();
                 
                 // Only refresh if connected
                 if (data.status === 'updated' && !data.warning) {
@@ -1470,6 +1588,15 @@
                     autoRefresh: true
                 });
             }
+            
+            // Load initial pair prices in dropdown / 在下拉列表中加载初始交易对价格
+            updateAllPairPrices();
+            
+            // Set up periodic price updates (balanced frequency to avoid excessive API calls) / 设置定期价格更新（平衡频率以避免过多 API 调用）
+            setInterval(updateAllPairPrices, PRICE_UPDATE_INTERVAL);
+            
+            // Also update connection status periodically to refresh selected pair price / 定期更新连接状态以刷新选中交易对价格
+            // This is already handled by checkConnection interval, but we ensure it uses the selected pair / 这已经由 checkConnection 间隔处理，但我们确保它使用选中的交易对
         });
     </script>
 </body>

@@ -9,7 +9,7 @@ Owner: Agent AI
 import json
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import Dict, List, Tuple
+from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 
@@ -186,51 +186,112 @@ class MultiLLMEvaluator:
         Returns:
             解析后的策略建议
         """
-        try:
-            clean_response = raw_response.strip()
+        clean_response = raw_response.strip()
 
-            if "```" in clean_response:
-                lines = clean_response.split("\n")
-                json_lines = []
-                in_json = False
-                for line in lines:
-                    stripped = line.strip()
-                    if stripped.startswith("```") and not in_json:
-                        in_json = True
-                        continue
-                    if stripped.startswith("```") and in_json:
-                        break
-                    if in_json:
-                        json_lines.append(line)
-                clean_response = "\n".join(json_lines).strip()
+        if "```" in clean_response:
+            lines = clean_response.split("\n")
+            json_lines = []
+            in_json = False
+            for line in lines:
+                stripped = line.strip()
+                if stripped.startswith("```") and not in_json:
+                    in_json = True
+                    continue
+                if stripped.startswith("```") and in_json:
+                    break
+                if in_json:
+                    json_lines.append(line)
+            clean_response = "\n".join(json_lines).strip()
 
-            data = json.loads(clean_response)
+        payload_candidates = [clean_response]
+        extracted_block = self._extract_json_block(clean_response)
+        if extracted_block and extracted_block not in payload_candidates:
+            payload_candidates.append(extracted_block)
 
-            return StrategyProposal(
-                recommended_strategy=data.get("recommended_strategy", "FixedSpread"),
-                spread=float(data.get("spread", 0.01)),
-                skew_factor=float(data.get("skew_factor", 100.0)),
-                quantity=float(data.get("quantity", 0.1)),
-                leverage=float(data.get("leverage", 1.0)),
-                reasoning=data.get("reasoning", ""),
-                confidence=float(data.get("confidence", 0.5)),
-                risk_level=data.get("risk_level", "medium"),
-                expected_return=float(data.get("expected_return", 0.0)),
-                provider_name=provider_name,
-                raw_response=raw_response,
-                parse_success=True,
-            )
+        for candidate in payload_candidates:
+            if not candidate:
+                continue
+            try:
+                data = json.loads(candidate)
+                return self._build_proposal_from_dict(
+                    data=data,
+                    provider_name=provider_name,
+                    raw_response=raw_response,
+                )
+            except (json.JSONDecodeError, KeyError, ValueError):
+                continue
 
-        except (json.JSONDecodeError, KeyError, ValueError) as e:
-            logger.warning(f"Failed to parse response from {provider_name}: {e}")
-            return StrategyProposal(
-                recommended_strategy="FixedSpread",
-                spread=0.01,
-                provider_name=provider_name,
-                raw_response=raw_response,
-                parse_success=False,
-                parse_error=str(e),
-            )
+        logger.warning(
+            f"Failed to parse response from {provider_name}: unable to extract valid JSON"
+        )
+        return StrategyProposal(
+            recommended_strategy="FixedSpread",
+            spread=0.01,
+            provider_name=provider_name,
+            raw_response=raw_response,
+            parse_success=False,
+            parse_error="Invalid JSON structure",
+        )
+
+    @staticmethod
+    def _extract_json_block(text: str) -> Optional[str]:
+        """
+        Extract the first balanced JSON object from text containing descriptive prose.
+        """
+        if "{" not in text or "}" not in text:
+            return None
+
+        brace_depth = 0
+        in_string = False
+        escape = False
+        json_start: Optional[int] = None
+
+        for idx, char in enumerate(text):
+            if in_string:
+                if escape:
+                    escape = False
+                    continue
+                if char == "\\":
+                    escape = True
+                elif char == '"':
+                    in_string = False
+                continue
+
+            if char == '"':
+                in_string = True
+                continue
+
+            if char == "{":
+                if brace_depth == 0:
+                    json_start = idx
+                brace_depth += 1
+            elif char == "}":
+                if brace_depth == 0:
+                    continue
+                brace_depth -= 1
+                if brace_depth == 0 and json_start is not None:
+                    return text[json_start : idx + 1]
+
+        return None
+
+    @staticmethod
+    def _build_proposal_from_dict(
+        data: Dict, provider_name: str, raw_response: str
+    ) -> StrategyProposal:
+        return StrategyProposal(
+            recommended_strategy=data.get("recommended_strategy", "FixedSpread"),
+            spread=float(data.get("spread", 0.01)),
+            skew_factor=float(data.get("skew_factor", 100.0)),
+            quantity=float(data.get("quantity", 0.1)),
+            leverage=float(data.get("leverage", 1.0)),
+            reasoning=data.get("reasoning", ""),
+            confidence=float(data.get("confidence", 0.5)),
+            risk_level=data.get("risk_level", "medium"),
+            expected_return=float(data.get("expected_return", 0.0)),
+            provider_name=provider_name,
+            raw_response=raw_response,
+            parse_success=True,
+        )
 
     def _run_simulation(
         self, proposal: StrategyProposal, context: MarketContext
@@ -694,10 +755,84 @@ class MultiLLMEvaluator:
             r for r in valid_results if r.provider_name in agreeing_providers
         ]
 
-        # Build consensus reasoning from agreeing models
-        # 从同意的模型中构建共识推理
+        # Build consensus reasoning from agreeing models with bilingual support
+        # 从同意的模型中构建共识推理，支持双语
+        def translate_reasoning_to_bilingual(text: str) -> str:
+            """
+            Translate English reasoning to bilingual format / 将英文推理翻译为双语格式
+            
+            Args:
+                text: English reasoning text / 英文推理文本
+                
+            Returns:
+                Bilingual text (English / Chinese) / 双语文本（英文 / 中文）
+            """
+            # Check if text already contains Chinese / 检查文本是否已包含中文
+            if any("\u4e00" <= char <= "\u9fff" for char in text):
+                return text  # Already bilingual / 已经是双语
+            
+            # Extract key information for Chinese translation / 提取关键信息用于中文翻译
+            import re
+            key_points = []
+            
+            # Note: Consensus info is already bilingual in combined_reasoning prefix
+            # 注意：共识信息在 combined_reasoning 前缀中已经是双语的
+            # Skip extracting consensus info here to avoid duplication
+            # 跳过提取共识信息以避免重复
+            
+            # Extract volatility info / 提取波动率信息
+            vol_matches = re.findall(r'(\d+\.?\d*)%', text)
+            if "volatility" in text.lower() and vol_matches:
+                # Check for 1 hour volatility / 检查 1 小时波动率
+                if ("1 hour" in text.lower() or "1h" in text.lower()) and len(vol_matches) > 0:
+                    key_points.append(f"1小时波动率 {vol_matches[0]}%")
+                # Check for 24 hours volatility / 检查 24 小时波动率
+                if ("24 hours" in text.lower() or "24h" in text.lower()):
+                    if len(vol_matches) > 1:
+                        key_points.append(f"24小时波动率 {vol_matches[1]}%")
+                    elif len(vol_matches) == 1 and "24" in text:
+                        key_points.append(f"24小时波动率 {vol_matches[0]}%")
+            
+            # Extract spread info / 提取价差信息
+            spread_match = re.search(r'(\d+\.?\d*)\s*bps', text)
+            if spread_match:
+                key_points.append(f"价差 {spread_match.group(1)} 基点")
+            
+            # Extract quantity info / 提取数量信息
+            qty_match = re.search(r'quantity of (\d+\.?\d*)', text)
+            if qty_match:
+                key_points.append(f"数量 {qty_match.group(1)}")
+            
+            # Extract leverage info / 提取杠杆信息
+            lev_match = re.search(r'(\d+\.?\d*)x', text)
+            if lev_match and "leverage" in text.lower():
+                key_points.append(f"杠杆 {lev_match.group(1)}倍")
+            
+            # Translate key concepts / 翻译关键概念
+            if "low volatility" in text.lower():
+                key_points.append("低波动环境")
+            if "stable funding rate" in text.lower():
+                key_points.append("稳定资金费率")
+            if "neutral position" in text.lower():
+                key_points.append("中性仓位")
+            if "low-risk" in text.lower() or "minimal exposure" in text.lower():
+                key_points.append("低风险策略")
+            if "optimal" in text.lower():
+                key_points.append("最优参数")
+            if "competitive" in text.lower():
+                key_points.append("保持竞争力")
+            
+            # Build bilingual text / 构建双语文本
+            if key_points:
+                chinese_summary = "。".join(key_points) + "。"
+                return f"{text} / {chinese_summary}"
+            else:
+                # Fallback: add general translation / 回退：添加通用翻译
+                return f"{text} / 基于市场分析的共识建议。"
+        
         combined_reasoning = (
-            f"Consensus from {len(agreeing_results)}/{len(valid_results)} models. "
+            f"Consensus from {len(agreeing_results)}/{len(valid_results)} models. / "
+            f"共识来自 {len(agreeing_results)}/{len(valid_results)} 个模型。"
         )
         if agreeing_results:
             # Extract non-empty reasoning from agreeing results
@@ -708,18 +843,19 @@ class MultiLLMEvaluator:
                 if r.proposal.reasoning and r.proposal.reasoning.strip()
             ]
             if reasons:
-                # Combine up to 3 reasoning statements
-                # 组合最多 3 个推理陈述
-                combined_reasoning += " | ".join(reasons[:3])
+                # Combine up to 3 reasoning statements and translate to bilingual
+                # 组合最多 3 个推理陈述并翻译为双语
+                combined_reasoning_text = " | ".join(reasons[:3])
+                combined_reasoning += translate_reasoning_to_bilingual(combined_reasoning_text)
             else:
                 # If no detailed reasoning available, add summary information
                 # 如果没有详细推理，添加摘要信息
                 if len(agreeing_results) == 1:
                     provider_name = agreeing_results[0].provider_name
-                    combined_reasoning += f"Based on {provider_name} recommendation."
+                    combined_reasoning += f"Based on {provider_name} recommendation. / 基于 {provider_name} 的建议。"
                 else:
                     provider_names = [r.provider_name for r in agreeing_results[:3]]
-                    combined_reasoning += f"Based on recommendations from: {', '.join(provider_names)}."
+                    combined_reasoning += f"Based on recommendations from: {', '.join(provider_names)}. / 基于以下建议：{', '.join(provider_names)}。"
 
         risk_levels = [r.proposal.risk_level for r in agreeing_results]
         if risk_levels:

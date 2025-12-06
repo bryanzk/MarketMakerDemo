@@ -295,9 +295,9 @@ class HyperliquidClient:
 
         # Network timeouts and retry config tuned to return quickly for UI health checks
         # 网络超时和重试配置，避免阻塞前端健康检查
-        self.request_timeout = 8  # seconds / 秒
+        self.request_timeout = 15  # seconds - increased for order placement / 秒 - 增加超时时间以支持下单
         self.max_retries = 2
-        self.retry_delays = [1, 2]  # Backoff between attempts / 尝试间的退避时间
+        self.retry_delays = [1, 2, 3]  # Backoff between attempts / 尝试间的退避时间
         
         # Rate limiter for API requests / API 请求速率限制器
         # Hyperliquid REST API limit: ~1200 weight per minute per IP
@@ -709,6 +709,26 @@ class HyperliquidClient:
                     }
                     logger.error(f"HTTP error: {e}")
                     return None
+            except requests.exceptions.Timeout as e:
+                # Handle timeout specifically / 专门处理超时
+                self.is_connected = False
+                self.last_api_error = {
+                    "type": "timeout_error",
+                    "message": f"Request timeout after {self.request_timeout}s: {str(e)}",
+                }
+                logger.warning(
+                    f"Request timeout for {endpoint} (attempt {attempt + 1}/{max_retries + 1}): {e}"
+                )
+                # Retry if we haven't exceeded max retries / 如果未超过最大重试次数则重试
+                if attempt < max_retries:
+                    retry_delay = self.retry_delays[min(attempt, len(self.retry_delays) - 1)]
+                    logger.info(f"Retrying after {retry_delay}s...")
+                    time.sleep(retry_delay)
+                    continue
+                else:
+                    # Return None after max retries / 达到最大重试次数后返回 None
+                    logger.error(f"Request timeout after {max_retries + 1} attempts for {endpoint}")
+                    return None
             except RequestsConnectionError as e:
                 self.is_connected = False
                 self.last_api_error = {
@@ -716,14 +736,28 @@ class HyperliquidClient:
                     "message": f"Connection error: {str(e)}",
                 }
                 logger.error(f"Connection error: {e}")
-                raise ConnectionError(f"Connection failed: {str(e)}") from e
+                # Retry connection errors if we haven't exceeded max retries / 如果未超过最大重试次数则重试连接错误
+                if attempt < max_retries:
+                    retry_delay = self.retry_delays[min(attempt, len(self.retry_delays) - 1)]
+                    logger.info(f"Retrying connection after {retry_delay}s...")
+                    time.sleep(retry_delay)
+                    continue
+                else:
+                    raise ConnectionError(f"Connection failed: {str(e)}") from e
             except Exception as e:
                 self.last_api_error = {
                     "type": "unknown_error",
                     "message": f"Unexpected error: {str(e)}",
                 }
-                logger.error(f"Unexpected error: {e}")
-                return None
+                logger.error(f"Unexpected error: {e}", exc_info=True)
+                # Retry unknown errors if we haven't exceeded max retries / 如果未超过最大重试次数则重试未知错误
+                if attempt < max_retries:
+                    retry_delay = self.retry_delays[min(attempt, len(self.retry_delays) - 1)]
+                    logger.info(f"Retrying after {retry_delay}s due to unexpected error...")
+                    time.sleep(retry_delay)
+                    continue
+                else:
+                    return None
 
         # If we get here, all retries failed / 如果到达这里，所有重试都失败了
         return None
@@ -1695,12 +1729,14 @@ class HyperliquidClient:
                 # Build order payload
                 order_payload = self._build_order_payload(order)
 
-                # Make API request
+                # Make API request with increased retries for order placement
+                # 下单时增加重试次数以提高成功率
                 response = self._make_request(
                     method="POST",
                     endpoint="/exchange",
                     data=order_payload,
                     public=False,
+                    max_retries=3,  # Increased retries for order placement / 增加下单重试次数
                 )
 
                 if not response:

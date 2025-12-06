@@ -16,19 +16,19 @@ class TestGeminiProvider:
                 with patch("google.generativeai.GenerativeModel") as mock_model:
                     provider = GeminiProvider()
                     mock_config.assert_called_with(api_key="test_key")
-                    mock_model.assert_called_with("gemini-1.5-flash")
+                    mock_model.assert_called_with("gemini-3-pro")
 
     def test_init_respects_env_model_preference(self):
         """Should pick model specified via GEMINI_MODEL env"""
         with patch.dict(
             "os.environ",
-            {"GEMINI_API_KEY": "test_key", "GEMINI_MODEL": "gemini-3-pro"},
+            {"GEMINI_API_KEY": "test_key", "GEMINI_MODEL": "gemini-1.5-flash"},
             clear=True,
         ):
             with patch("google.generativeai.configure"):
                 with patch("google.generativeai.GenerativeModel") as mock_model:
                     GeminiProvider()
-                    mock_model.assert_called_with("gemini-3-pro")
+                    mock_model.assert_called_with("gemini-1.5-flash")
 
     def test_init_failure_no_key(self):
         """Test initialization failure when API key is missing"""

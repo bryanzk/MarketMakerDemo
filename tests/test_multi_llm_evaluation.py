@@ -185,6 +185,33 @@ class TestUSML001_GetMultiModelSuggestions:
         assert results[0].proposal.parse_success is False
         assert results[0].proposal.spread == 0.01  # 默认值
 
+    def test_AC7_parse_json_with_additional_text(self, sample_market_context):
+        """
+        验收标准: 能解析包含额外文本的 JSON（例如 Gemini 先给解释再给 JSON）
+        """
+        from src.ai.evaluation.evaluator import MultiLLMEvaluator
+
+        provider = Mock()
+        provider.name = "Gemini (gemini-3-pro)"
+        provider.generate.return_value = """
+        Here is my recommendation based on current funding environment:
+        {
+            "recommended_strategy": "FundingRate",
+            "spread": 0.013,
+            "skew_factor": 140,
+            "confidence": 0.82,
+            "reasoning": "Positive funding rate with moderate volatility"
+        }
+        Let me know if you need more details.
+        """
+
+        evaluator = MultiLLMEvaluator(providers=[provider], simulation_steps=10)
+        results = evaluator.evaluate(sample_market_context)
+
+        assert results[0].proposal.parse_success is True
+        assert results[0].proposal.spread == 0.013
+        assert results[0].proposal.skew_factor == 140
+
 
 # ============================================================================
 # US-ML-002: 交易员比较模型建议的模拟表现

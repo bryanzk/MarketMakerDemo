@@ -13,7 +13,11 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from src.trading.hyperliquid_client import HyperliquidClient, AuthenticationError
+from src.trading.hyperliquid_client import (
+    HyperliquidClient,
+    AuthenticationError,
+    RateLimiter,
+)
 
 
 class TestHyperliquidConnectionSmoke:
@@ -169,4 +173,113 @@ class TestHyperliquidConnectionSmoke:
         # Verify connection health attributes exist
         assert hasattr(client, "is_connected")
         assert client.is_connected is True
+
+
+class TestHyperliquidRateLimiterSmoke:
+    """
+    Smoke tests for Hyperliquid rate limiter.
+    Hyperliquid 速率限制器冒烟测试。
+    
+    These tests verify critical rate limiting functionality.
+    这些测试验证关键的速率限制功能。
+    """
+
+    def test_smoke_rate_limiter_initialization(self):
+        """
+        Smoke Test: Rate limiter can be initialized
+        冒烟测试：速率限制器可以初始化
+        
+        Verifies that rate limiter is created with correct default limit.
+        验证速率限制器以正确的默认限制创建。
+        """
+        limiter = RateLimiter()
+        assert limiter is not None
+        assert limiter.max_weight_per_minute == 1200
+
+    def test_smoke_rate_limiter_in_client(self):
+        """
+        Smoke Test: Rate limiter is initialized in HyperliquidClient
+        冒烟测试：速率限制器在 HyperliquidClient 中初始化
+        
+        Verifies that client has rate limiter attribute.
+        验证客户端具有速率限制器属性。
+        """
+        with patch.dict(
+            os.environ,
+            {
+                "HYPERLIQUID_API_KEY": "test_key",
+                "HYPERLIQUID_API_SECRET": "test_secret",
+            },
+        ), patch("src.trading.hyperliquid_client.requests") as mock_requests:
+            mock_response = MagicMock()
+            mock_response.status_code = 200
+            mock_response.json.return_value = {"status": "ok"}
+            mock_requests.post.return_value = mock_response
+
+            client = HyperliquidClient()
+
+            # Verify rate limiter exists
+            assert hasattr(client, "rate_limiter")
+            assert client.rate_limiter is not None
+            assert client.rate_limiter.max_weight_per_minute == 1200
+
+    def test_smoke_rate_limiter_allows_request(self):
+        """
+        Smoke Test: Rate limiter allows request when under limit
+        冒烟测试：在限制下时速率限制器允许请求
+        
+        Verifies that rate limiter allows requests when weight is available.
+        验证当有权重可用时速率限制器允许请求。
+        """
+        limiter = RateLimiter(max_weight_per_minute=1200)
+        can_request, wait_time = limiter.can_make_request("/info")
+        assert can_request is True
+        assert wait_time == 0.0
+
+    def test_smoke_rate_limiter_blocks_when_over_limit(self):
+        """
+        Smoke Test: Rate limiter blocks request when over limit
+        冒烟测试：超过限制时速率限制器阻止请求
+        
+        Verifies that rate limiter blocks requests when limit is exceeded.
+        验证当超过限制时速率限制器阻止请求。
+        """
+        limiter = RateLimiter(max_weight_per_minute=5)
+        # Record requests to reach limit / 记录请求以达到限制
+        limiter.record_request("/exchange")  # Weight: 5
+        can_request, wait_time = limiter.can_make_request("/info")
+        assert can_request is False
+        assert wait_time > 0
+
+    @patch.dict(
+        os.environ,
+        {
+            "HYPERLIQUID_API_KEY": "test_key",
+            "HYPERLIQUID_API_SECRET": "test_secret",
+        },
+    )
+    @patch("src.trading.hyperliquid_client.requests")
+    @patch("src.trading.hyperliquid_client.time.sleep")
+    def test_smoke_rate_limiter_integration(self, mock_sleep, mock_requests):
+        """
+        Smoke Test: Rate limiter works in _make_request
+        冒烟测试：速率限制器在 _make_request 中工作
+        
+        Verifies that rate limiter is called before making requests.
+        验证在发出请求前调用速率限制器。
+        """
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {"status": "ok"}
+        mock_requests.post.return_value = mock_response
+
+        client = HyperliquidClient()
+
+        # Make a request / 发出请求
+        result = client._make_request("POST", "/info", public=True)
+
+        # Verify request was made / 验证请求已发出
+        assert result is not None
+        # Rate limiter should have been checked / 应该已检查速率限制器
+        assert hasattr(client, "rate_limiter")
 

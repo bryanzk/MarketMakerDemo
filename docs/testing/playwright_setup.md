@@ -106,3 +106,4 @@ playwright install chromium
 - [Playwright Documentation](https://playwright.dev/python/)
 - [Playwright Python API](https://playwright.dev/python/docs/api/class-playwright)
 
+

@@ -246,6 +246,17 @@
             transition: width 0.3s;
         }
     </style>
+    <!-- Error handling styles / 错误处理样式 -->
+    <link rel="stylesheet" href="/static/error_styles.css">
+    <link rel="stylesheet" href="/static/debug_panel.css">
+    <link rel="stylesheet" href="/static/validation.css">
+    <link rel="stylesheet" href="/static/error_history.css">
+    <!-- API Diagnostics and Error Handler / API 诊断和错误处理 -->
+    <script src="/static/api_diagnostics.js"></script>
+    <script src="/static/error_handler.js"></script>
+    <script src="/static/debug_panel.js"></script>
+    <script src="/static/validation.js"></script>
+    <script src="/static/error_history.js"></script>
 </head>
 
 <body>
@@ -513,6 +524,11 @@
                 </div>
             </div>
         </section>
+
+        <!-- Error History Panel / 错误历史面板 -->
+        <section class="panel">
+            <div id="errorHistoryPanel"></div>
+        </section>
     </div>
 
     <script>
@@ -552,7 +568,7 @@
             try {
                 // Use Hyperliquid status API to check connection (faster than evaluation API)
                 // 使用 Hyperliquid 状态 API 检查连接（比评估 API 更快）
-                const res = await fetch('/api/hyperliquid/status');
+                const res = await diagnosticFetch('/api/hyperliquid/status');
                 const data = await res.json();
                 
                 const statusEl = document.getElementById('connectionStatus');
@@ -669,7 +685,7 @@
                 }
                 
                 // Get Hyperliquid-specific status / 获取 Hyperliquid 特定状态
-                const res = await fetch('/api/hyperliquid/status');
+                const res = await diagnosticFetch('/api/hyperliquid/status');
                 if (!res.ok) {
                     throw new Error(`HTTP ${res.status}: ${res.statusText}`);
                 }
@@ -769,7 +785,7 @@
         async function loadStatus() {
             try {
                 // Get Hyperliquid-specific status / 获取 Hyperliquid 特定状态
-                const res = await fetch('/api/hyperliquid/status');
+                const res = await diagnosticFetch('/api/hyperliquid/status');
                 const data = await res.json();
                 
                 if (data.error) {
@@ -806,7 +822,7 @@
                     strategy_id: 'default',
                 };
                 // Use Hyperliquid-specific config endpoint / 使用 Hyperliquid 特定配置端点
-                const res = await fetch('/api/hyperliquid/config', {
+                const res = await diagnosticFetch('/api/hyperliquid/config', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(payload),
@@ -828,7 +844,7 @@
                 }
                 
                 // Use Hyperliquid-specific leverage endpoint / 使用 Hyperliquid 特定杠杆端点
-                const res = await fetch('/api/hyperliquid/leverage', {
+                const res = await diagnosticFetch('/api/hyperliquid/leverage', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(leverage),
@@ -849,7 +865,7 @@
             try {
                 const symbol = document.getElementById('pairSelect').value;
                 // Use Hyperliquid-specific pair endpoint / 使用 Hyperliquid 特定交易对端点
-                const res = await fetch('/api/hyperliquid/pair', {
+                const res = await diagnosticFetch('/api/hyperliquid/pair', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ symbol }),
@@ -1200,7 +1216,7 @@
             simulateProgress(); // Start progress simulation / 启动进度模拟
 
             try {
-                const res = await fetch('/api/evaluation/run', {
+                const res = await diagnosticFetch('/api/evaluation/run', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ 
@@ -1249,7 +1265,7 @@
                     exchange: 'hyperliquid'  // Always use hyperliquid exchange
                 };
                 if (providerName) payload.provider_name = providerName;
-                const res = await fetch('/api/evaluation/apply', {
+                const res = await diagnosticFetch('/api/evaluation/apply', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(payload),
@@ -1266,7 +1282,7 @@
         async function startBotWithLLMSuggestion() {
             try {
                 await applyEvaluation('consensus');
-                const res = await fetch('/api/control?action=start', {
+                const res = await diagnosticFetch('/api/control?action=start', {
                     method: 'POST',
                 });
                 const data = await res.json();
@@ -1295,7 +1311,7 @@
                 }
                 
                 // Get Hyperliquid-specific status / 获取 Hyperliquid 特定状态
-                const res = await fetch('/api/hyperliquid/status');
+                const res = await diagnosticFetch('/api/hyperliquid/status');
                 if (!res.ok) {
                     throw new Error(`HTTP ${res.status}: ${res.statusText}`);
                 }
@@ -1378,7 +1394,7 @@
                 }
                 
                 // Use Hyperliquid-specific cancel order endpoint / 使用 Hyperliquid 特定取消订单端点
-                const res = await fetch('/api/hyperliquid/cancel-order', {
+                const res = await diagnosticFetch('/api/hyperliquid/cancel-order', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(orderId),
@@ -1446,6 +1462,14 @@
             refreshPosition();
             refreshOrders();
             startAutoRefresh();
+            
+            // Initialize Error History Panel / 初始化错误历史面板
+            if (window.ErrorHistoryPanel) {
+                new ErrorHistoryPanel('errorHistoryPanel', {
+                    refreshInterval: 30000, // 30 seconds / 30 秒
+                    autoRefresh: true
+                });
+            }
         });
     </script>
 </body>

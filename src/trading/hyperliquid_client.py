@@ -13,6 +13,8 @@ import json
 import logging
 import os
 import time
+from collections import deque
+from threading import Lock
 from typing import Dict, List, Optional
 
 import certifi
@@ -69,6 +71,126 @@ class InvalidOrderError(Exception):
     def __init__(self, message: str):
         self.message = message
         super().__init__(message)
+
+
+class RateLimiter:
+    """
+    Rate limiter for Hyperliquid API requests / Hyperliquid API 请求速率限制器
+    
+    Implements weight-based rate limiting per Hyperliquid's restrictions:
+    - REST: ~1200 weight per minute per IP
+    实现基于权重的速率限制，符合 Hyperliquid 的限制：
+    - REST：每个 IP 每分钟约 1200 权重
+    """
+
+    def __init__(self, max_weight_per_minute: int = 1200):
+        """
+        Initialize rate limiter / 初始化速率限制器
+        
+        Args:
+            max_weight_per_minute: Maximum weight allowed per minute (default: 1200)
+                                  每分钟允许的最大权重（默认：1200）
+        """
+        self.max_weight_per_minute = max_weight_per_minute
+        self.weight_history = deque()  # Store (timestamp, weight) tuples / 存储 (时间戳, 权重) 元组
+        self.lock = Lock()
+        
+        # Default weights for common endpoints / 常见端点的默认权重
+        # Note: Hyperliquid doesn't publish exact weights, so we use conservative estimates
+        # 注意：Hyperliquid 未发布确切权重，因此我们使用保守估计
+        self.endpoint_weights = {
+            "/info": 1,  # Public info endpoint / 公共信息端点
+            "/exchange": 5,  # Exchange operations (orders, positions) / 交易所操作（订单、仓位）
+            "/l2_snapshot": 2,  # Market data snapshot / 市场数据快照
+            "/candle_snapshot": 3,  # Candle data / K线数据
+        }
+    
+    def get_endpoint_weight(self, endpoint: str) -> int:
+        """
+        Get weight for an endpoint / 获取端点的权重
+        
+        Args:
+            endpoint: API endpoint path / API 端点路径
+            
+        Returns:
+            Weight value (default: 5 for unknown endpoints) / 权重值（未知端点默认：5）
+        """
+        # Check exact match first / 首先检查精确匹配
+        if endpoint in self.endpoint_weights:
+            return self.endpoint_weights[endpoint]
+        
+        # Check if endpoint starts with known patterns / 检查端点是否以已知模式开头
+        for pattern, weight in self.endpoint_weights.items():
+            if endpoint.startswith(pattern):
+                return weight
+        
+        # Default weight for unknown endpoints (conservative) / 未知端点的默认权重（保守）
+        return 5
+    
+    def _cleanup_old_weights(self, current_time: float):
+        """
+        Remove weights older than 1 minute / 删除超过 1 分钟的权重
+        
+        Args:
+            current_time: Current timestamp / 当前时间戳
+        """
+        cutoff_time = current_time - 60.0  # 1 minute ago / 1 分钟前
+        while self.weight_history and self.weight_history[0][0] < cutoff_time:
+            self.weight_history.popleft()
+    
+    def get_current_weight(self) -> int:
+        """
+        Get total weight used in the last minute / 获取过去 1 分钟内使用的总权重
+        
+        Returns:
+            Total weight used / 使用的总权重
+        """
+        with self.lock:
+            current_time = time.time()
+            self._cleanup_old_weights(current_time)
+            return sum(weight for _, weight in self.weight_history)
+    
+    def can_make_request(self, endpoint: str) -> tuple[bool, float]:
+        """
+        Check if request can be made without exceeding rate limit / 检查是否可以在不超过速率限制的情况下发出请求
+        
+        Args:
+            endpoint: API endpoint path / API 端点路径
+            
+        Returns:
+            Tuple of (can_make_request, wait_time_seconds) / （可以发出请求，等待时间（秒））元组
+        """
+        with self.lock:
+            current_time = time.time()
+            self._cleanup_old_weights(current_time)
+            
+            weight = self.get_endpoint_weight(endpoint)
+            current_weight = sum(w for _, w in self.weight_history)
+            
+            # Check if adding this weight would exceed limit / 检查添加此权重是否会超过限制
+            if current_weight + weight <= self.max_weight_per_minute:
+                return True, 0.0
+            
+            # Calculate wait time based on oldest weight / 根据最旧的权重计算等待时间
+            if self.weight_history:
+                oldest_time = self.weight_history[0][0]
+                wait_time = 60.0 - (current_time - oldest_time)
+                return False, max(0.0, wait_time)
+            
+            return True, 0.0
+    
+    def record_request(self, endpoint: str):
+        """
+        Record a request and its weight / 记录请求及其权重
+        
+        Args:
+            endpoint: API endpoint path / API 端点路径
+        """
+        with self.lock:
+            current_time = time.time()
+            weight = self.get_endpoint_weight(endpoint)
+            self.weight_history.append((current_time, weight))
+            self._cleanup_old_weights(current_time)
 
 
 class HyperliquidClient:
@@ -163,6 +285,11 @@ class HyperliquidClient:
         # Retry configuration
         self.max_retries = 3
         self.retry_delays = [1, 2, 4]  # Exponential backoff: 1s, 2s, 4s
+        
+        # Rate limiter for API requests / API 请求速率限制器
+        # Hyperliquid REST API limit: ~1200 weight per minute per IP
+        # Hyperliquid REST API 限制：每个 IP 每分钟约 1200 权重
+        self.rate_limiter = RateLimiter(max_weight_per_minute=1200)
 
         # Connect and authenticate
         # Note: Use requests module directly for test compatibility
@@ -281,14 +408,13 @@ class HyperliquidClient:
                     logger.info(f"Retrying in {delay}s...")
                     time.sleep(delay)
                 else:
+                    # Keep error message concise - details will be in error response details field
+                    # 保持错误消息简洁 - 详细信息将在错误响应的 details 字段中
                     error_msg = (
                         f"Failed to connect to Hyperliquid API after {max_retries} attempts. "
-                        f"Network error: {str(e)}. "
-                        f"Base URL: {self.base_url}. "
-                        f"连接 Hyperliquid API 失败，已重试 {max_retries} 次。网络错误: {str(e)}。"
-                        f"基础 URL: {self.base_url}。"
+                        f"Base URL: {self.base_url}."
                     )
-                    logger.error(error_msg)
+                    logger.error(f"{error_msg} Network error: {str(e)}")
                     raise ConnectionError(error_msg) from e
             except RequestException as e:
                 # Check if it's an HTTP error with 401 status
@@ -331,18 +457,18 @@ class HyperliquidClient:
                     logger.info(f"Retrying in {delay}s...")
                     time.sleep(delay)
                 else:
+                    # Keep error message concise - details will be in error response details field
+                    # 保持错误消息简洁 - 详细信息将在错误响应的 details 字段中
+                    error_msg = (
+                        f"Failed to connect to Hyperliquid API after {max_retries} attempts. "
+                        f"Base URL: {self.base_url}."
+                    )
                     error_details = f"Base URL: {self.base_url}"
                     if status_code:
                         error_details += f", Status Code: {status_code}"
                     if response_text:
                         error_details += f", Response: {response_text[:200]}"
-
-                    error_msg = (
-                        f"Failed to connect to Hyperliquid API after {max_retries} attempts. "
-                        f"Error: {str(e)}. {error_details}. "
-                        f"连接 Hyperliquid API 失败，已重试 {max_retries} 次。错误: {str(e)}。{error_details}。"
-                    )
-                    logger.error(error_msg)
+                    logger.error(f"{error_msg} Error: {str(e)}. {error_details}")
                     raise ConnectionError(error_msg) from e
             except Exception as e:
                 # Check if it's an HTTP error with 401 status
@@ -376,21 +502,20 @@ class HyperliquidClient:
                     logger.info(f"Retrying in {delay}s...")
                     time.sleep(delay)
                 else:
+                    # Keep error message concise - details will be in error response details field
+                    # 保持错误消息简洁 - 详细信息将在错误响应的 details 字段中
                     error_msg = (
-                        f"Unexpected error connecting to Hyperliquid API: {type(e).__name__}: {str(e)}. "
-                        f"Base URL: {self.base_url}. "
-                        f"连接 Hyperliquid API 时发生意外错误: {type(e).__name__}: {str(e)}。"
-                        f"基础 URL: {self.base_url}。"
+                        f"Unexpected error connecting to Hyperliquid API: {type(e).__name__}. "
+                        f"Base URL: {self.base_url}."
                     )
-                    logger.error(error_msg, exc_info=True)
+                    logger.error(f"{error_msg} Error: {str(e)}", exc_info=True)
                     raise ConnectionError(error_msg) from e
 
         # If we get here, all retries failed (should not reach here due to raises above)
         # 如果到达这里，所有重试都失败了（由于上面的 raise，不应该到达这里）
         error_msg = (
             f"Failed to connect to Hyperliquid API after {max_retries} attempts. "
-            f"Base URL: {self.base_url}. "
-            f"连接 Hyperliquid API 失败，已重试 {max_retries} 次。基础 URL: {self.base_url}。"
+            f"Base URL: {self.base_url}."
         )
         logger.error(error_msg)
         raise ConnectionError(error_msg)
@@ -444,6 +569,16 @@ class HyperliquidClient:
         except (ImportError, AttributeError):
             is_mocked = False
 
+        # Check rate limit before making request / 在发出请求前检查速率限制
+        can_request, wait_time = self.rate_limiter.can_make_request(endpoint)
+        if not can_request:
+            logger.warning(
+                f"Rate limit approaching. Waiting {wait_time:.1f}s before request to {endpoint}. "
+                f"当前权重: {self.rate_limiter.get_current_weight()}/{self.rate_limiter.max_weight_per_minute}. "
+                f"速率限制接近。等待 {wait_time:.1f} 秒后再请求 {endpoint}。"
+            )
+            time.sleep(wait_time)
+        
         # Retry logic for rate limit errors / 速率限制错误的重试逻辑
         for attempt in range(max_retries + 1):
             try:
@@ -468,6 +603,9 @@ class HyperliquidClient:
                 response.raise_for_status()
                 self.last_successful_call = time.time()
                 self.is_connected = True
+                
+                # Record successful request for rate limiting / 记录成功请求以进行速率限制
+                self.rate_limiter.record_request(endpoint)
 
                 if response.content:
                     return response.json()

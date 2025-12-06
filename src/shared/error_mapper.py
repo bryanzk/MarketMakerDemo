@@ -417,6 +417,29 @@ class ErrorMapper:
         Returns:
             Tuple of (English message, Chinese message) / （英文消息，中文消息）元组
         """
+        # For connection errors, extract concise message (details go in details field)
+        # 对于连接错误，提取简洁消息（详细信息放在 details 字段中）
+        if error_type == ErrorType.CONNECTION:
+            # Extract core message before "Base URL" or similar details
+            # 在 "Base URL" 或类似详细信息之前提取核心消息
+            if "Base URL:" in error_message:
+                message_en = error_message.split("Base URL:")[0].strip()
+                # Remove trailing period if present / 如果存在则删除尾随句号
+                if message_en.endswith("."):
+                    message_en = message_en[:-1]
+            elif "基础 URL:" in error_message:
+                message_en = error_message.split("基础 URL:")[0].strip()
+                if message_en.endswith("。"):
+                    message_en = message_en[:-1]
+            else:
+                # If message is too long, use default / 如果消息过长，使用默认值
+                if len(error_message) > 100:
+                    message_en = "Connection failed"
+                else:
+                    message_en = error_message
+            message_zh = cls._translate_message(message_en, error_type)
+            return (message_en, message_zh)
+
         # If message already contains Chinese, try to extract / 如果消息已包含中文，尝试提取
         if any("\u4e00" <= char <= "\u9fff" for char in error_message):
             # Try to split bilingual message / 尝试拆分双语消息
@@ -444,6 +467,15 @@ class ErrorMapper:
         Returns:
             Chinese error message / 中文错误消息
         """
+        # For connection errors, provide concise translation / 对于连接错误，提供简洁翻译
+        if error_type == ErrorType.CONNECTION:
+            if "Failed to connect" in message or "connection failed" in message.lower():
+                return "连接失败"
+            elif "after" in message.lower() and "attempts" in message.lower():
+                return "连接失败，已重试多次"
+            else:
+                return "连接错误"
+
         # Simple keyword-based translation / 基于关键字的简单翻译
         translations = {
             "authentication failed": "认证失败",

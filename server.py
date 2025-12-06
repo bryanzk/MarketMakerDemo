@@ -2094,23 +2094,84 @@ async def apply_evaluation(request: EvaluationApplyRequest):
 
         # Apply configuration
         # 应用配置
-        config_update = ConfigUpdate(
-            spread=proposal.spread * 100,  # Convert to percentage
-            quantity=proposal.quantity,
-            strategy_type=strategy_type,
-            strategy_id="default",
-            skew_factor=proposal.skew_factor,
-        )
+        # For Hyperliquid, use the dedicated endpoint that ensures instance creation
+        # 对于 Hyperliquid，使用专用端点确保实例创建
+        if exchange_name == "hyperliquid":
+            from src.trading.hyperliquid_client import HyperliquidClient
+            
+            # Ensure Hyperliquid exchange is connected
+            # 确保 Hyperliquid 交易所已连接
+            exchange = get_exchange_by_name("hyperliquid")
+            if not exchange or not exchange.is_connected:
+                return {
+                    "status": "error",
+                    "error": "Hyperliquid exchange not connected / Hyperliquid 交易所未连接",
+                    "exchange": exchange_name,
+                }
+            
+            # Find or create Hyperliquid strategy instance
+            # 查找或创建 Hyperliquid 策略实例
+            hyperliquid_instance = None
+            for instance_id, instance in bot_engine.strategy_instances.items():
+                if isinstance(instance.exchange, HyperliquidClient):
+                    hyperliquid_instance = instance
+                    break
+            
+            if not hyperliquid_instance:
+                # Create a new instance for Hyperliquid
+                # 为 Hyperliquid 创建新实例
+                success = bot_engine.add_strategy_instance(
+                    "hyperliquid",
+                    strategy_type,
+                    symbol=exchange.symbol if hasattr(exchange, "symbol") else None,
+                )
+                if success:
+                    hyperliquid_instance = bot_engine.strategy_instances.get("hyperliquid")
+                    # Replace the default BinanceClient with HyperliquidClient
+                    # 用 HyperliquidClient 替换默认的 BinanceClient
+                    if hyperliquid_instance:
+                        hyperliquid_instance.exchange = exchange
+                        hyperliquid_instance.use_real_exchange = True
+                        logger.info(
+                            f"Created Hyperliquid strategy instance with exchange connection"
+                        )
+            
+            if not hyperliquid_instance:
+                return {
+                    "status": "error",
+                    "error": "Failed to get or create Hyperliquid strategy instance / 无法获取或创建 Hyperliquid 策略实例",
+                    "exchange": exchange_name,
+                }
+            
+            # Update strategy parameters
+            # 更新策略参数
+            new_spread = proposal.spread
+            hyperliquid_instance.strategy.spread = new_spread
+            hyperliquid_instance.strategy.quantity = proposal.quantity
+            if hasattr(hyperliquid_instance.strategy, "skew_factor") and proposal.skew_factor:
+                hyperliquid_instance.strategy.skew_factor = proposal.skew_factor
+            
+            config_result = {"status": "updated"}
+        else:
+            # For other exchanges (e.g., binance), use the standard update_config
+            # 对于其他交易所（例如 binance），使用标准的 update_config
+            config_update = ConfigUpdate(
+                spread=proposal.spread * 100,  # Convert to percentage
+                quantity=proposal.quantity,
+                strategy_type=strategy_type,
+                strategy_id="default",
+                skew_factor=proposal.skew_factor,
+            )
 
-        config_result = await update_config(config_update)
-        if "error" in config_result:
-            return {
-                "status": "error",
-                "error": config_result.get(
-                    "error", "Failed to apply configuration / 应用配置失败"
-                ),
-                "exchange": exchange_name,
-            }
+            config_result = await update_config(config_update)
+            if "error" in config_result:
+                return {
+                    "status": "error",
+                    "error": config_result.get(
+                        "error", "Failed to apply configuration / 应用配置失败"
+                    ),
+                    "exchange": exchange_name,
+                }
 
         # Apply leverage if provided
         # 如果提供了杠杆，应用杠杆

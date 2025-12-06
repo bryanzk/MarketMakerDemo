@@ -117,7 +117,9 @@ class TestRateLimiterCanMakeRequest:
         """Test can make request when at limit / 测试在限制处可以发出请求"""
         limiter = RateLimiter(max_weight_per_minute=5)
         limiter.record_request("/exchange")  # Weight: 5, at limit
-        can_request, wait_time = limiter.can_make_request("/info")
+        # Use larger max_wait_time to allow wait time calculation
+        # 使用更大的 max_wait_time 以允许等待时间计算
+        can_request, wait_time = limiter.can_make_request("/info", max_wait_time=60.0)
         # Should not allow another request / 不应允许另一个请求
         assert can_request is False
         assert wait_time > 0
@@ -127,7 +129,9 @@ class TestRateLimiterCanMakeRequest:
         limiter = RateLimiter(max_weight_per_minute=5)
         limiter.record_request("/exchange")  # Weight: 5
         limiter.record_request("/exchange")  # Weight: 5, total: 10 (over limit)
-        can_request, wait_time = limiter.can_make_request("/info")
+        # Use larger max_wait_time to allow wait time calculation
+        # 使用更大的 max_wait_time 以允许等待时间计算
+        can_request, wait_time = limiter.can_make_request("/info", max_wait_time=60.0)
         assert can_request is False
         assert wait_time > 0
 
@@ -138,7 +142,9 @@ class TestRateLimiterCanMakeRequest:
         old_time = time.time() - 30
         limiter.weight_history.append((old_time, 5))
         
-        can_request, wait_time = limiter.can_make_request("/info")
+        # Use larger max_wait_time to allow wait time calculation
+        # 使用更大的 max_wait_time 以允许等待时间计算
+        can_request, wait_time = limiter.can_make_request("/info", max_wait_time=60.0)
         assert can_request is False
         # Should wait approximately 30 seconds (60 - 30) / 应该等待大约 30 秒 (60 - 30)
         assert 25 <= wait_time <= 35  # Allow some tolerance / 允许一些容差
@@ -153,7 +159,9 @@ class TestRateLimiterCanMakeRequest:
         # Record request 45 seconds ago / 记录 45 秒前的请求
         limiter.weight_history.append((current_time - 45, 5))
         
-        can_request, wait_time = limiter.can_make_request("/info")
+        # Use larger max_wait_time to allow wait time calculation
+        # 使用更大的 max_wait_time 以允许等待时间计算
+        can_request, wait_time = limiter.can_make_request("/info", max_wait_time=60.0)
         assert can_request is False
         # Should wait 15 seconds (60 - 45) / 应该等待 15 秒 (60 - 45)
         assert 14 <= wait_time <= 16
@@ -214,7 +222,9 @@ class TestRateLimiterIntegration:
         limiter.record_request("/exchange")  # Weight: 5, total: 10
         
         # Next request should be blocked / 下一个请求应该被阻止
-        can_request, wait_time = limiter.can_make_request("/info")
+        # Use larger max_wait_time to allow wait time calculation
+        # 使用更大的 max_wait_time 以允许等待时间计算
+        can_request, wait_time = limiter.can_make_request("/info", max_wait_time=60.0)
         assert can_request is False
         assert wait_time > 0
 

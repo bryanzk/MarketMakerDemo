@@ -13,6 +13,7 @@ import json
 import logging
 import os
 import time
+import uuid
 from collections import deque
 from threading import Lock
 from typing import Dict, List, Optional
@@ -22,6 +23,7 @@ import requests
 from requests.exceptions import ConnectionError as RequestsConnectionError
 from requests.exceptions import RequestException
 
+from src.shared.tracing import get_trace_id, hash_payload
 from src.shared.config import (
     HYPERLIQUID_API_KEY,
     HYPERLIQUID_API_SECRET,
@@ -556,6 +558,18 @@ class HyperliquidClient:
             Response data as dictionary, or None on error
         """
         url = f"{self.base_url}{endpoint}"
+        req_id = f"hl-{uuid.uuid4().hex[:8]}"
+        payload_hash = hash_payload(data) if data is not None else None
+
+        request_meta = {
+            "trace_id": get_trace_id(),
+            "req_id": req_id,
+            "endpoint": endpoint,
+            "method": method.upper(),
+            "symbol": getattr(self, "symbol", None),
+            "payload_hash": payload_hash,
+            "base_url": self.base_url,
+        }
 
         headers = {"Content-Type": "application/json"}
 
@@ -608,6 +622,7 @@ class HyperliquidClient:
         # Retry logic for rate limit errors / 速率限制错误的重试逻辑
         for attempt in range(max_retries + 1):
             try:
+                start_time = time.time()
                 if method.upper() == "GET":
                     if is_mocked:
                         response = requests.get(
@@ -643,19 +658,34 @@ class HyperliquidClient:
                 # Record successful request for rate limiting / 记录成功请求以进行速率限制
                 self.rate_limiter.record_request(endpoint)
 
+                latency_ms = int((time.time() - start_time) * 1000)
+                logger.info(
+                    "Hyperliquid request succeeded",
+                    extra={
+                        **request_meta,
+                        "status_code": response.status_code,
+                        "latency_ms": latency_ms,
+                        "attempt": attempt,
+                    },
+                )
+
                 if response.content:
                     return response.json()
                 return {"status": "ok"}
 
             except requests.exceptions.HTTPError as e:
-                if e.response.status_code == 401:
+                latency_ms = int((time.time() - start_time) * 1000)
+                status_code = (
+                    e.response.status_code if hasattr(e, "response") and e.response else None
+                )
+                if status_code == 401:
                     error_msg = (
                         f"Authentication failed. Invalid API credentials. "
                         f"Error: {str(e)}. "
                         f"认证失败。无效的 API 凭证。错误: {str(e)}。"
                     )
                     raise AuthenticationError(error_msg) from e
-                elif e.response.status_code == 429:
+                elif status_code == 429:
                     # Rate limit exceeded - retry with backoff / 超出速率限制 - 使用退避重试
                     retry_after = (
                         60  # Default retry delay in seconds / 默认重试延迟（秒）
@@ -673,6 +703,17 @@ class HyperliquidClient:
                             pass
                     # Cap wait time to keep HTTP handlers responsive / 限制等待时间，保持 HTTP 处理快速响应
                     retry_after = min(retry_after, 5)
+
+                    logger.warning(
+                        "Hyperliquid request rate limited",
+                        extra={
+                            **request_meta,
+                            "status_code": status_code,
+                            "latency_ms": latency_ms,
+                            "attempt": attempt,
+                            "retry_after": retry_after,
+                        },
+                    )
 
                     # Store rate limit error for API endpoints to return quickly
                     # 存储速率限制错误，以便 API 端点快速返回
@@ -705,9 +746,18 @@ class HyperliquidClient:
                     self.last_api_error = {
                         "type": "http_error",
                         "message": f"HTTP error: {str(e)}",
-                        "status_code": e.response.status_code,
+                        "status_code": status_code,
                     }
-                    logger.error(f"HTTP error: {e}")
+                    logger.error(
+                        "Hyperliquid HTTP error",
+                        exc_info=True,
+                        extra={
+                            **request_meta,
+                            "status_code": status_code,
+                            "latency_ms": latency_ms,
+                            "attempt": attempt,
+                        },
+                    )
                     return None
             except requests.exceptions.Timeout as e:
                 # Handle timeout specifically / 专门处理超时
@@ -717,7 +767,13 @@ class HyperliquidClient:
                     "message": f"Request timeout after {self.request_timeout}s: {str(e)}",
                 }
                 logger.warning(
-                    f"Request timeout for {endpoint} (attempt {attempt + 1}/{max_retries + 1}): {e}"
+                    f"Request timeout for {endpoint} (attempt {attempt + 1}/{max_retries + 1}): {e}",
+                    extra={
+                        **request_meta,
+                        "status_code": None,
+                        "latency_ms": int((time.time() - start_time) * 1000),
+                        "attempt": attempt,
+                    },
                 )
                 # Retry if we haven't exceeded max retries / 如果未超过最大重试次数则重试
                 if attempt < max_retries:
@@ -735,7 +791,16 @@ class HyperliquidClient:
                     "type": "connection_error",
                     "message": f"Connection error: {str(e)}",
                 }
-                logger.error(f"Connection error: {e}")
+                logger.error(
+                    "Connection error during Hyperliquid request",
+                    exc_info=True,
+                    extra={
+                        **request_meta,
+                        "status_code": None,
+                        "latency_ms": int((time.time() - start_time) * 1000),
+                        "attempt": attempt,
+                    },
+                )
                 # Retry connection errors if we haven't exceeded max retries / 如果未超过最大重试次数则重试连接错误
                 if attempt < max_retries:
                     retry_delay = self.retry_delays[min(attempt, len(self.retry_delays) - 1)]
@@ -749,7 +814,16 @@ class HyperliquidClient:
                     "type": "unknown_error",
                     "message": f"Unexpected error: {str(e)}",
                 }
-                logger.error(f"Unexpected error: {e}", exc_info=True)
+                logger.error(
+                    "Unexpected error during Hyperliquid request",
+                    exc_info=True,
+                    extra={
+                        **request_meta,
+                        "status_code": None,
+                        "latency_ms": int((time.time() - start_time) * 1000),
+                        "attempt": attempt,
+                    },
+                )
                 # Retry unknown errors if we haven't exceeded max retries / 如果未超过最大重试次数则重试未知错误
                 if attempt < max_retries:
                     retry_delay = self.retry_delays[min(attempt, len(self.retry_delays) - 1)]
@@ -1713,6 +1787,22 @@ class HyperliquidClient:
         self.last_order_error = None
 
         for order in orders:
+            order_req_id = f"hl-order-{uuid.uuid4().hex[:8]}"
+            order_snapshot = {
+                "side": order.get("side"),
+                "type": order.get("type"),
+                "price": order.get("price"),
+                "quantity": order.get("quantity"),
+            }
+            logger.info(
+                "Placing Hyperliquid order",
+                extra={
+                    "trace_id": get_trace_id(),
+                    "order_req_id": order_req_id,
+                    "symbol": self.symbol,
+                    **order_snapshot,
+                },
+            )
             try:
                 # Validate order
                 validation_error = self._validate_order(order)
@@ -1722,7 +1812,8 @@ class HyperliquidClient:
                         "type": "invalid_order",
                         "message": validation_error,
                         "symbol": self.symbol,
-                        "order": order,
+                        "order": order_snapshot,
+                        "order_req_id": order_req_id,
                     }
                     continue
 
@@ -1749,7 +1840,8 @@ class HyperliquidClient:
                         "type": "network_error",
                         "message": error_msg,
                         "symbol": self.symbol,
-                        "order": order,
+                        "order": order_snapshot,
+                        "order_req_id": order_req_id,
                     }
                     continue
 
@@ -1764,7 +1856,13 @@ class HyperliquidClient:
                     logger.info(
                         f"Placed {side} {order_type} order: "
                         f"price={price if order_type == 'limit' else 'market'}, "
-                        f"qty={quantity}"
+                        f"qty={quantity}",
+                        extra={
+                            "trace_id": get_trace_id(),
+                            "order_req_id": order_req_id,
+                            "symbol": self.symbol,
+                            "order_id": order_result.get("order_id"),
+                        },
                     )
                     self.last_order_error = None
                 else:
@@ -1785,13 +1883,13 @@ class HyperliquidClient:
                         raise InvalidOrderError(error_msg)
 
             except InsufficientBalanceError as e:
-                self._handle_order_error(e, order, "insufficient_funds")
+                self._handle_order_error(e, order_snapshot, "insufficient_funds")
                 continue
             except InvalidOrderError as e:
-                self._handle_order_error(e, order, "invalid_order")
+                self._handle_order_error(e, order_snapshot, "invalid_order")
                 continue
             except Exception as e:
-                self._handle_order_error(e, order, "unknown_error")
+                self._handle_order_error(e, order_snapshot, "unknown_error")
                 continue
 
         return created_orders
@@ -2319,12 +2417,17 @@ class HyperliquidClient:
                 f"下单时发生意外错误: {error_msg}。"
             )
 
-        logger.error(error_msg, exc_info=(error_type == "unknown_error"))
+        logger.error(
+            error_msg,
+            exc_info=(error_type == "unknown_error"),
+            extra={"trace_id": get_trace_id(), "symbol": self.symbol, **order},
+        )
         self.last_order_error = {
             "type": error_type,
             "message": error_msg,
             "symbol": self.symbol,
             "order": order,
+            "trace_id": get_trace_id(),
         }
 
     def _convert_hyperliquid_order_to_internal(self, order_data: Dict) -> Dict:

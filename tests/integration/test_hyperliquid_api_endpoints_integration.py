@@ -9,6 +9,8 @@ Tests for:
 - /api/hyperliquid/prices
 - /api/hyperliquid/connection
 - /api/hyperliquid/cancel-order
+- /api/control (start/stop bot workflow)
+- /api/status (active field updates)
 
 Owner: Agent QA
 """
@@ -373,4 +375,189 @@ class TestHyperliquidCancelOrderEndpointIntegration:
         # 不应抛出未处理的异常
         assert isinstance(data, dict)
         assert "Failed to cancel" in data["error"] or "取消订单失败" in data["error"]
+
+
+class TestHyperliquidBotControlIntegration:
+    """Integration tests for bot control workflow / Bot 控制工作流集成测试"""
+
+    @patch("server.bot_engine")
+    @patch("server.get_default_exchange")
+    @patch("server.get_exchange_by_name")
+    def test_integration_start_stop_workflow_updates_status(
+        self, mock_get_exchange_by_name, mock_get_default_exchange, mock_bot_engine
+    ):
+        """
+        Integration Test: Complete start/stop workflow updates status correctly
+        集成测试：完整的启动/停止工作流正确更新状态
+        
+        Verifies that:
+        1. Starting bot sets active=True in status
+        2. Stopping bot sets active=False in status
+        3. Button state can be determined from status.active field
+        验证：
+        1. 启动 bot 时状态中的 active=True
+        2. 停止 bot 时状态中的 active=False
+        3. 可以从 status.active 字段确定按钮状态
+        """
+        from unittest.mock import MagicMock
+        from src.trading.hyperliquid_client import HyperliquidClient
+        
+        # Mock Hyperliquid exchange
+        mock_exchange = MagicMock(spec=HyperliquidClient)
+        mock_exchange.is_connected = True
+        mock_exchange.symbol = "ETH/USDC:USDC"
+        mock_exchange.last_order_error = None
+        # HyperliquidClient doesn't have fetch_ticker, use fetch_market_data instead
+        # HyperliquidClient 没有 fetch_ticker，改用 fetch_market_data
+        mock_exchange.fetch_market_data = Mock(return_value={
+            "best_bid": 2499.0,
+            "best_ask": 2501.0,
+            "mid_price": 2500.0,
+        })
+        mock_exchange.fetch_positions.return_value = []
+        mock_exchange.fetch_open_orders.return_value = []
+        mock_get_default_exchange.return_value = mock_exchange
+        mock_get_exchange_by_name.return_value = mock_exchange
+        
+        # Mock strategy instance
+        mock_instance = MagicMock()
+        mock_instance.strategy_id = "hyperliquid"
+        mock_instance.strategy = MagicMock()
+        mock_instance.strategy.spread = 0.001
+        mock_instance.running = False
+        mock_instance.exchange = mock_exchange
+        
+        # Mock bot_engine
+        mock_bot_engine.strategy_instances = {"hyperliquid": mock_instance}
+        mock_bot_engine.strategy = None
+        mock_bot_engine.risk = MagicMock()
+        mock_bot_engine.risk.validate_proposal.return_value = (True, None)
+        mock_bot_engine.alert = None
+        mock_bot_engine.current_stage = "Idle"
+        mock_bot_engine.get_status.return_value = {
+            "symbol": "ETH/USDC:USDC",
+            "spread": 0.001,
+            "quantity": 0.1,
+            "leverage": 5,
+        }
+        mock_bot_engine.is_running.return_value = False
+        
+        client = TestClient(server.app)
+        
+        # Step 1: Check initial status (should be stopped)
+        # 步骤 1：检查初始状态（应该是停止的）
+        response = client.get("/api/status")
+        assert response.status_code == 200
+        status_data = response.json()
+        assert "active" in status_data
+        initial_active = status_data["active"]
+        assert initial_active is False, "Bot should be stopped initially / Bot 初始应该是停止的"
+        
+        # Step 2: Start bot
+        # 步骤 2：启动 bot
+        with patch("server.threading.Thread") as mock_thread_class:
+            mock_thread = MagicMock()
+            mock_thread_class.return_value = mock_thread
+            
+            response = client.post("/api/control?action=start")
+            assert response.status_code == 200
+            data = response.json()
+            assert data["status"] == "started"
+            
+            # Verify instance is running
+            # 验证实例正在运行
+            assert mock_instance.running is True
+        
+        # Update mock to reflect running state
+        # 更新模拟以反映运行状态
+        mock_bot_engine.is_running.return_value = True
+        server.is_running = True
+        
+        # Step 3: Check status after start (should be active)
+        # 步骤 3：启动后检查状态（应该是活动的）
+        response = client.get("/api/status")
+        assert response.status_code == 200
+        status_data = response.json()
+        assert "active" in status_data
+        assert status_data["active"] is True, "Bot should be active after start / 启动后 Bot 应该是活动的"
+        
+        # Step 4: Stop bot
+        # 步骤 4：停止 bot
+        response = client.post("/api/control?action=stop")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "stopped"
+        
+        # Verify instance is stopped
+        # 验证实例已停止
+        assert mock_instance.running is False
+        
+        # Update mock to reflect stopped state
+        # 更新模拟以反映停止状态
+        mock_bot_engine.is_running.return_value = False
+        server.is_running = False
+        
+        # Step 5: Check status after stop (should be inactive)
+        # 步骤 5：停止后检查状态（应该是不活动的）
+        response = client.get("/api/status")
+        assert response.status_code == 200
+        status_data = response.json()
+        assert "active" in status_data
+        assert status_data["active"] is False, "Bot should be inactive after stop / 停止后 Bot 应该是不活动的"
+
+    @patch("server.bot_engine")
+    @patch("server.get_default_exchange")
+    def test_integration_start_with_hyperliquid_instance_creates_thread(
+        self, mock_get_default_exchange, mock_bot_engine
+    ):
+        """
+        Integration Test: Starting bot with Hyperliquid instance creates and starts thread
+        集成测试：使用 Hyperliquid 实例启动 bot 创建并启动线程
+        
+        Verifies complete integration of start action with threading.
+        验证启动操作与线程的完整集成。
+        """
+        from unittest.mock import MagicMock
+        from src.trading.hyperliquid_client import HyperliquidClient
+        
+        # Mock Hyperliquid exchange
+        mock_exchange = MagicMock(spec=HyperliquidClient)
+        mock_exchange.last_order_error = None
+        mock_get_default_exchange.return_value = mock_exchange
+        
+        # Mock strategy instance
+        mock_instance = MagicMock()
+        mock_instance.strategy_id = "hyperliquid"
+        mock_instance.strategy = MagicMock()
+        mock_instance.strategy.spread = 0.001
+        mock_instance.running = False
+        
+        # Mock bot_engine
+        mock_bot_engine.strategy_instances = {"hyperliquid": mock_instance}
+        mock_bot_engine.strategy = None
+        mock_bot_engine.risk = MagicMock()
+        mock_bot_engine.risk.validate_proposal.return_value = (True, None)
+        mock_bot_engine.alert = None
+        
+        client = TestClient(server.app)
+        
+        with patch("server.threading.Thread") as mock_thread_class:
+            mock_thread = MagicMock()
+            mock_thread_class.return_value = mock_thread
+            
+            response = client.post("/api/control?action=start")
+            
+            assert response.status_code == 200
+            data = response.json()
+            assert data["status"] == "started"
+            
+            # Verify thread was created and started
+            # 验证线程已创建并启动
+            mock_thread_class.assert_called_once()
+            mock_thread.start.assert_called_once()
+            assert mock_thread.daemon is True, "Bot thread should be daemon / Bot 线程应该是守护进程"
+            
+            # Verify instance is running
+            # 验证实例正在运行
+            assert mock_instance.running is True
 

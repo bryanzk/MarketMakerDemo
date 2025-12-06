@@ -31,7 +31,11 @@ class StrategyInstance:
     """
 
     def __init__(
-        self, strategy_id: str, strategy_type: str = "fixed_spread", symbol: str = None
+        self, 
+        strategy_id: str, 
+        strategy_type: str = "fixed_spread", 
+        symbol: str = None,
+        exchange: Optional[Any] = None
     ):
         """
         Initialize a strategy instance with its own exchange connection.
@@ -40,6 +44,8 @@ class StrategyInstance:
             strategy_id: Unique identifier for this strategy instance
             strategy_type: "fixed_spread" or "funding_rate"
             symbol: Trading symbol for this instance (defaults to SYMBOL from config)
+            exchange: Optional exchange client instance. If not provided and strategy_id is not "hyperliquid",
+                     will attempt to create a BinanceClient. For "hyperliquid" strategy_id, exchange must be provided.
         """
         self.strategy_id = strategy_id
         self.strategy_type = strategy_type
@@ -55,20 +61,46 @@ class StrategyInstance:
         self.order_manager = OrderManager()
 
         # Independent exchange connection for this strategy instance
-        self.exchange: Optional[BinanceClient] = None
+        # If exchange is provided, use it; otherwise, only create BinanceClient for non-hyperliquid instances
+        # 如果提供了 exchange，使用它；否则，仅对非 hyperliquid 实例创建 BinanceClient
+        self.exchange: Optional[Any] = None
         self.use_real_exchange = False
-        try:
-            self.exchange = BinanceClient()
-            # Set symbol for this instance's exchange
-            if self.symbol != SYMBOL:
-                self.exchange.set_symbol(self.symbol)
+        
+        if exchange is not None:
+            # Use provided exchange client / 使用提供的交易所客户端
+            self.exchange = exchange
             self.use_real_exchange = True
+            # Set symbol for this instance's exchange
+            if self.symbol != SYMBOL and hasattr(self.exchange, "set_symbol"):
+                self.exchange.set_symbol(self.symbol)
             logger.info(
-                f"Strategy instance '{strategy_id}' exchange connected successfully (symbol: {self.symbol})"
+                f"Strategy instance '{strategy_id}' using provided exchange client (symbol: {self.symbol})"
             )
-        except Exception as e:
-            logger.error(
-                f"Strategy instance '{strategy_id}' failed to connect to exchange: {e}. Using simulation mode."
+        elif strategy_id != "hyperliquid":
+            # Only create BinanceClient for non-hyperliquid instances
+            # 仅对非 hyperliquid 实例创建 BinanceClient
+            try:
+                self.exchange = BinanceClient()
+                # Set symbol for this instance's exchange
+                if self.symbol != SYMBOL:
+                    self.exchange.set_symbol(self.symbol)
+                self.use_real_exchange = True
+                logger.info(
+                    f"Strategy instance '{strategy_id}' exchange connected successfully (symbol: {self.symbol})"
+                )
+            except Exception as e:
+                logger.error(
+                    f"Strategy instance '{strategy_id}' failed to connect to exchange: {e}. Using simulation mode."
+                )
+                self.exchange = None
+                self.use_real_exchange = False
+        else:
+            # For hyperliquid instances without provided exchange, use simulation mode
+            # 对于没有提供 exchange 的 hyperliquid 实例，使用模拟模式
+            logger.warning(
+                f"Strategy instance '{strategy_id}' (hyperliquid) created without exchange client. "
+                f"Exchange must be set before use. / "
+                f"策略实例 '{strategy_id}' (hyperliquid) 创建时没有交易所客户端。使用前必须设置交易所。"
             )
             self.exchange = None
             self.use_real_exchange = False

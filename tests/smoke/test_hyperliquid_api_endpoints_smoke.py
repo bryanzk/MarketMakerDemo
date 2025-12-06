@@ -9,6 +9,8 @@ Tests for:
 - /api/hyperliquid/prices
 - /api/hyperliquid/connection
 - /api/hyperliquid/cancel-order
+- /api/control (start/stop bot)
+- /api/status (active field for button state)
 
 Owner: Agent QA
 """
@@ -253,4 +255,117 @@ class TestHyperliquidCancelOrderEndpointSmoke:
         assert "error" in data
         # Should not raise exception / 不应抛出异常
         assert isinstance(data, dict)
+
+
+class TestHyperliquidBotControlSmoke:
+    """Smoke tests for bot control endpoints / Bot 控制端点冒烟测试"""
+
+    @patch("server.bot_engine")
+    @patch("server.get_default_exchange")
+    def test_smoke_control_start_returns_status(self, mock_get_default_exchange, mock_bot_engine):
+        """
+        Smoke Test: Control start endpoint returns status
+        冒烟测试：控制启动端点返回状态
+        
+        Critical path: Frontend needs to know if bot started successfully.
+        关键路径：前端需要知道 bot 是否成功启动。
+        """
+        from unittest.mock import MagicMock
+        from src.trading.hyperliquid_client import HyperliquidClient
+        
+        # Mock Hyperliquid exchange
+        mock_exchange = MagicMock(spec=HyperliquidClient)
+        mock_exchange.last_order_error = None
+        mock_get_default_exchange.return_value = mock_exchange
+        
+        # Mock strategy instance
+        mock_instance = MagicMock()
+        mock_instance.strategy_id = "hyperliquid"
+        mock_instance.strategy = MagicMock()
+        mock_instance.strategy.spread = 0.001
+        mock_instance.running = False
+        
+        # Mock bot_engine
+        mock_bot_engine.strategy_instances = {"hyperliquid": mock_instance}
+        mock_bot_engine.strategy = None
+        mock_bot_engine.risk = MagicMock()
+        mock_bot_engine.risk.validate_proposal.return_value = (True, None)
+        mock_bot_engine.alert = None
+        
+        with patch("server.threading.Thread") as mock_thread_class:
+            mock_thread = MagicMock()
+            mock_thread_class.return_value = mock_thread
+            
+            client = TestClient(server.app)
+            response = client.post("/api/control?action=start")
+            
+            assert response.status_code == 200
+            data = response.json()
+            assert "status" in data
+            assert data["status"] == "started"
+
+    @patch("server.bot_engine")
+    def test_smoke_control_stop_returns_status(self, mock_bot_engine):
+        """
+        Smoke Test: Control stop endpoint returns status
+        冒烟测试：控制停止端点返回状态
+        
+        Critical path: Frontend needs to know if bot stopped successfully.
+        关键路径：前端需要知道 bot 是否成功停止。
+        """
+        from unittest.mock import MagicMock
+        
+        # Mock strategy instances
+        mock_instance = MagicMock()
+        mock_instance.running = True
+        
+        mock_bot_engine.strategy_instances = {"hyperliquid": mock_instance}
+        mock_bot_engine.alert = None
+        mock_bot_engine.current_stage = "Running"
+        
+        server.is_running = True
+        
+        client = TestClient(server.app)
+        response = client.post("/api/control?action=stop")
+        
+        assert response.status_code == 200
+        data = response.json()
+        assert "status" in data
+        assert data["status"] == "stopped"
+
+    @patch("server.bot_engine")
+    @patch("server.is_running", False)
+    def test_smoke_status_endpoint_returns_active_field(self, mock_bot_engine):
+        """
+        Smoke Test: Status endpoint returns active field for button state
+        冒烟测试：状态端点返回 active 字段以用于按钮状态
+        
+        Critical path: Frontend needs active field to show/hide start/stop buttons.
+        关键路径：前端需要 active 字段来显示/隐藏启动/停止按钮。
+        """
+        from unittest.mock import MagicMock
+        
+        # Ensure is_running is False
+        server.is_running = False
+        
+        # Mock bot_engine
+        mock_bot_engine.get_status.return_value = {
+            "symbol": "ETH/USDC:USDC",
+            "spread": 0.001,
+            "quantity": 0.1,
+            "leverage": 5,
+        }
+        mock_bot_engine.strategy_instances = {}
+        mock_bot_engine.strategy = MagicMock()
+        mock_bot_engine.current_stage = "Idle"
+        
+        client = TestClient(server.app)
+        response = client.get("/api/status")
+        
+        assert response.status_code == 200
+        data = response.json()
+        # Critical: active field must be present for button state management
+        # 关键：active 字段必须存在以用于按钮状态管理
+        assert "active" in data, "Status endpoint must return 'active' field for button state / 状态端点必须返回 'active' 字段以用于按钮状态"
+        assert isinstance(data["active"], bool), "Active field must be boolean / active 字段必须是布尔值"
 

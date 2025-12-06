@@ -478,8 +478,10 @@
                 <div style="display:flex; gap:8px; margin-top:12px;">
                     <button class="btn btn-success" style="flex:1;"
                         onclick="applyEvaluation('consensus')">Apply Consensus / 应用共识</button>
-                    <button class="btn btn-primary" style="flex:1;"
+                    <button id="startBotBtn" class="btn btn-primary" style="flex:1; display:none;"
                         onclick="startBotWithLLMSuggestion()">🚀 Start Bot / 启动机器人</button>
+                    <button id="stopBotBtn" class="btn btn-danger" style="flex:1; display:none;"
+                        onclick="stopBot()">⏹ Stop Bot / 停止机器人</button>
                 </div>
             </div>
 
@@ -941,6 +943,22 @@
                             break;
                         }
                     }
+                }
+
+                // Check bot running status from /api/status and update buttons / 从 /api/status 检查 bot 运行状态并更新按钮
+                try {
+                    const statusRes = await diagnosticFetch('/api/status');
+                    const statusData = await statusRes.json();
+                    if (statusData && typeof statusData.active === 'boolean') {
+                        updateBotControlButtons(statusData.active);
+                    } else {
+                        // If status is not available, default to stopped state / 如果状态不可用，默认为停止状态
+                        updateBotControlButtons(false);
+                    }
+                } catch (statusErr) {
+                    console.warn('Failed to fetch bot status for button update / 获取 bot 状态以更新按钮失败:', statusErr);
+                    // Default to stopped state on error / 出错时默认为停止状态
+                    updateBotControlButtons(false);
                 }
             } catch (err) {
                 showMessage(controlMessage, `Failed to load status: ${err.message}`, true);
@@ -1671,9 +1689,50 @@
                 const data = await res.json();
                 if (data.error) throw new Error(data.error);
                 showMessage(controlMessage, '✅ Bot started with LLM suggestion! / Bot 已使用 LLM 建议启动！');
+                updateBotControlButtons(true); // Update button states / 更新按钮状态
                 setTimeout(refreshOrders, 1000);
             } catch (err) {
                 showMessage(controlMessage, err.message || 'Failed to start bot / 启动 Bot 失败', true);
+            }
+        }
+
+        async function stopBot() {
+            try {
+                const res = await diagnosticFetch('/api/control?action=stop', {
+                    method: 'POST',
+                });
+                const data = await res.json();
+                if (data.error) throw new Error(data.error);
+                showMessage(controlMessage, '✅ Bot stopped. / Bot 已停止。');
+                updateBotControlButtons(false); // Update button states / 更新按钮状态
+                setTimeout(refreshOrders, 1000);
+            } catch (err) {
+                showMessage(controlMessage, err.message || 'Failed to stop bot / 停止 Bot 失败', true);
+            }
+        }
+
+        // Update bot control buttons based on bot status / 根据 bot 状态更新控制按钮
+        function updateBotControlButtons(isRunning) {
+            const startBtn = document.getElementById('startBotBtn');
+            const stopBtn = document.getElementById('stopBotBtn');
+            
+            if (isRunning) {
+                // Bot is running: show stop button, hide start button / Bot 正在运行：显示停止按钮，隐藏启动按钮
+                if (startBtn) startBtn.style.display = 'none';
+                if (stopBtn) stopBtn.style.display = 'flex';
+            } else {
+                // Bot is stopped: show start button, hide stop button / Bot 已停止：显示启动按钮，隐藏停止按钮
+                if (startBtn) startBtn.style.display = 'flex';
+                if (stopBtn) stopBtn.style.display = 'none';
+            }
+        }
+
+        // Initialize button state on page load (default to stopped) / 页面加载时初始化按钮状态（默认为停止）
+        function initializeBotButtons() {
+            // Default to showing start button if status check fails / 如果状态检查失败，默认显示启动按钮
+            const startBtn = document.getElementById('startBotBtn');
+            if (startBtn && startBtn.style.display === 'none' && !document.getElementById('stopBotBtn')?.style.display) {
+                startBtn.style.display = 'flex';
             }
         }
 
@@ -1849,7 +1908,8 @@
 
         document.addEventListener('DOMContentLoaded', () => {
             initModelCheckboxes();  // Initialize model selection checkboxes / 初始化模型选择复选框
-            loadStatus();
+            initializeBotButtons(); // Initialize button states / 初始化按钮状态
+            loadStatus(); // This will update button states based on actual bot status / 这将根据实际 bot 状态更新按钮状态
             updateEvaluationUI();
             checkConnection();
             refreshPosition();

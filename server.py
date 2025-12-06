@@ -7,6 +7,13 @@ from datetime import datetime, timezone
 from typing import Any, Dict, Optional, List
 
 import uvicorn
+from dotenv import load_dotenv
+
+# Load environment variables from .env file / 从 .env 文件加载环境变量
+try:
+    load_dotenv()
+except PermissionError as e:
+    logging.warning("Could not load .env file due to permission error: %s", e)
 
 logger = logging.getLogger(__name__)
 from fastapi import FastAPI, Query, Request, Body
@@ -845,6 +852,10 @@ async def get_hyperliquid_status():
     """
     Get Hyperliquid-specific status including positions, balance, and orders
     获取 Hyperliquid 特定状态，包括仓位、余额和订单
+    
+    This endpoint also ensures that a Hyperliquid strategy instance is created
+    and added to bot_engine when the page loads.
+    此端点还确保在页面加载时创建 Hyperliquid 策略实例并将其添加到 bot_engine。
     """
     try:
         exchange = get_exchange_by_name("hyperliquid")
@@ -863,6 +874,32 @@ async def get_hyperliquid_status():
                 "connected": False,
                 "testnet": testnet_status,
             }
+        
+        # Ensure Hyperliquid strategy instance exists in bot_engine
+        # 确保 bot_engine 中存在 Hyperliquid 策略实例
+        from src.trading.hyperliquid_client import HyperliquidClient
+        
+        hyperliquid_instance = None
+        for instance_id, instance in bot_engine.strategy_instances.items():
+            if isinstance(instance.exchange, HyperliquidClient):
+                hyperliquid_instance = instance
+                break
+        
+        if not hyperliquid_instance:
+            # Create a new instance for Hyperliquid with the exchange client
+            # 为 Hyperliquid 创建新实例，直接传入 exchange 客户端
+            success = bot_engine.add_strategy_instance(
+                "hyperliquid",
+                "fixed_spread",
+                symbol=exchange.symbol if hasattr(exchange, "symbol") else None,
+                exchange=exchange,  # Pass HyperliquidClient directly / 直接传入 HyperliquidClient
+            )
+            if success:
+                hyperliquid_instance = bot_engine.strategy_instances.get("hyperliquid")
+                logger.info(
+                    f"✅ Created Hyperliquid strategy instance on page load / "
+                    f"页面加载时创建了 Hyperliquid 策略实例"
+                )
 
         # Fetch account data
         account_data = exchange.fetch_account_data()
@@ -962,12 +999,13 @@ async def update_hyperliquid_config(config: ConfigUpdate):
                 break
 
         if not hyperliquid_instance:
-            # Create a new instance for Hyperliquid
-            # 为 Hyperliquid 创建新实例
+            # Create a new instance for Hyperliquid with the exchange client
+            # 为 Hyperliquid 创建新实例，直接传入 exchange 客户端
             success = bot_engine.add_strategy_instance(
                 "hyperliquid",
                 "fixed_spread",
                 symbol=exchange.symbol if hasattr(exchange, "symbol") else None,
+                exchange=exchange,  # Pass HyperliquidClient directly / 直接传入 HyperliquidClient
             )
             if success:
                 hyperliquid_instance = bot_engine.strategy_instances.get("hyperliquid")
@@ -1100,7 +1138,32 @@ async def control_bot(action: str):
     if action == "start":
         if not is_running:
             # Validate current config before starting
-            current_spread = bot_engine.strategy.spread
+            # Get strategy from default instance or first available instance
+            # 从默认实例或第一个可用实例获取策略
+            default_instance = bot_engine.strategy_instances.get("default")
+            if default_instance and default_instance.strategy:
+                current_strategy = default_instance.strategy
+            elif bot_engine.strategy:
+                current_strategy = bot_engine.strategy
+            else:
+                # Fallback: get first available instance's strategy
+                # 回退：获取第一个可用实例的策略
+                first_instance = next(iter(bot_engine.strategy_instances.values()), None)
+                if first_instance and first_instance.strategy:
+                    current_strategy = first_instance.strategy
+                    # Update bot_engine.strategy for backward compatibility
+                    # 更新 bot_engine.strategy 以保持向后兼容
+                    bot_engine.strategy = current_strategy
+                else:
+                    return {
+                        "error": "No strategy instance available. Please configure the bot first. / 没有可用的策略实例。请先配置机器人。"
+                    }
+            
+            current_spread = getattr(current_strategy, "spread", None)
+            if current_spread is None:
+                return {
+                    "error": "Strategy spread not configured. Please set a spread value first. / 策略价差未配置。请先设置价差值。"
+                }
 
             approved, reason = bot_engine.risk.validate_proposal(
                 {"spread": current_spread}
@@ -1108,8 +1171,11 @@ async def control_bot(action: str):
 
             if not approved:
                 # Generate 3 suggestions
-                min_spread = bot_engine.risk.risk_limits["MIN_SPREAD"]
-                max_spread = bot_engine.risk.risk_limits["MAX_SPREAD"]
+                # Import RISK_LIMITS from config module
+                # 从配置模块导入 RISK_LIMITS
+                from src.shared.config import RISK_LIMITS
+                min_spread = RISK_LIMITS["MIN_SPREAD"]
+                max_spread = RISK_LIMITS["MAX_SPREAD"]
 
                 suggestions = [
                     {
@@ -1248,6 +1314,13 @@ async def update_pair(pair: PairUpdate):
         target_instance = bot_engine.strategy_instances.get(target_strategy_id)
         if target_instance:
             target_instance.refresh_data()
+            # Ensure bot_engine.strategy is set for backward compatibility
+            # 确保 bot_engine.strategy 被设置以保持向后兼容
+            if target_instance.strategy:
+                # Update bot_engine.strategy if target is default, or if bot_engine.strategy is None
+                # 如果目标是 default，或者 bot_engine.strategy 为 None，则更新 bot_engine.strategy
+                if target_strategy_id == "default" or bot_engine.strategy is None:
+                    bot_engine.strategy = target_instance.strategy
         return {"status": "updated", "symbol": pair.symbol}
     else:
         return {
@@ -1263,10 +1336,28 @@ async def get_suggestions():
     sharpe = metrics.get("sharpe_ratio", 0)
 
     # Get current config
+    # Get strategy from default instance or bot_engine.strategy
+    # 从默认实例或 bot_engine.strategy 获取策略
+    default_instance = bot_engine.strategy_instances.get("default")
+    if default_instance and default_instance.strategy:
+        current_strategy = default_instance.strategy
+    elif bot_engine.strategy:
+        current_strategy = bot_engine.strategy
+    else:
+        # Fallback: get first available instance's strategy
+        # 回退：获取第一个可用实例的策略
+        first_instance = next(iter(bot_engine.strategy_instances.values()), None)
+        if first_instance and first_instance.strategy:
+            current_strategy = first_instance.strategy
+        else:
+            return {
+                "error": "No strategy instance available. / 没有可用的策略实例。"
+            }
+    
     current_spread = (
-        bot_engine.strategy.spread * 100
+        getattr(current_strategy, "spread", 0.0) * 100
     )  # Convert back to percentage for display
-    current_leverage = bot_engine.strategy.leverage  # Assuming strategy has leverage
+    current_leverage = getattr(current_strategy, "leverage", 1)  # Assuming strategy has leverage
 
     # Risk-aware suggestions
     suggestion = {
@@ -1852,12 +1943,50 @@ async def run_evaluation(request: EvaluationRunRequest):
                 ]
                 
                 if not providers:
-                    return {
-                        "error": f"No matching providers found for selected models: {', '.join(request.selected_models)}. "
-                                f"Available providers: {', '.join([p.name for p in all_providers])}. "
-                                f"未找到匹配的提供商，选中的模型: {', '.join(request.selected_models)}。"
-                                f"可用提供商: {', '.join([p.name for p in all_providers])}。"
+                    # Check which selected providers are missing / 检查哪些选中的提供商缺失
+                    available_provider_names = [p.name for p in all_providers]
+                    missing_providers = []
+                    for selected_name in selected_provider_names:
+                        if not any(p.name.startswith(selected_name) for p in all_providers):
+                            missing_providers.append(selected_name)
+                    
+                    # Map provider names to API key names / 将提供商名称映射到 API key 名称
+                    api_key_map = {
+                        "Gemini": "GEMINI_API_KEY",
+                        "OpenAI": "OPENAI_API_KEY",
+                        "Claude": "ANTHROPIC_API_KEY"
                     }
+                    
+                    # Build detailed error message / 构建详细的错误消息
+                    if missing_providers:
+                        missing_keys = [api_key_map.get(p, f"{p.upper()}_API_KEY") for p in missing_providers]
+                        error_message = (
+                            f"Selected LLM providers not available: {', '.join(missing_providers)}. "
+                            f"Please configure the following API keys: {', '.join(missing_keys)}. "
+                            f"Available providers: {', '.join(available_provider_names) if available_provider_names else 'None'}. / "
+                            f"选中的 LLM 提供商不可用: {', '.join(missing_providers)}。"
+                            f"请配置以下 API 密钥: {', '.join(missing_keys)}。"
+                            f"可用提供商: {', '.join(available_provider_names) if available_provider_names else '无'}。"
+                        )
+                    else:
+                        error_message = (
+                            f"No matching providers found for selected models: {', '.join(request.selected_models)}. "
+                            f"Available providers: {', '.join(available_provider_names) if available_provider_names else 'None'}. / "
+                            f"未找到匹配的提供商，选中的模型: {', '.join(request.selected_models)}。"
+                            f"可用提供商: {', '.join(available_provider_names) if available_provider_names else '无'}。"
+                        )
+                    
+                    # Use standardized error response / 使用标准化错误响应
+                    return create_error_response(
+                        ValueError(error_message),
+                        error_code="LLM_PROVIDER_NOT_AVAILABLE",
+                        details={
+                            "selected_models": request.selected_models,
+                            "missing_providers": missing_providers,
+                            "available_providers": available_provider_names,
+                            "required_api_keys": [api_key_map.get(p, f"{p.upper()}_API_KEY") for p in missing_providers] if missing_providers else [],
+                        }
+                    )
             else:
                 # Use all available providers if no selection
                 # 如果没有选择，使用所有可用的提供商
@@ -2149,23 +2278,19 @@ async def apply_evaluation(request: EvaluationApplyRequest):
                     break
             
             if not hyperliquid_instance:
-                # Create a new instance for Hyperliquid
-                # 为 Hyperliquid 创建新实例
+                # Create a new instance for Hyperliquid with the exchange client
+                # 为 Hyperliquid 创建新实例，直接传入 exchange 客户端
                 success = bot_engine.add_strategy_instance(
                     "hyperliquid",
                     strategy_type,
                     symbol=exchange.symbol if hasattr(exchange, "symbol") else None,
+                    exchange=exchange,  # Pass HyperliquidClient directly / 直接传入 HyperliquidClient
                 )
                 if success:
                     hyperliquid_instance = bot_engine.strategy_instances.get("hyperliquid")
-                    # Replace the default BinanceClient with HyperliquidClient
-                    # 用 HyperliquidClient 替换默认的 BinanceClient
-                    if hyperliquid_instance:
-                        hyperliquid_instance.exchange = exchange
-                        hyperliquid_instance.use_real_exchange = True
-                        logger.info(
-                            f"Created Hyperliquid strategy instance with exchange connection"
-                        )
+                    logger.info(
+                        f"Created Hyperliquid strategy instance with exchange connection"
+                    )
             
             if not hyperliquid_instance:
                 return {
@@ -2267,6 +2392,10 @@ async def get_hyperliquid_status(request: Request):
     """
     Get Hyperliquid-specific status including positions, balance, and orders
     获取 Hyperliquid 特定状态，包括仓位、余额和订单
+    
+    This endpoint also ensures that a Hyperliquid strategy instance is created
+    and added to bot_engine when the page loads.
+    此端点还确保在页面加载时创建 Hyperliquid 策略实例并将其添加到 bot_engine。
     """
     trace_id = get_trace_id()
     request_context = create_request_context("/api/hyperliquid/status", "GET")
@@ -2321,6 +2450,61 @@ async def get_hyperliquid_status(request: Request):
                         **request_context,
                         "suggestion": "Check environment variables HYPERLIQUID_API_KEY and HYPERLIQUID_API_SECRET / 检查环境变量 HYPERLIQUID_API_KEY 和 HYPERLIQUID_API_SECRET",
                     },
+                )
+
+        # Ensure Hyperliquid strategy instance exists in bot_engine
+        # 确保 bot_engine 中存在 Hyperliquid 策略实例
+        from src.trading.hyperliquid_client import HyperliquidClient
+        from src.trading.exchange import BinanceClient
+        
+        hyperliquid_instance = None
+        for instance_id, instance in bot_engine.strategy_instances.items():
+            if isinstance(instance.exchange, HyperliquidClient):
+                hyperliquid_instance = instance
+                break
+        
+        if not hyperliquid_instance and exchange.is_connected:
+            # Create a new instance for Hyperliquid with the exchange client
+            # 为 Hyperliquid 创建新实例，直接传入 exchange 客户端
+            success = bot_engine.add_strategy_instance(
+                "hyperliquid",
+                "fixed_spread",
+                symbol=exchange.symbol if hasattr(exchange, "symbol") else None,
+                exchange=exchange,  # Pass HyperliquidClient directly / 直接传入 HyperliquidClient
+            )
+            if success:
+                hyperliquid_instance = bot_engine.strategy_instances.get("hyperliquid")
+                logger.info(
+                    f"✅ Created Hyperliquid strategy instance on page load / "
+                    f"页面加载时创建了 Hyperliquid 策略实例"
+                )
+        
+        # Stop default instance if it uses BinanceClient to prevent orders from going to Binance
+        # 如果 default 实例使用 BinanceClient，则停止它以防止订单发送到 Binance
+        # This logic should run after we've ensured hyperliquid_instance exists
+        # 此逻辑应在确保 hyperliquid_instance 存在后运行
+        if hyperliquid_instance:
+            default_instance = bot_engine.strategy_instances.get("default")
+            if default_instance and default_instance.exchange and isinstance(default_instance.exchange, BinanceClient):
+                if default_instance.running:
+                    default_instance.running = False
+                    logger.info(
+                        f"✅ Stopped default Binance instance to ensure orders go to Hyperliquid / "
+                        f"已停止 default Binance 实例，确保订单发送到 Hyperliquid"
+                    )
+            # Ensure hyperliquid instance is running and has real exchange enabled
+            # 确保 hyperliquid 实例正在运行并启用了真实交易所
+            if not hyperliquid_instance.running:
+                hyperliquid_instance.running = True
+                logger.info(
+                    f"✅ Started Hyperliquid strategy instance / "
+                    f"已启动 Hyperliquid 策略实例"
+                )
+            if not hyperliquid_instance.use_real_exchange:
+                hyperliquid_instance.use_real_exchange = True
+                logger.info(
+                    f"✅ Enabled real exchange for Hyperliquid strategy instance / "
+                    f"已为 Hyperliquid 策略实例启用真实交易所"
                 )
 
         # Get testnet status / 获取测试网状态

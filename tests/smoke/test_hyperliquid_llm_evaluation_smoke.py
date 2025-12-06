@@ -462,3 +462,120 @@ class TestHyperliquidLLMEvaluationSmoke:
                         "parse_error should be a string / parse_error 应该是字符串"
                     )
 
+    @patch("server.get_exchange_by_name")
+    def test_smoke_apply_creates_strategy_instance(
+        self, mock_get_exchange, mock_hyperliquid_client
+    ):
+        """
+        Smoke Test: Apply evaluation creates Hyperliquid strategy instance
+        冒烟测试：应用评估创建 Hyperliquid 策略实例
+        
+        This is a critical path - if strategy instance is not created, bot won't place orders.
+        这是关键路径 - 如果策略实例未创建，bot 将不会下单。
+        """
+        mock_hyperliquid_client.symbol = "ETHUSDC"
+        mock_get_exchange.return_value = mock_hyperliquid_client
+
+        # Mock evaluation results
+        # 模拟评估结果
+        from src.ai.evaluation.schemas import (
+            AggregatedResult,
+            StrategyConsensus,
+            StrategyProposal,
+        )
+
+        consensus_proposal = StrategyProposal(
+            recommended_strategy="FixedSpread",
+            spread=0.012,
+            skew_factor=None,
+            quantity=0.1,
+            leverage=5,
+            confidence=0.85,
+            risk_level="medium",
+            reasoning="Test reasoning",
+            parse_success=True,
+        )
+
+        strategy_consensus = StrategyConsensus(
+            consensus_strategy="FixedSpread",
+            consensus_level="high",
+            consensus_ratio=1.0,
+            consensus_count=1,
+            total_models=1,
+            strategy_votes={"FixedSpread": 1},
+            strategy_percentages={"FixedSpread": 100.0},
+        )
+
+        aggregated = AggregatedResult(
+            strategy_consensus=strategy_consensus,
+            consensus_confidence=0.85,
+            consensus_proposal=consensus_proposal,
+            avg_pnl=50.0,
+            avg_sharpe=1.5,
+            avg_win_rate=0.6,
+            avg_latency_ms=1000.0,
+            successful_evaluations=1,
+            failed_evaluations=0,
+        )
+
+        # Mock bot_engine with empty strategy instances
+        # 模拟带有空策略实例的 bot_engine
+        mock_bot_engine = Mock()
+        mock_bot_engine.strategy_instances = {}
+        mock_bot_engine.add_strategy_instance = Mock(return_value=True)
+
+        # Mock instance after creation
+        # 模拟创建后的实例
+        mock_instance = Mock()
+        mock_instance.exchange = mock_hyperliquid_client
+        mock_instance.use_real_exchange = True
+        mock_instance.strategy = Mock()
+        mock_instance.strategy.spread = 0.01
+        mock_instance.strategy.quantity = 0.05
+
+        def mock_get_instance(instance_id):
+            if instance_id == "hyperliquid":
+                return mock_instance
+            return None
+
+        mock_bot_engine.strategy_instances.get = Mock(side_effect=mock_get_instance)
+
+        with patch("server.bot_engine", mock_bot_engine), patch(
+            "server._last_evaluation_results", []
+        ), patch("server._last_evaluation_aggregated", aggregated):
+            client = TestClient(server.app)
+
+            # Apply evaluation
+            # 应用评估
+            response = client.post(
+                "/api/evaluation/apply",
+                json={
+                    "source": "consensus",
+                    "exchange": "hyperliquid",
+                },
+            )
+
+            # Verify API call succeeded
+            # 验证 API 调用成功
+            assert response.status_code == 200, (
+                f"Expected 200, got {response.status_code}. "
+                f"Response: {response.json()}"
+            )
+
+            data = response.json()
+            assert data["status"] == "success", (
+                f"Expected success, got {data.get('status')}. "
+                f"Error: {data.get('error')}"
+            )
+
+            # Verify strategy instance was created
+            # 验证策略实例已创建
+            assert mock_bot_engine.add_strategy_instance.called, (
+                "Strategy instance should be created / 应该创建策略实例"
+            )
+
+            # Verify instance has HyperliquidClient
+            # 验证实例有 HyperliquidClient
+            assert mock_instance.exchange == mock_hyperliquid_client
+            assert mock_instance.use_real_exchange is True
+

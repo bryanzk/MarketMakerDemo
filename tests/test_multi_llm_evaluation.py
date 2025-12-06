@@ -49,7 +49,7 @@ class TestUSML001_GetMultiModelSuggestions:
     def mock_three_providers(self):
         """创建三个 Mock Provider"""
         gemini = Mock()
-        gemini.name = "Gemini (gemini-1.5-pro)"
+        gemini.name = "Gemini (gemini-1.5-flash)"
         gemini.generate.return_value = '{"recommended_strategy": "FundingRate", "spread": 0.012, "skew_factor": 120, "confidence": 0.85, "reasoning": "Positive funding rate"}'
 
         openai = Mock()

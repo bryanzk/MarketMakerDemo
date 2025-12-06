@@ -183,7 +183,7 @@ class TestGeminiProviderName:
             with patch("google.generativeai.configure"):
                 with patch("google.generativeai.GenerativeModel"):
                     provider = GeminiProvider()
-                    assert provider.name == "Gemini (gemini-3-pro)"
+                    assert provider.name == "Gemini (gemini-1.5-flash)"
 
     def test_name_property_custom_model(self):
         """Test name property with custom model"""

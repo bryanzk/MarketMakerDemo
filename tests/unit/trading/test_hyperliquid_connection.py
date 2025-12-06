@@ -612,3 +612,335 @@ class TestHyperliquidClientInterfaceConsistency:
             assert callable(
                 getattr(client, method_name)
             ), f"HyperliquidClient.{method_name} is not callable"
+
+
+class TestHyperliquidClientRateLimitRetry:
+    """Test HTTP 429 rate limit retry logic / 测试 HTTP 429 速率限制重试逻辑"""
+
+    @patch.dict(
+        os.environ,
+        {
+            "HYPERLIQUID_API_KEY": "test_key",
+            "HYPERLIQUID_API_SECRET": "test_secret",
+        },
+    )
+    @patch("src.trading.hyperliquid_client.requests.post")
+    @patch("src.trading.hyperliquid_client.time.sleep")
+    def test_rate_limit_retry_with_retry_after_header(self, mock_sleep, mock_post):
+        """
+        Test that 429 error triggers retry with Retry-After header
+        测试 429 错误触发带 Retry-After header 的重试
+        """
+        import requests
+        from src.trading.hyperliquid_client import HyperliquidClient
+
+        # Mock successful connection first / 首先模拟成功连接
+        mock_success = MagicMock()
+        mock_success.status_code = 200
+        mock_success.json.return_value = {"status": "ok"}
+        mock_success.content = b'{"status": "ok"}'
+        mock_success.raise_for_status = Mock()
+
+        # Provide enough mocks for connection (2 calls per attempt)
+        # 为连接提供足够的 mock（每次尝试 2 次调用）
+        mock_post.side_effect = [mock_success, mock_success]
+
+        client = HyperliquidClient(
+            api_key="test_key", api_secret="test_secret", testnet=True
+        )
+
+        # Create 429 rate limit response with Retry-After header
+        # 创建带 Retry-After header 的 429 速率限制响应
+        mock_rate_limit_response = MagicMock()
+        mock_rate_limit_response.status_code = 429
+        mock_rate_limit_response.headers = {"Retry-After": "30"}
+        mock_rate_limit_response.json.return_value = {"error": "Rate limit exceeded"}
+        mock_rate_limit_response.content = b'{"error": "Rate limit exceeded"}'
+        
+        # Create HTTPError with response attribute
+        # 创建带 response 属性的 HTTPError
+        http_error = requests.exceptions.HTTPError("Rate limit exceeded")
+        http_error.response = mock_rate_limit_response
+        mock_rate_limit_response.raise_for_status.side_effect = http_error
+
+        # Create successful retry response
+        # 创建成功的重试响应
+        mock_retry_success = MagicMock()
+        mock_retry_success.status_code = 200
+        mock_retry_success.json.return_value = {"status": "ok", "data": "test"}
+        mock_retry_success.content = b'{"status": "ok", "data": "test"}'
+        mock_retry_success.raise_for_status = Mock()
+
+        # Set up mock to return 429 first, then success on retry
+        # 设置 mock 先返回 429，然后重试时返回成功
+        mock_post.side_effect = [
+            mock_rate_limit_response,  # First call: 429
+            mock_retry_success,  # Retry: success
+        ]
+
+        # Call _make_request
+        # 调用 _make_request
+        result = client._make_request("POST", "/test", data={"test": "data"})
+
+        # Verify sleep was called with Retry-After value (30 seconds)
+        # 验证 sleep 被调用，使用 Retry-After 值（30 秒）
+        mock_sleep.assert_called_once_with(30)
+
+        # Verify retry was successful
+        # 验证重试成功
+        assert result is not None
+        assert result.get("status") == "ok"
+        assert result.get("data") == "test"
+
+    @patch.dict(
+        os.environ,
+        {
+            "HYPERLIQUID_API_KEY": "test_key",
+            "HYPERLIQUID_API_SECRET": "test_secret",
+        },
+    )
+    @patch("src.trading.hyperliquid_client.requests.post")
+    @patch("src.trading.hyperliquid_client.time.sleep")
+    def test_rate_limit_retry_without_retry_after_header(self, mock_sleep, mock_post):
+        """
+        Test that 429 error uses default 60s delay when Retry-After header is missing
+        测试 429 错误在没有 Retry-After header 时使用默认 60 秒延迟
+        """
+        import requests
+        from src.trading.hyperliquid_client import HyperliquidClient
+
+        # Mock successful connection first / 首先模拟成功连接
+        mock_success = MagicMock()
+        mock_success.status_code = 200
+        mock_success.json.return_value = {"status": "ok"}
+        mock_success.content = b'{"status": "ok"}'
+        mock_success.raise_for_status = Mock()
+
+        # Provide enough mocks for connection (2 calls per attempt)
+        # 为连接提供足够的 mock（每次尝试 2 次调用）
+        mock_post.side_effect = [mock_success, mock_success]
+
+        client = HyperliquidClient(
+            api_key="test_key", api_secret="test_secret", testnet=True
+        )
+
+        # Create 429 rate limit response without Retry-After header
+        # 创建不带 Retry-After header 的 429 速率限制响应
+        mock_rate_limit_response = MagicMock()
+        mock_rate_limit_response.status_code = 429
+        mock_rate_limit_response.headers = {}  # No Retry-After header
+        mock_rate_limit_response.json.return_value = {"error": "Rate limit exceeded"}
+        mock_rate_limit_response.content = b'{"error": "Rate limit exceeded"}'
+        
+        # Create HTTPError with response attribute
+        # 创建带 response 属性的 HTTPError
+        http_error = requests.exceptions.HTTPError("Rate limit exceeded")
+        http_error.response = mock_rate_limit_response
+        mock_rate_limit_response.raise_for_status.side_effect = http_error
+
+        # Create successful retry response
+        # 创建成功的重试响应
+        mock_retry_success = MagicMock()
+        mock_retry_success.status_code = 200
+        mock_retry_success.json.return_value = {"status": "ok"}
+        mock_retry_success.content = b'{"status": "ok"}'
+        mock_retry_success.raise_for_status = Mock()
+
+        # Set up mock to return 429 first, then success on retry
+        # 设置 mock 先返回 429，然后重试时返回成功
+        mock_post.side_effect = [
+            mock_rate_limit_response,  # First call: 429
+            mock_retry_success,  # Retry: success
+        ]
+
+        # Call _make_request
+        # 调用 _make_request
+        result = client._make_request("POST", "/test", data={"test": "data"})
+
+        # Verify sleep was called with default 60 seconds
+        # 验证 sleep 被调用，使用默认 60 秒
+        mock_sleep.assert_called_once_with(60)
+
+        # Verify retry was successful
+        # 验证重试成功
+        assert result is not None
+        assert result.get("status") == "ok"
+
+    @patch.dict(
+        os.environ,
+        {
+            "HYPERLIQUID_API_KEY": "test_key",
+            "HYPERLIQUID_API_SECRET": "test_secret",
+        },
+    )
+    @patch("src.trading.hyperliquid_client.requests.post")
+    @patch("src.trading.hyperliquid_client.time.sleep")
+    def test_rate_limit_retry_fails_on_second_attempt(self, mock_sleep, mock_post):
+        """
+        Test that retry failure returns None and logs error
+        测试重试失败时返回 None 并记录错误
+        """
+        import requests
+        from src.trading.hyperliquid_client import HyperliquidClient
+
+        # Mock successful connection first / 首先模拟成功连接
+        mock_success = MagicMock()
+        mock_success.status_code = 200
+        mock_success.json.return_value = {"status": "ok"}
+        mock_success.content = b'{"status": "ok"}'
+        mock_success.raise_for_status = Mock()
+
+        # Provide enough mocks for connection (2 calls per attempt)
+        # 为连接提供足够的 mock（每次尝试 2 次调用）
+        mock_post.side_effect = [mock_success, mock_success]
+
+        client = HyperliquidClient(
+            api_key="test_key", api_secret="test_secret", testnet=True
+        )
+
+        # Create 429 rate limit response
+        # 创建 429 速率限制响应
+        mock_rate_limit_response = MagicMock()
+        mock_rate_limit_response.status_code = 429
+        mock_rate_limit_response.headers = {"Retry-After": "10"}
+        mock_rate_limit_response.json.return_value = {"error": "Rate limit exceeded"}
+        mock_rate_limit_response.content = b'{"error": "Rate limit exceeded"}'
+        
+        # Create HTTPError with response attribute
+        # 创建带 response 属性的 HTTPError
+        http_error = requests.exceptions.HTTPError("Rate limit exceeded")
+        http_error.response = mock_rate_limit_response
+        mock_rate_limit_response.raise_for_status.side_effect = http_error
+
+        # Create another 429 response for retry (still rate limited)
+        # 为重试创建另一个 429 响应（仍然被限流）
+        mock_retry_failure = MagicMock()
+        mock_retry_failure.status_code = 429
+        mock_retry_failure.headers = {"Retry-After": "60"}
+        mock_retry_failure.json.return_value = {"error": "Rate limit exceeded"}
+        mock_retry_failure.content = b'{"error": "Rate limit exceeded"}'
+        
+        # Create HTTPError with response attribute for retry
+        # 为重试创建带 response 属性的 HTTPError
+        http_error_retry = requests.exceptions.HTTPError("Rate limit exceeded")
+        http_error_retry.response = mock_retry_failure
+        mock_retry_failure.raise_for_status.side_effect = http_error_retry
+
+        # Set up mock to return 429 on all attempts (max_retries=2, so 3 attempts total)
+        # 设置 mock 在所有尝试中都返回 429（max_retries=2，所以总共 3 次尝试）
+        # The implementation retries up to max_retries times, so we need 3 failures
+        # 实现会重试最多 max_retries 次，所以我们需要 3 次失败
+        mock_post.side_effect = [
+            mock_rate_limit_response,  # First call: 429
+            mock_rate_limit_response,  # Retry 1: still 429
+            mock_retry_failure,  # Retry 2: still 429 (final failure)
+        ]
+
+        # Call _make_request
+        # 调用 _make_request
+        # Note: Implementation retries up to max_retries (2) times, then raises ConnectionError
+        # 注意：实现会重试最多 max_retries (2) 次，然后抛出 ConnectionError
+        from src.trading.hyperliquid_client import ConnectionError
+        
+        with pytest.raises(ConnectionError) as exc_info:
+            client._make_request("POST", "/test", data={"test": "data"}, max_retries=2)
+
+        # Verify error message contains rate limit information
+        # 验证错误消息包含速率限制信息
+        assert "rate limit" in str(exc_info.value).lower() or "429" in str(exc_info.value)
+        
+        # Verify sleep was called for each retry attempt (max_retries=2, so 2 retries = 2 sleep calls)
+        # 验证每次重试尝试都调用了 sleep（max_retries=2，所以 2 次重试 = 2 次 sleep 调用）
+        # Note: The implementation uses the Retry-After from the current response
+        # 注意：实现使用当前响应的 Retry-After
+        assert mock_sleep.call_count == 2, f"Expected 2 sleep calls, got {mock_sleep.call_count}"
+        # First retry uses Retry-After: 10 from the first response
+        # 第一次重试使用第一个响应的 Retry-After: 10
+        # Second retry uses Retry-After: 10 from the second response (which also has Retry-After: 10)
+        # 第二次重试使用第二个响应的 Retry-After: 10（第二个响应也有 Retry-After: 10）
+        # The third response's Retry-After: 60 is only used if there's a third retry
+        # 第三个响应的 Retry-After: 60 只在有第三次重试时使用
+        # Check that both calls were with 10 (since first two responses both have Retry-After: 10)
+        # 检查两次调用都是 10（因为前两个响应都有 Retry-After: 10）
+        assert all(call[0][0] == 10 for call in mock_sleep.call_args_list), f"All sleep calls should be with 10, got {[call[0][0] for call in mock_sleep.call_args_list]}"
+        
+        # Verify error state is tracked
+        # 验证错误状态被跟踪
+        assert hasattr(client, "last_api_error")
+        assert client.last_api_error is not None
+        assert client.last_api_error.get("type") == "rate_limit"
+        assert client.last_api_error.get("status_code") == 429
+
+    @patch.dict(
+        os.environ,
+        {
+            "HYPERLIQUID_API_KEY": "test_key",
+            "HYPERLIQUID_API_SECRET": "test_secret",
+        },
+    )
+    @patch("src.trading.hyperliquid_client.requests.post")
+    @patch("src.trading.hyperliquid_client.time.sleep")
+    def test_rate_limit_retry_with_invalid_retry_after_header(self, mock_sleep, mock_post):
+        """
+        Test that invalid Retry-After header falls back to default 60s delay
+        测试无效的 Retry-After header 回退到默认 60 秒延迟
+        """
+        import requests
+        from src.trading.hyperliquid_client import HyperliquidClient
+
+        # Mock successful connection first / 首先模拟成功连接
+        mock_success = MagicMock()
+        mock_success.status_code = 200
+        mock_success.json.return_value = {"status": "ok"}
+        mock_success.content = b'{"status": "ok"}'
+        mock_success.raise_for_status = Mock()
+
+        # Provide enough mocks for connection (2 calls per attempt)
+        # 为连接提供足够的 mock（每次尝试 2 次调用）
+        mock_post.side_effect = [mock_success, mock_success]
+
+        client = HyperliquidClient(
+            api_key="test_key", api_secret="test_secret", testnet=True
+        )
+
+        # Create 429 rate limit response with invalid Retry-After header (non-numeric)
+        # 创建带无效 Retry-After header（非数字）的 429 速率限制响应
+        mock_rate_limit_response = MagicMock()
+        mock_rate_limit_response.status_code = 429
+        mock_rate_limit_response.headers = {"Retry-After": "invalid"}
+        mock_rate_limit_response.json.return_value = {"error": "Rate limit exceeded"}
+        mock_rate_limit_response.content = b'{"error": "Rate limit exceeded"}'
+        
+        # Create HTTPError with response attribute
+        # 创建带 response 属性的 HTTPError
+        http_error = requests.exceptions.HTTPError("Rate limit exceeded")
+        http_error.response = mock_rate_limit_response
+        mock_rate_limit_response.raise_for_status.side_effect = http_error
+
+        # Create successful retry response
+        # 创建成功的重试响应
+        mock_retry_success = MagicMock()
+        mock_retry_success.status_code = 200
+        mock_retry_success.json.return_value = {"status": "ok"}
+        mock_retry_success.content = b'{"status": "ok"}'
+        mock_retry_success.raise_for_status = Mock()
+
+        # Set up mock to return 429 first, then success on retry
+        # 设置 mock 先返回 429，然后重试时返回成功
+        mock_post.side_effect = [
+            mock_rate_limit_response,  # First call: 429
+            mock_retry_success,  # Retry: success
+        ]
+
+        # Call _make_request
+        # 调用 _make_request
+        result = client._make_request("POST", "/test", data={"test": "data"})
+
+        # Verify sleep was called with default 60 seconds (invalid header falls back)
+        # 验证 sleep 被调用，使用默认 60 秒（无效 header 回退）
+        mock_sleep.assert_called_once_with(60)
+
+        # Verify retry was successful
+        # 验证重试成功
+        assert result is not None
+        assert result.get("status") == "ok"

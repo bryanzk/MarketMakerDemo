@@ -26,6 +26,19 @@ from src.shared.config import (
     STRATEGY_TYPE,
     SYMBOL,
 )
+from src.shared.error_mapper import ErrorMapper, map_exception
+from src.shared.errors import (
+    ErrorSeverity,
+    ErrorType,
+    StandardErrorResponse,
+)
+from src.shared.exchange_metrics import (
+    ExchangeName,
+    MetricsCollector,
+    OperationType,
+    metrics_collector,
+    track_exchange_operation,
+)
 from src.shared.logger import JsonFormatter, setup_logger
 from src.shared.utils import round_step_size, round_tick_size
 
@@ -55,4 +68,16 @@ __all__ = [
     # Utils
     "round_step_size",
     "round_tick_size",
+    # Error Handling
+    "ErrorSeverity",
+    "ErrorType",
+    "StandardErrorResponse",
+    "ErrorMapper",
+    "map_exception",
+    # Metrics
+    "ExchangeName",
+    "OperationType",
+    "MetricsCollector",
+    "metrics_collector",
+    "track_exchange_operation",
 ]

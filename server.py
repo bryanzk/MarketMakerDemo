@@ -315,16 +315,32 @@ def _check_exchange_connection(
     if exchange_name == "hyperliquid":
         from src.trading.hyperliquid_client import HyperliquidClient
 
-        if isinstance(exchange, HyperliquidClient) and not exchange.is_connected:
-            error_msg = (
-                "Hyperliquid exchange not connected. "
-                "Please connect to Hyperliquid first. / "
-                "Hyperliquid 交易所未连接。请先连接到 Hyperliquid。"
-            )
-            if error_format == "status":
-                return False, {"status": "error", "error": error_msg}, 503
-            else:
-                return False, {"error": error_msg}, 503
+        # Check if exchange is HyperliquidClient instance or has is_connected attribute
+        # 检查 exchange 是否是 HyperliquidClient 实例或具有 is_connected 属性
+        if isinstance(exchange, HyperliquidClient):
+            if not exchange.is_connected:
+                error_msg = (
+                    "Hyperliquid exchange not connected. "
+                    "Please connect to Hyperliquid first. / "
+                    "Hyperliquid 交易所未连接。请先连接到 Hyperliquid。"
+                )
+                if error_format == "status":
+                    return False, {"status": "error", "error": error_msg}, 503
+                else:
+                    return False, {"error": error_msg}, 503
+        elif hasattr(exchange, "is_connected"):
+            # For mock objects in tests, check is_connected attribute
+            # 对于测试中的 mock 对象，检查 is_connected 属性
+            if not exchange.is_connected:
+                error_msg = (
+                    "Hyperliquid exchange not connected. "
+                    "Please connect to Hyperliquid first. / "
+                    "Hyperliquid 交易所未连接。请先连接到 Hyperliquid。"
+                )
+                if error_format == "status":
+                    return False, {"status": "error", "error": error_msg}, 503
+                else:
+                    return False, {"error": error_msg}, 503
 
     return True, None, None
 
@@ -440,16 +456,16 @@ def init_portfolio_capital():
             from src.trading.exchange import BinanceClient
 
             if isinstance(exchange, BinanceClient):
-            account_data = exchange.fetch_account_data()
-            if account_data and "balance" in account_data:
-                actual_balance = account_data["balance"]
-                if actual_balance > 0:
-                    initial_capital = actual_balance
-                    portfolio_manager.total_capital = actual_balance
-                    print(
-                        f"✅ Portfolio capital initialized from Binance: ${actual_balance:.2f} USDT"
-                    )
-                    return actual_balance
+                account_data = exchange.fetch_account_data()
+                if account_data and "balance" in account_data:
+                    actual_balance = account_data["balance"]
+                    if actual_balance > 0:
+                        initial_capital = actual_balance
+                        portfolio_manager.total_capital = actual_balance
+                        print(
+                            f"✅ Portfolio capital initialized from Binance: ${actual_balance:.2f} USDT"
+                        )
+                        return actual_balance
             else:
                 # Not Binance, skip initialization (e.g., Hyperliquid)
                 # 不是 Binance，跳过初始化（例如 Hyperliquid）
@@ -642,10 +658,10 @@ async def get_status(request: Request, exchange: Optional[str] = Query(None)):
         return await get_hyperliquid_status()
 
     try:
-    status = bot_engine.get_status()
+        status = bot_engine.get_status()
         # Override active with actual running state / 用实际运行状态覆盖 active
-    status["active"] = is_running
-    status["stage"] = bot_engine.current_stage
+        status["active"] = is_running
+        status["stage"] = bot_engine.current_stage
 
         # Ensure symbol is present (fallback if not in get_status) / 确保 symbol 存在（如果 get_status 中没有则回退）
         if "symbol" not in status or status["symbol"] is None:
@@ -662,24 +678,24 @@ async def get_status(request: Request, exchange: Optional[str] = Query(None)):
             # Keep the error field as is for backward compatibility / 保持 error 字段不变以保持向后兼容
             pass
 
-    # Add strategy info & core config for UI display
-    strategy_type_name = type(bot_engine.strategy).__name__
-    status["strategy_type"] = (
-        "funding_rate"
-        if strategy_type_name == "FundingRateStrategy"
-        else "fixed_spread"
-    )
+        # Add strategy info & core config for UI display
+        strategy_type_name = type(bot_engine.strategy).__name__
+        status["strategy_type"] = (
+            "funding_rate"
+            if strategy_type_name == "FundingRateStrategy"
+            else "fixed_spread"
+        )
 
-    # Expose current spread, quantity, leverage from engine strategy when they are simple numeric types.
-    spread = getattr(bot_engine.strategy, "spread", None)
-    quantity = getattr(bot_engine.strategy, "quantity", None)
-    leverage = getattr(bot_engine.strategy, "leverage", None)
-    if isinstance(spread, (int, float)):
-        status["spread"] = spread
-    if isinstance(quantity, (int, float)):
-        status["quantity"] = quantity
-    if isinstance(leverage, (int, float)):
-        status["leverage"] = leverage
+        # Expose current spread, quantity, leverage from engine strategy when they are simple numeric types.
+        spread = getattr(bot_engine.strategy, "spread", None)
+        quantity = getattr(bot_engine.strategy, "quantity", None)
+        leverage = getattr(bot_engine.strategy, "leverage", None)
+        if isinstance(spread, (int, float)):
+            status["spread"] = spread
+        if isinstance(quantity, (int, float)):
+            status["quantity"] = quantity
+        if isinstance(leverage, (int, float)):
+            status["leverage"] = leverage
 
         # Add error information / 添加错误信息
         # Phase 7: Expose Strategy Instance Errors / 阶段 7：暴露策略实例错误
@@ -730,59 +746,59 @@ async def get_status(request: Request, exchange: Optional[str] = Query(None)):
 
         status["errors"] = errors
 
-    # Only add skew_factor for funding strategies and when it's numeric
-    skew = getattr(bot_engine.strategy, "skew_factor", None)
-    if isinstance(skew, (int, float)):
-        status["skew_factor"] = skew
+        # Only add skew_factor for funding strategies and when it's numeric
+        skew = getattr(bot_engine.strategy, "skew_factor", None)
+        if isinstance(skew, (int, float)):
+            status["skew_factor"] = skew
 
-    # Fetch Binance Exchange Limits for current trading pair
-    exchange = get_default_exchange()
-    if exchange is not None:
-        try:
-            limits = exchange.get_symbol_limits()
-            status["limits"] = limits
-        except Exception as e:
-            # If limits fetch fails, set empty limits to avoid breaking UI
+        # Fetch Binance Exchange Limits for current trading pair
+        exchange = get_default_exchange()
+        if exchange is not None:
+            try:
+                limits = exchange.get_symbol_limits()
+                status["limits"] = limits
+            except Exception as e:
+                # If limits fetch fails, set empty limits to avoid breaking UI
+                status["limits"] = {
+                    "minQty": None,
+                    "maxQty": None,
+                    "stepSize": None,
+                    "minNotional": None,
+                }
+                print(f"Error fetching symbol limits: {e}")
+        else:
+            # No exchange connection, set empty limits
             status["limits"] = {
                 "minQty": None,
                 "maxQty": None,
                 "stepSize": None,
                 "minNotional": None,
             }
-            print(f"Error fetching symbol limits: {e}")
-    else:
-        # No exchange connection, set empty limits
-        status["limits"] = {
-            "minQty": None,
-            "maxQty": None,
-            "stepSize": None,
-            "minNotional": None,
-        }
 
-    # Add strategy instance running states (regardless of exchange connection)
-    if hasattr(bot_engine, "strategy_instances"):
-        status["strategy_instances_running"] = {
-            strategy_id: instance.running 
-            for strategy_id, instance in bot_engine.strategy_instances.items()
-        }
-        # Map strategy names to instance IDs for UI
-        status["strategy_instance_status"] = {}
-        
-        # Initialize both strategy types to False
-        status["strategy_instance_status"]["fixed_spread"] = False
-        status["strategy_instance_status"]["funding_rate"] = False
-        
-        # Map instances to their strategy types
-        # If multiple instances of the same type exist, use OR logic (if any is running, mark as running)
-        for strategy_id, instance in bot_engine.strategy_instances.items():
-            if instance.strategy_type == "fixed_spread":
-                # If any fixed_spread instance is running, mark fixed_spread as running
-                if instance.running:
-                    status["strategy_instance_status"]["fixed_spread"] = True
-            elif instance.strategy_type == "funding_rate":
-                # If any funding_rate instance is running, mark funding_rate as running
-                if instance.running:
-                    status["strategy_instance_status"]["funding_rate"] = True
+        # Add strategy instance running states (regardless of exchange connection)
+        if hasattr(bot_engine, "strategy_instances"):
+            status["strategy_instances_running"] = {
+                strategy_id: instance.running 
+                for strategy_id, instance in bot_engine.strategy_instances.items()
+            }
+            # Map strategy names to instance IDs for UI
+            status["strategy_instance_status"] = {}
+            
+            # Initialize both strategy types to False
+            status["strategy_instance_status"]["fixed_spread"] = False
+            status["strategy_instance_status"]["funding_rate"] = False
+            
+            # Map instances to their strategy types
+            # If multiple instances of the same type exist, use OR logic (if any is running, mark as running)
+            for strategy_id, instance in bot_engine.strategy_instances.items():
+                if instance.strategy_type == "fixed_spread":
+                    # If any fixed_spread instance is running, mark fixed_spread as running
+                    if instance.running:
+                        status["strategy_instance_status"]["fixed_spread"] = True
+                elif instance.strategy_type == "funding_rate":
+                    # If any funding_rate instance is running, mark funding_rate as running
+                    if instance.running:
+                        status["strategy_instance_status"]["funding_rate"] = True
 
         # Ensure required fields are present for backward compatibility / 确保必需字段存在以保持向后兼容
         if "symbol" not in status:
@@ -794,7 +810,7 @@ async def get_status(request: Request, exchange: Optional[str] = Query(None)):
         status["trace_id"] = trace_id
         status["ok"] = True
 
-    return status
+        return status
     except Exception as e:
         logger.error(
             "Error getting status",
@@ -2007,7 +2023,13 @@ async def apply_evaluation(request: EvaluationApplyRequest):
         # Check exchange connection if hyperliquid
         # 如果是 hyperliquid，检查交易所连接
         if exchange_name == "hyperliquid":
-            exchange = get_exchange_by_name(exchange_name)
+            exchange = get_exchange_by_name("hyperliquid")
+            if not exchange:
+                return {
+                    "status": "error",
+                    "error": "Hyperliquid exchange not connected / Hyperliquid 交易所未连接",
+                    "exchange": exchange_name,
+                }
             is_connected, connection_error, status_code = _check_exchange_connection(
                 exchange_name, exchange, error_format="status"
             )
@@ -2057,8 +2079,8 @@ async def apply_evaluation(request: EvaluationApplyRequest):
                     "status": "error",
                     "error": f"Provider {request.provider_name} not found in evaluation results. Available providers: {', '.join(available_providers)} / 在评估结果中未找到提供商 {request.provider_name}。可用提供商：{', '.join(available_providers)}",
                 }
-        
-        if not proposal or not proposal.parse_success:
+            
+            if not proposal or not proposal.parse_success:
                 strategy = (
                     getattr(proposal, "recommended_strategy", "Unknown")
                     if proposal
@@ -2072,6 +2094,14 @@ async def apply_evaluation(request: EvaluationApplyRequest):
             return {
                 "status": "error",
                 "error": f"Invalid source: {request.source}. Use 'consensus' or 'individual'. / 无效的来源：{request.source}。使用 'consensus' 或 'individual'。",
+            }
+        
+        # Verify proposal exists and is valid
+        # 验证 proposal 存在且有效
+        if not proposal:
+            return {
+                "status": "error",
+                "error": "No proposal available / 没有可用的建议",
             }
 
         if not proposal:
@@ -2156,15 +2186,15 @@ async def apply_evaluation(request: EvaluationApplyRequest):
         else:
             # For other exchanges (e.g., binance), use the standard update_config
             # 对于其他交易所（例如 binance），使用标准的 update_config
-        config_update = ConfigUpdate(
-            spread=proposal.spread * 100,  # Convert to percentage
-            quantity=proposal.quantity,
-            strategy_type=strategy_type,
-            strategy_id="default",
-            skew_factor=proposal.skew_factor,
-        )
-        
-        config_result = await update_config(config_update)
+            config_update = ConfigUpdate(
+                spread=proposal.spread * 100,  # Convert to percentage
+                quantity=proposal.quantity,
+                strategy_type=strategy_type,
+                strategy_id="default",
+                skew_factor=proposal.skew_factor,
+            )
+            
+            config_result = await update_config(config_update)
         if "error" in config_result:
                 return {
                     "status": "error",

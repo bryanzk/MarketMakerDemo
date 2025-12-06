@@ -466,11 +466,14 @@ class TestHyperliquidApplyAPI:
     @pytest.fixture
     def mock_hyperliquid_client(self):
         """Create a mock HyperliquidClient / 创建模拟 HyperliquidClient"""
-        client = Mock(spec=HyperliquidClient)
+        client = MagicMock(spec=HyperliquidClient)
         client.is_connected = True
+        # Make isinstance() check pass for HyperliquidClient
+        # 使 isinstance() 检查对 HyperliquidClient 通过
+        client.__class__ = HyperliquidClient
         return client
 
-    @patch("server.get_default_exchange")
+    @patch("server.get_exchange_by_name")
     def test_apply_suggestions_to_hyperliquid(
         self, mock_get_exchange, mock_hyperliquid_client
     ):
@@ -482,28 +485,445 @@ class TestHyperliquidApplyAPI:
         When: I call the apply API with a specific LLM provider's suggestion
         Then: The system should apply the suggested trading parameters to Hyperliquid
         """
+        mock_hyperliquid_client.symbol = "ETHUSDC"
         mock_get_exchange.return_value = mock_hyperliquid_client
 
-        # Mock evaluation results
-        # 模拟评估结果
-        with patch("server._last_evaluation_results", []), patch(
-            "server._last_evaluation_aggregated", None
+        # Mock evaluation results with consensus proposal
+        # 模拟带有共识建议的评估结果
+        from src.ai.evaluation.schemas import (
+            AggregatedResult,
+            StrategyConsensus,
+            StrategyProposal,
+        )
+
+        consensus_proposal = StrategyProposal(
+            recommended_strategy="FixedSpread",
+            spread=0.012,
+            skew_factor=None,
+            quantity=0.1,
+            leverage=5,
+            confidence=0.85,
+            risk_level="medium",
+            reasoning="Test reasoning",
+            parse_success=True,
+        )
+
+        strategy_consensus = StrategyConsensus(
+            consensus_strategy="FixedSpread",
+            consensus_level="high",
+            consensus_ratio=1.0,
+            consensus_count=1,
+            total_models=1,
+            strategy_votes={"FixedSpread": 1},
+            strategy_percentages={"FixedSpread": 100.0},
+        )
+
+        aggregated = AggregatedResult(
+            strategy_consensus=strategy_consensus,
+            consensus_confidence=0.85,
+            consensus_proposal=consensus_proposal,
+            avg_pnl=50.0,
+            avg_sharpe=1.5,
+            avg_win_rate=0.6,
+            avg_latency_ms=1000.0,
+            successful_evaluations=1,
+            failed_evaluations=0,
+        )
+
+        # Mock bot_engine with empty strategy instances
+        # 模拟带有空策略实例的 bot_engine
+        mock_bot_engine = Mock()
+        
+        # Mock instance after creation
+        # 模拟创建后的实例
+        mock_instance = Mock()
+        mock_instance.exchange = mock_hyperliquid_client
+        mock_instance.use_real_exchange = True
+        mock_instance.strategy = Mock()
+        mock_instance.strategy.spread = 0.01
+        mock_instance.strategy.quantity = 0.05
+
+        # Use MagicMock for strategy_instances to allow get() method mocking
+        # 使用 MagicMock 用于 strategy_instances 以允许 get() 方法模拟
+        mock_strategy_instances = MagicMock()
+        mock_strategy_instances.__iter__ = Mock(return_value=iter([]))
+        mock_strategy_instances.items.return_value = []  # No instances initially
+        mock_strategy_instances.get.return_value = None
+        mock_bot_engine.strategy_instances = mock_strategy_instances
+        mock_bot_engine.add_strategy_instance = Mock(return_value=True)
+        
+        # After add_strategy_instance is called, update get to return the instance
+        # 在 add_strategy_instance 被调用后，更新 get 以返回实例
+        def side_effect_get(instance_id):
+            if instance_id == "hyperliquid" and mock_bot_engine.add_strategy_instance.called:
+                return mock_instance
+            return None
+        
+        mock_strategy_instances.get.side_effect = side_effect_get
+
+        with patch("server.bot_engine", mock_bot_engine), patch(
+            "server._last_evaluation_results", []
+        ), patch("server._last_evaluation_aggregated", aggregated), patch(
+            "server.get_exchange_by_name", mock_get_exchange
         ):
             client = TestClient(server.app)
 
-            # Note: Apply API may need to be updated to accept exchange parameter
-            # 注意：Apply API 可能需要更新以接受 exchange 参数
             response = client.post(
                 "/api/evaluation/apply",
                 json={
                     "source": "consensus",
-                    # "exchange": "hyperliquid"  # This parameter may need to be added
+                    "exchange": "hyperliquid",
                 },
             )
 
-            # Verify response (when exchange parameter is implemented)
-            # 验证响应（当实现 exchange 参数时）
-            assert response.status_code in [200, 400, 404]
+            # Verify response
+            # 验证响应
+            assert response.status_code == 200, (
+                f"Expected 200, got {response.status_code}. "
+                f"Response: {response.json()}"
+            )
+
+            data = response.json()
+            if data.get("status") != "success":
+                # Print error for debugging
+                # 打印错误以便调试
+                print(f"Error response: {data}")
+            assert data["status"] == "success", f"Expected success, got error: {data.get('error', 'Unknown error')}"
+            assert data["exchange"] == "hyperliquid"
+            assert "applied_config" in data
+
+            # Verify strategy instance was created
+            # 验证策略实例已创建
+            assert mock_bot_engine.add_strategy_instance.called, (
+                "Strategy instance should be created / 应该创建策略实例"
+            )
+
+    @patch("server.get_exchange_by_name")
+    def test_apply_creates_hyperliquid_strategy_instance(
+        self, mock_get_exchange, mock_hyperliquid_client
+    ):
+        """
+        Test: Apply evaluation creates Hyperliquid strategy instance when it doesn't exist
+        测试：应用评估时，如果 Hyperliquid 策略实例不存在，则创建它
+        
+        Given: No Hyperliquid strategy instance exists
+        When: I apply LLM evaluation for Hyperliquid
+        Then: A new Hyperliquid strategy instance should be created with HyperliquidClient
+        """
+        mock_hyperliquid_client.symbol = "ETHUSDC"
+        mock_get_exchange.return_value = mock_hyperliquid_client
+
+        # Mock evaluation results
+        # 模拟评估结果
+        from src.ai.evaluation.schemas import (
+            AggregatedResult,
+            StrategyConsensus,
+            StrategyProposal,
+        )
+
+        consensus_proposal = StrategyProposal(
+            recommended_strategy="FixedSpread",
+            spread=0.012,
+            skew_factor=None,
+            quantity=0.1,
+            leverage=5,
+            confidence=0.85,
+            risk_level="medium",
+            reasoning="Test reasoning",
+            parse_success=True,
+        )
+
+        strategy_consensus = StrategyConsensus(
+            consensus_strategy="FixedSpread",
+            consensus_level="high",
+            consensus_ratio=1.0,
+            consensus_count=1,
+            total_models=1,
+            strategy_votes={"FixedSpread": 1},
+            strategy_percentages={"FixedSpread": 100.0},
+        )
+
+        aggregated = AggregatedResult(
+            strategy_consensus=strategy_consensus,
+            consensus_confidence=0.85,
+            consensus_proposal=consensus_proposal,
+            avg_pnl=50.0,
+            avg_sharpe=1.5,
+            avg_win_rate=0.6,
+            avg_latency_ms=1000.0,
+            successful_evaluations=1,
+            failed_evaluations=0,
+        )
+
+        # Create a real strategy instance mock to verify it gets updated
+        # 创建真实的策略实例模拟以验证它被更新
+        from src.trading.strategy_instance import StrategyInstance
+
+        mock_instance = Mock(spec=StrategyInstance)
+        mock_instance.strategy = Mock()
+        mock_instance.strategy.spread = 0.01
+        mock_instance.strategy.quantity = 0.05
+        mock_instance.exchange = None  # Initially no exchange
+        mock_instance.use_real_exchange = False
+
+        mock_bot_engine = Mock()
+        
+        # Use MagicMock for strategy_instances to allow get() method mocking
+        # 使用 MagicMock 用于 strategy_instances 以允许 get() 方法模拟
+        mock_strategy_instances = MagicMock()
+        mock_strategy_instances.__iter__ = Mock(return_value=iter([]))
+        mock_strategy_instances.items.return_value = []  # No instances initially
+        mock_strategy_instances.get.return_value = None
+        mock_bot_engine.strategy_instances = mock_strategy_instances
+        mock_bot_engine.add_strategy_instance = Mock(return_value=True)
+        
+        # Mock the get method to return the instance after creation
+        # 模拟 get 方法在创建后返回实例
+        def side_effect_get(instance_id):
+            if instance_id == "hyperliquid" and mock_bot_engine.add_strategy_instance.called:
+                mock_instance.exchange = mock_hyperliquid_client
+                mock_instance.use_real_exchange = True
+                return mock_instance
+            return None
+        
+        mock_strategy_instances.get.side_effect = side_effect_get
+
+        with patch("server.bot_engine", mock_bot_engine), patch(
+            "server._last_evaluation_results", []
+        ), patch("server._last_evaluation_aggregated", aggregated):
+            client = TestClient(server.app)
+
+            response = client.post(
+                "/api/evaluation/apply",
+                json={
+                    "source": "consensus",
+                    "exchange": "hyperliquid",
+                },
+            )
+
+            # Verify response
+            # 验证响应
+            assert response.status_code == 200
+            data = response.json()
+            assert data["status"] == "success"
+
+            # Verify strategy instance was created
+            # 验证策略实例已创建
+            assert mock_bot_engine.add_strategy_instance.called
+            call_args = mock_bot_engine.add_strategy_instance.call_args
+            assert call_args[0][0] == "hyperliquid"  # strategy_id
+            assert call_args[0][1] == "fixed_spread"  # strategy_type
+
+            # Verify instance exchange was replaced with HyperliquidClient
+            # 验证实例的 exchange 被替换为 HyperliquidClient
+            assert mock_instance.exchange == mock_hyperliquid_client
+            assert mock_instance.use_real_exchange is True
+
+            # Verify strategy parameters were updated
+            # 验证策略参数已更新
+            assert mock_instance.strategy.spread == 0.012
+            assert mock_instance.strategy.quantity == 0.1
+
+    @patch("server.get_exchange_by_name")
+    def test_apply_uses_existing_hyperliquid_instance(
+        self, mock_get_exchange, mock_hyperliquid_client
+    ):
+        """
+        Test: Apply evaluation uses existing Hyperliquid strategy instance if it exists
+        测试：如果 Hyperliquid 策略实例已存在，应用评估时使用它
+        
+        Given: A Hyperliquid strategy instance already exists
+        When: I apply LLM evaluation for Hyperliquid
+        Then: The existing instance should be used and updated
+        """
+        mock_hyperliquid_client.symbol = "ETHUSDC"
+        mock_get_exchange.return_value = mock_hyperliquid_client
+
+        # Mock evaluation results
+        # 模拟评估结果
+        from src.ai.evaluation.schemas import (
+            AggregatedResult,
+            StrategyConsensus,
+            StrategyProposal,
+        )
+
+        consensus_proposal = StrategyProposal(
+            recommended_strategy="FixedSpread",
+            spread=0.015,
+            skew_factor=None,
+            quantity=0.2,
+            leverage=3,
+            confidence=0.90,
+            risk_level="low",
+            reasoning="Test reasoning",
+            parse_success=True,
+        )
+
+        strategy_consensus = StrategyConsensus(
+            consensus_strategy="FixedSpread",
+            consensus_level="high",
+            consensus_ratio=1.0,
+            consensus_count=1,
+            total_models=1,
+            strategy_votes={"FixedSpread": 1},
+            strategy_percentages={"FixedSpread": 100.0},
+        )
+
+        aggregated = AggregatedResult(
+            strategy_consensus=strategy_consensus,
+            consensus_confidence=0.90,
+            consensus_proposal=consensus_proposal,
+            avg_pnl=60.0,
+            avg_sharpe=1.8,
+            avg_win_rate=0.65,
+            avg_latency_ms=900.0,
+            successful_evaluations=1,
+            failed_evaluations=0,
+        )
+
+        # Create existing instance with HyperliquidClient
+        # 创建带有 HyperliquidClient 的现有实例
+        from src.trading.strategy_instance import StrategyInstance
+
+        existing_instance = Mock(spec=StrategyInstance)
+        existing_instance.exchange = mock_hyperliquid_client
+        existing_instance.use_real_exchange = True
+        existing_instance.strategy = Mock()
+        existing_instance.strategy.spread = 0.01
+        existing_instance.strategy.quantity = 0.1
+
+        mock_bot_engine = Mock()
+        # Use MagicMock for strategy_instances to support items() and get()
+        # 使用 MagicMock 用于 strategy_instances 以支持 items() 和 get()
+        mock_strategy_instances = MagicMock()
+        mock_strategy_instances.items.return_value = [("hyperliquid", existing_instance)]
+        mock_strategy_instances.get.return_value = existing_instance
+        mock_bot_engine.strategy_instances = mock_strategy_instances
+        mock_bot_engine.add_strategy_instance = Mock(return_value=False)
+
+        with patch("server.bot_engine", mock_bot_engine), patch(
+            "server._last_evaluation_results", []
+        ), patch("server._last_evaluation_aggregated", aggregated), patch(
+            "server.get_exchange_by_name", mock_get_exchange
+        ):
+            client = TestClient(server.app)
+
+            response = client.post(
+                "/api/evaluation/apply",
+                json={
+                    "source": "consensus",
+                    "exchange": "hyperliquid",
+                },
+            )
+
+            # Verify response
+            # 验证响应
+            assert response.status_code == 200
+            data = response.json()
+            assert data["status"] == "success"
+
+            # Verify existing instance was used (add_strategy_instance should not be called)
+            # 验证使用了现有实例（不应该调用 add_strategy_instance）
+            assert not mock_bot_engine.add_strategy_instance.called
+
+            # Verify strategy parameters were updated
+            # 验证策略参数已更新
+            assert existing_instance.strategy.spread == 0.015
+            assert existing_instance.strategy.quantity == 0.2
+
+    @patch("server.get_exchange_by_name")
+    def test_apply_fails_when_hyperliquid_not_connected(
+        self, mock_get_exchange, mock_hyperliquid_client
+    ):
+        """
+        Test: Apply evaluation fails when Hyperliquid is not connected
+        测试：当 Hyperliquid 未连接时，应用评估失败
+        
+        Given: Hyperliquid exchange is not connected
+        When: I apply LLM evaluation for Hyperliquid
+        Then: The API should return an error
+        """
+        # Mock unconnected exchange
+        # 模拟未连接的交易所
+        mock_hyperliquid_client.is_connected = False
+        mock_get_exchange.return_value = mock_hyperliquid_client
+
+        # Mock evaluation results
+        # 模拟评估结果
+        from src.ai.evaluation.schemas import (
+            AggregatedResult,
+            StrategyConsensus,
+            StrategyProposal,
+        )
+
+        consensus_proposal = StrategyProposal(
+            recommended_strategy="FixedSpread",
+            spread=0.012,
+            skew_factor=None,
+            quantity=0.1,
+            leverage=5,
+            confidence=0.85,
+            risk_level="medium",
+            reasoning="Test reasoning",
+            parse_success=True,
+        )
+
+        strategy_consensus = StrategyConsensus(
+            consensus_strategy="FixedSpread",
+            consensus_level="high",
+            consensus_ratio=1.0,
+            consensus_count=1,
+            total_models=1,
+            strategy_votes={"FixedSpread": 1},
+            strategy_percentages={"FixedSpread": 100.0},
+        )
+
+        aggregated = AggregatedResult(
+            strategy_consensus=strategy_consensus,
+            consensus_confidence=0.85,
+            consensus_proposal=consensus_proposal,
+            avg_pnl=50.0,
+            avg_sharpe=1.5,
+            avg_win_rate=0.6,
+            avg_latency_ms=1000.0,
+            successful_evaluations=1,
+            failed_evaluations=0,
+        )
+
+        mock_bot_engine = Mock()
+        # Use MagicMock for strategy_instances
+        # 使用 MagicMock 用于 strategy_instances
+        mock_strategy_instances = MagicMock()
+        mock_strategy_instances.items.return_value = []
+        mock_strategy_instances.get.return_value = None
+        mock_bot_engine.strategy_instances = mock_strategy_instances
+
+        with patch("server.bot_engine", mock_bot_engine), patch(
+            "server._last_evaluation_results", []
+        ), patch("server._last_evaluation_aggregated", aggregated), patch(
+            "server.get_exchange_by_name", mock_get_exchange
+        ):
+            client = TestClient(server.app)
+
+            response = client.post(
+                "/api/evaluation/apply",
+                json={
+                    "source": "consensus",
+                    "exchange": "hyperliquid",
+                },
+            )
+
+            # Verify error response
+            # 验证错误响应
+            assert response.status_code == 200  # FastAPI returns 200 with error in body
+            data = response.json()
+            # Handle case where response might be a list (tuple serialized)
+            # 处理响应可能是列表的情况（tuple 序列化）
+            if isinstance(data, list) and len(data) > 0:
+                data = data[0]
+            assert data["status"] == "error"
+            error_msg = data.get("error", "").lower() if isinstance(data, dict) else str(data).lower()
+            assert "not connected" in error_msg or "未连接" in str(data)
 
 
 class TestSelectedModelsFiltering:

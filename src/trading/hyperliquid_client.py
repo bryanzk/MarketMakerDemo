@@ -150,15 +150,19 @@ class RateLimiter:
             self._cleanup_old_weights(current_time)
             return sum(weight for _, weight in self.weight_history)
     
-    def can_make_request(self, endpoint: str) -> tuple[bool, float]:
+    def can_make_request(self, endpoint: str, max_wait_time: float = 10.0) -> tuple[bool, float]:
         """
         Check if request can be made without exceeding rate limit / 检查是否可以在不超过速率限制的情况下发出请求
         
         Args:
             endpoint: API endpoint path / API 端点路径
+            max_wait_time: Maximum wait time in seconds before returning error (default: 10s)
+                           返回错误前的最大等待时间（秒）（默认：10秒）
             
         Returns:
             Tuple of (can_make_request, wait_time_seconds) / （可以发出请求，等待时间（秒））元组
+            If wait_time exceeds max_wait_time, returns (False, -1) to indicate immediate error
+            如果 wait_time 超过 max_wait_time，返回 (False, -1) 表示立即错误
         """
         with self.lock:
             current_time = time.time()
@@ -175,7 +179,14 @@ class RateLimiter:
             if self.weight_history:
                 oldest_time = self.weight_history[0][0]
                 wait_time = 60.0 - (current_time - oldest_time)
-                return False, max(0.0, wait_time)
+                wait_time = max(0.0, wait_time)
+                
+                # If wait time exceeds max_wait_time, return error immediately
+                # 如果等待时间超过最大等待时间，立即返回错误
+                if wait_time > max_wait_time:
+                    return False, -1.0
+                
+                return False, wait_time
             
             return True, 0.0
     
@@ -570,8 +581,21 @@ class HyperliquidClient:
             is_mocked = False
 
         # Check rate limit before making request / 在发出请求前检查速率限制
-        can_request, wait_time = self.rate_limiter.can_make_request(endpoint)
+        # Use max_wait_time of 10 seconds to avoid long blocking / 使用最大等待时间 10 秒以避免长时间阻塞
+        can_request, wait_time = self.rate_limiter.can_make_request(endpoint, max_wait_time=10.0)
         if not can_request:
+            if wait_time < 0:
+                # Wait time exceeds threshold, return error immediately / 等待时间超过阈值，立即返回错误
+                current_weight = self.rate_limiter.get_current_weight()
+                error_msg = (
+                    f"Rate limit exceeded. Current weight: {current_weight}/{self.rate_limiter.max_weight_per_minute}. "
+                    f"Please wait before making more requests. "
+                    f"速率限制已超出。当前权重: {current_weight}/{self.rate_limiter.max_weight_per_minute}。"
+                    f"请等待后再发出更多请求。"
+                )
+                logger.warning(f"Rate limit exceeded for {endpoint}: {error_msg}")
+                raise ConnectionError(error_msg)
+            
             logger.warning(
                 f"Rate limit approaching. Waiting {wait_time:.1f}s before request to {endpoint}. "
                 f"当前权重: {self.rate_limiter.get_current_weight()}/{self.rate_limiter.max_weight_per_minute}. "
@@ -828,9 +852,25 @@ class HyperliquidClient:
             )
 
             if not response:
-                logger.warning(
-                    "No response when fetching market data / 获取市场数据时无响应"
-                )
+                # Check if rate limit error occurred / 检查是否发生速率限制错误
+                if hasattr(self, "last_api_error") and self.last_api_error:
+                    error_type = self.last_api_error.get("type", "unknown")
+                    if error_type == "rate_limit":
+                        logger.warning(
+                            f"Rate limit when fetching market data for {coin}. "
+                            f"Current weight: {self.rate_limiter.get_current_weight()}/{self.rate_limiter.max_weight_per_minute}. "
+                            f"获取 {coin} 市场数据时速率限制。"
+                            f"当前权重: {self.rate_limiter.get_current_weight()}/{self.rate_limiter.max_weight_per_minute}。"
+                        )
+                    else:
+                        logger.warning(
+                            f"No response when fetching market data for {coin}: {self.last_api_error.get('message', 'Unknown error')} / "
+                            f"获取 {coin} 市场数据时无响应: {self.last_api_error.get('message', '未知错误')}"
+                        )
+                else:
+                    logger.warning(
+                        f"No response when fetching market data for {coin} / 获取 {coin} 市场数据时无响应"
+                    )
                 return None
 
             # Parse orderbook response

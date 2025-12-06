@@ -8,8 +8,7 @@ Owner: Agent AI
 
 import os
 from abc import ABC, abstractmethod
-from collections import deque
-from typing import Deque, List, Optional
+from typing import List, Optional
 
 import google.generativeai as genai
 
@@ -42,7 +41,7 @@ class GeminiProvider(LLMProvider):
 
         Args:
             api_key: Gemini API key (optional, will use GEMINI_API_KEY env var if not provided)
-            model: Model name. Default: "gemini-3-pro" (latest)
+            model: Model name. Default: "gemini-3-pro"
         """
         self.api_key = api_key or os.getenv("GEMINI_API_KEY")
         if not self.api_key:
@@ -50,28 +49,8 @@ class GeminiProvider(LLMProvider):
         genai.configure(api_key=self.api_key)
 
         env_preferred = os.getenv("GEMINI_MODEL")
-        env_fallbacks = os.getenv("GEMINI_FALLBACK_MODELS")
-        preferred = model or env_preferred or "gemini-1.5-flash"
-
-        fallback_list = [
-            "gemini-1.5-flash",
-            "gemini-1.5-flash-8b",
-            "gemini-1.0-pro",
-        ]
-        env_extra = (
-            [m.strip() for m in env_fallbacks.split(",") if m.strip()]
-            if env_fallbacks
-            else []
-        )
-
-        candidate_sequence = [preferred] + env_extra + fallback_list
-        deduped: List[str] = []
-        for candidate in candidate_sequence:
-            if candidate and candidate not in deduped:
-                deduped.append(candidate)
-
-        self._model_candidates: Deque[str] = deque(deduped)
-        self._initialize_model()
+        self._model_name = model or env_preferred or "gemini-3-pro"
+        self.model = genai.GenerativeModel(self._model_name)
 
     @property
     def name(self) -> str:
@@ -82,36 +61,10 @@ class GeminiProvider(LLMProvider):
             response = self.model.generate_content(prompt)
             return response.text
         except Exception as e:
-            if self._should_try_fallback(e) and self._switch_to_next_model():
-                logger.warning(
-                    f"Gemini model {self.name} failed, attempting fallback: {e}"
-                )
-                return self.generate(prompt)
-            raise RuntimeError(f"Gemini API error: {e}")
-
-    def _initialize_model(self) -> None:
-        if not self._model_candidates:
-            raise ValueError("No Gemini models available to initialize")
-        self._model_name = self._model_candidates[0]
-        self.model = genai.GenerativeModel(self._model_name)
-
-    def _switch_to_next_model(self) -> bool:
-        if len(self._model_candidates) <= 1:
-            return False
-        self._model_candidates.popleft()
-        self._initialize_model()
-        return True
-
-    @staticmethod
-    def _should_try_fallback(error: Exception) -> bool:
-        message = str(error).lower()
-        fallback_keywords = [
-            "not found",
-            "unsupported",
-            "does not exist",
-            "unavailable",
-        ]
-        return any(keyword in message for keyword in fallback_keywords)
+            raise RuntimeError(
+                f"Gemini API error ({self._model_name}): {e}. "
+                "Please ensure the requested model is available."
+            )
 
 
 class OpenAIProvider(LLMProvider):

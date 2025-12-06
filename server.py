@@ -1614,6 +1614,9 @@ async def run_evaluation(request: EvaluationRunRequest):
     """
     global _last_evaluation_results, _last_evaluation_aggregated
 
+    trace_id = get_trace_id()
+    request_context = create_request_context("/api/evaluation/run", "POST", hash_payload(request.model_dump()))
+
     try:
         # Validate exchange parameter
         # 验证交易所参数
@@ -1656,10 +1659,43 @@ async def run_evaluation(request: EvaluationRunRequest):
             error_msg = (
                 f"Failed to fetch market data: {str(e)} / 获取市场数据失败：{str(e)}"
             )
-            return {"error": error_msg}
+            logger.error(
+                f"Error fetching market data for evaluation: {error_msg}",
+                exc_info=True,
+                extra={
+                    "trace_id": trace_id,
+                    "symbol": symbol,
+                    "exchange": exchange_name,
+                    **request_context,
+                },
+            )
+            return create_error_response(
+                ValueError(error_msg),
+                error_code="MARKET_DATA_FETCH_ERROR",
+                details={
+                    **request_context,
+                    "symbol": symbol,
+                    "exchange": exchange_name,
+                },
+            )
 
         if not market_data:
-            return {"error": "No market data available / 无可用市场数据"}
+            # Provide more detailed error information / 提供更详细的错误信息
+            error_details = {
+                **request_context,
+                "symbol": symbol,
+                "exchange": exchange_name,
+                "suggestion": "The exchange may be rate-limited or the symbol may not be available. Try again in a few seconds. / 交易所可能受到速率限制或交易对不可用。请几秒后重试。",
+            }
+            logger.warning(
+                f"No market data available for symbol {symbol} on {exchange_name}",
+                extra={"trace_id": trace_id, **error_details},
+            )
+            return create_error_response(
+                ValueError("No market data available / 无可用市场数据"),
+                error_code="NO_MARKET_DATA",
+                details=error_details,
+            )
 
         # Build MarketContext
         # 构建市场上下文

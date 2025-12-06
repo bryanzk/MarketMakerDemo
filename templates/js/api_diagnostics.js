@@ -86,7 +86,16 @@ class ApiDiagnostics {
             let statusText = "Network Error";
             let errorMessage = error.message;
             
-            if (error.name === 'AbortError') {
+            if (error.name === 'AbortError' || error.message?.includes('aborted')) {
+                statusText = "Timeout";
+                // Provide clearer error message / 提供更清晰的错误消息
+                if (error.message && error.message.includes('timeout')) {
+                    errorMessage = error.message;
+                } else {
+                    errorMessage = `Request timeout after ${timeout}ms / 请求在 ${timeout}ms 后超时`;
+                }
+            } else if (error.message && error.message.includes('signal is aborted')) {
+                // Handle generic abort error / 处理通用中止错误
                 statusText = "Timeout";
                 errorMessage = `Request timeout after ${timeout}ms / 请求在 ${timeout}ms 后超时`;
             }
@@ -106,7 +115,12 @@ class ApiDiagnostics {
                 error: errorMessage,
             });
             
-            throw error;
+            // Create a new error with improved message for better user experience
+            // 创建带有改进消息的新错误，以提供更好的用户体验
+            const improvedError = new Error(errorMessage);
+            improvedError.name = error.name || 'NetworkError';
+            improvedError.originalError = error;
+            throw improvedError;
         }
     }
     

@@ -694,7 +694,18 @@
                 if (statusEl && detailsEl) {
                     statusEl.className = 'status-badge status-disconnected';
                     statusEl.innerText = 'Error / 错误';
-                    detailsEl.innerHTML = `<span style="color:#991b1b;">Failed to check connection: ${err.message} / 检查连接失败：${err.message}</span>`;
+                    
+                    // Provide user-friendly error message / 提供用户友好的错误消息
+                    let errorMsg = err.message || 'Unknown error / 未知错误';
+                    
+                    // Handle AbortError / 处理 AbortError
+                    if (err.name === 'AbortError' || errorMsg.includes('aborted') || errorMsg.includes('signal is aborted')) {
+                        errorMsg = 'Request timeout. The server may be slow or rate-limited. / 请求超时。服务器可能较慢或受到速率限制。';
+                    } else if (errorMsg.includes('timeout')) {
+                        errorMsg = 'Request timeout. Please try again. / 请求超时。请重试。';
+                    }
+                    
+                    detailsEl.innerHTML = `<span style="color:#991b1b;">Failed to check connection: ${errorMsg} / 检查连接失败：${errorMsg}</span>`;
                 }
             } finally {
                 isCheckingConnection = false;

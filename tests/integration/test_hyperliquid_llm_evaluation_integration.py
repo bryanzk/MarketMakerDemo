@@ -596,3 +596,243 @@ class TestHyperliquidLLMApplyIntegration:
                 "Response should include status or error / 响应应该包含 status 或 error"
             )
 
+
+class TestSelectedModelsIntegration:
+    """
+    Integration tests for selected_models parameter filtering.
+    测试 selected_models 参数过滤的集成测试。
+    """
+
+    @pytest.fixture
+    def mock_hyperliquid_client(self):
+        """Create a mock HyperliquidClient / 创建模拟 HyperliquidClient"""
+        client = Mock(spec=HyperliquidClient)
+        client.is_connected = True
+        client.symbol = "ETHUSDT"
+        client.exchange_name = "hyperliquid"
+        client.fetch_market_data.return_value = {
+            "best_bid": 3000.0,
+            "best_ask": 3002.0,
+            "mid_price": 3001.0,
+            "funding_rate": 0.0001,
+            "timestamp": int(time.time() * 1000),
+        }
+        client.fetch_account_data.return_value = {
+            "position_amt": 0.1,
+            "entry_price": 3000.0,
+            "balance": 10000.0,
+            "available_balance": 5000.0,
+            "leverage": 5,
+        }
+        client.set_symbol.return_value = True
+        return client
+
+    @pytest.fixture
+    def mock_all_llm_providers(self):
+        """Create mock LLM providers for all models / 为所有模型创建模拟 LLM 提供商"""
+        providers = []
+        for name, response in [
+            (
+                "Gemini",
+                '{"recommended_strategy": "FundingRate", "spread": 0.012, "skew_factor": 120, "confidence": 0.85, "quantity": 0.1, "leverage": 5}',
+            ),
+            (
+                "OpenAI",
+                '{"recommended_strategy": "FixedSpread", "spread": 0.015, "skew_factor": 100, "confidence": 0.78, "quantity": 0.15, "leverage": 3}',
+            ),
+            (
+                "Claude",
+                '{"recommended_strategy": "FixedSpread", "spread": 0.014, "skew_factor": 110, "confidence": 0.82, "quantity": 0.12, "leverage": 4}',
+            ),
+        ]:
+            mock = Mock()
+            mock.name = name
+            mock.generate.return_value = response
+            providers.append(mock)
+        return providers
+
+    @patch("server.create_all_providers")
+    @patch("server.get_exchange_by_name")
+    def test_integration_selected_models_single_model(
+        self,
+        mock_get_exchange,
+        mock_create_providers,
+        mock_hyperliquid_client,
+        mock_all_llm_providers,
+    ):
+        """
+        Integration Test: Single model selection filters providers correctly
+        集成测试：单个模型选择正确过滤提供商
+        
+        Tests the complete flow:
+        1. API receives request with selected_models=["gemini"]
+        2. API filters providers to only include Gemini
+        3. API runs evaluation with only Gemini
+        4. API returns results with only Gemini
+        
+        测试完整流程：
+        1. API 接收 selected_models=["gemini"] 的请求
+        2. API 过滤提供商，仅包含 Gemini
+        3. API 仅使用 Gemini 运行评估
+        4. API 返回仅包含 Gemini 的结果
+        """
+        mock_get_exchange.return_value = mock_hyperliquid_client
+        mock_create_providers.return_value = mock_all_llm_providers
+
+        mock_bot_engine = Mock()
+        mock_bot_engine.data = Mock()
+        mock_bot_engine.data.calculate_metrics.return_value = {"sharpe_ratio": 1.5}
+        mock_bot_engine.data.trade_history = []
+
+        with patch("server.bot_engine", mock_bot_engine):
+            client = TestClient(server.app)
+
+            # Step 1: Call API with single model selected
+            # 步骤 1：使用单个模型选择调用 API
+            response = client.post(
+                "/api/evaluation/run",
+                json={
+                    "symbol": "ETH/USDT:USDT",
+                    "simulation_steps": 100,
+                    "exchange": "hyperliquid",
+                    "selected_models": ["gemini"],
+                },
+            )
+
+            # Step 2: Verify API response
+            # 步骤 2：验证 API 响应
+            assert response.status_code == 200, (
+                f"Expected 200, got {response.status_code} / 预期 200，得到 {response.status_code}"
+            )
+            data = response.json()
+
+            # Step 3: Verify only Gemini was used
+            # 步骤 3：验证仅使用了 Gemini
+            assert "individual_results" in data, "Response should include individual_results / 响应应该包含 individual_results"
+            results = data["individual_results"]
+            assert len(results) == 1, "Should have only one result / 应该只有一个结果"
+            assert results[0]["provider_name"] == "Gemini", "Should be Gemini / 应该是 Gemini"
+
+            # Step 4: Verify aggregated results are based on single model
+            # 步骤 4：验证聚合结果基于单个模型
+            assert "aggregated" in data, "Response should include aggregated results / 响应应该包含聚合结果"
+            aggregated = data["aggregated"]
+            assert aggregated["strategy_consensus"]["total_models"] == 1, (
+                "Should have one model in consensus / 共识中应该有一个模型"
+            )
+
+    @patch("server.create_all_providers")
+    @patch("server.get_exchange_by_name")
+    def test_integration_selected_models_multiple_models(
+        self,
+        mock_get_exchange,
+        mock_create_providers,
+        mock_hyperliquid_client,
+        mock_all_llm_providers,
+    ):
+        """
+        Integration Test: Multiple model selection filters providers correctly
+        集成测试：多个模型选择正确过滤提供商
+        
+        Tests the complete flow with multiple models selected.
+        测试选择多个模型的完整流程。
+        """
+        mock_get_exchange.return_value = mock_hyperliquid_client
+        mock_create_providers.return_value = mock_all_llm_providers
+
+        mock_bot_engine = Mock()
+        mock_bot_engine.data = Mock()
+        mock_bot_engine.data.calculate_metrics.return_value = {"sharpe_ratio": 1.5}
+        mock_bot_engine.data.trade_history = []
+
+        with patch("server.bot_engine", mock_bot_engine):
+            client = TestClient(server.app)
+
+            # Call API with multiple models selected
+            # 使用多个模型选择调用 API
+            response = client.post(
+                "/api/evaluation/run",
+                json={
+                    "symbol": "ETH/USDT:USDT",
+                    "simulation_steps": 100,
+                    "exchange": "hyperliquid",
+                    "selected_models": ["gemini", "openai"],
+                },
+            )
+
+            assert response.status_code == 200, (
+                f"Expected 200, got {response.status_code} / 预期 200，得到 {response.status_code}"
+            )
+            data = response.json()
+
+            # Verify only selected models were used
+            # 验证仅使用了选中的模型
+            assert "individual_results" in data, "Response should include individual_results / 响应应该包含 individual_results"
+            results = data["individual_results"]
+            provider_names = [r["provider_name"] for r in results]
+            assert "Gemini" in provider_names, "Should include Gemini / 应该包含 Gemini"
+            assert "OpenAI" in provider_names, "Should include OpenAI / 应该包含 OpenAI"
+            assert "Claude" not in provider_names, "Should not include Claude / 不应该包含 Claude"
+            assert len(results) == 2, "Should have two results / 应该有两个结果"
+
+            # Verify aggregated results are based on selected models
+            # 验证聚合结果基于选中的模型
+            aggregated = data["aggregated"]
+            assert aggregated["strategy_consensus"]["total_models"] == 2, (
+                "Should have two models in consensus / 共识中应该有两个模型"
+            )
+
+    @patch("server.create_all_providers")
+    @patch("server.get_exchange_by_name")
+    def test_integration_selected_models_none_uses_all(
+        self,
+        mock_get_exchange,
+        mock_create_providers,
+        mock_hyperliquid_client,
+        mock_all_llm_providers,
+    ):
+        """
+        Integration Test: No selected_models uses all available providers
+        集成测试：没有 selected_models 时使用所有可用提供商
+        
+        Tests that when selected_models is not provided, all providers are used.
+        测试当未提供 selected_models 时，使用所有提供商。
+        """
+        mock_get_exchange.return_value = mock_hyperliquid_client
+        mock_create_providers.return_value = mock_all_llm_providers
+
+        mock_bot_engine = Mock()
+        mock_bot_engine.data = Mock()
+        mock_bot_engine.data.calculate_metrics.return_value = {"sharpe_ratio": 1.5}
+        mock_bot_engine.data.trade_history = []
+
+        with patch("server.bot_engine", mock_bot_engine):
+            client = TestClient(server.app)
+
+            # Call API without selected_models
+            # 不提供 selected_models 调用 API
+            response = client.post(
+                "/api/evaluation/run",
+                json={
+                    "symbol": "ETH/USDT:USDT",
+                    "simulation_steps": 100,
+                    "exchange": "hyperliquid",
+                    # No selected_models parameter
+                },
+            )
+
+            assert response.status_code == 200, (
+                f"Expected 200, got {response.status_code} / 预期 200，得到 {response.status_code}"
+            )
+            data = response.json()
+
+            # Verify all providers were used
+            # 验证使用了所有提供商
+            assert "individual_results" in data, "Response should include individual_results / 响应应该包含 individual_results"
+            results = data["individual_results"]
+            provider_names = [r["provider_name"] for r in results]
+            assert len(results) == 3, "Should use all three providers / 应该使用所有三个提供商"
+            assert "Gemini" in provider_names, "Should include Gemini / 应该包含 Gemini"
+            assert "OpenAI" in provider_names, "Should include OpenAI / 应该包含 OpenAI"
+            assert "Claude" in provider_names, "Should include Claude / 应该包含 Claude"
+

@@ -320,3 +320,82 @@ class TestHyperliquidLLMEvaluationSmoke:
                 or "hyperliquid" in error_msg
             ), f"Error should mention invalid exchange. Got: {data.get('error')} / 错误应该提到无效的交易所。得到：{data.get('error')}"
 
+    @patch("server.create_all_providers")
+    @patch("server.get_exchange_by_name")
+    def test_smoke_selected_models_parameter(
+        self,
+        mock_get_exchange,
+        mock_create_providers,
+        mock_hyperliquid_client,
+        mock_llm_providers,
+    ):
+        """
+        Smoke Test: selected_models parameter is accepted and processed
+        冒烟测试：selected_models 参数被接受和处理
+        
+        Verifies that API accepts selected_models parameter without errors.
+        验证 API 接受 selected_models 参数且无错误。
+        """
+        mock_get_exchange.return_value = mock_hyperliquid_client
+        
+        # Create multiple providers for testing
+        # 创建多个提供商用于测试
+        all_providers = []
+        for name, response in [
+            (
+                "Gemini",
+                '{"recommended_strategy": "FundingRate", "spread": 0.012, "skew_factor": 120, "confidence": 0.85, "quantity": 0.1, "leverage": 5}',
+            ),
+            (
+                "OpenAI",
+                '{"recommended_strategy": "FixedSpread", "spread": 0.015, "skew_factor": 100, "confidence": 0.78, "quantity": 0.15, "leverage": 3}',
+            ),
+        ]:
+            mock = Mock()
+            mock.name = name
+            mock.generate.return_value = response
+            all_providers.append(mock)
+        
+        mock_create_providers.return_value = all_providers
+
+        mock_bot_engine = Mock()
+        mock_bot_engine.data = Mock()
+        mock_bot_engine.data.calculate_metrics.return_value = {"sharpe_ratio": 1.5}
+        mock_bot_engine.data.trade_history = []
+
+        with patch("server.bot_engine", mock_bot_engine):
+            client = TestClient(server.app)
+
+            # Call API with selected_models parameter
+            # 使用 selected_models 参数调用 API
+            response = client.post(
+                "/api/evaluation/run",
+                json={
+                    "symbol": "ETH/USDC:USDC",
+                    "simulation_steps": 100,
+                    "exchange": "hyperliquid",
+                    "selected_models": ["gemini"],
+                },
+            )
+
+            # Verify API accepts the request (status code should be 200 or 400, not 404)
+            # 验证 API 接受请求（状态码应该是 200 或 400，而不是 404）
+            assert response.status_code != 404, "API endpoint not found / API 端点未找到"
+
+            # Verify selected_models parameter was processed
+            # 验证 selected_models 参数已处理
+            data = response.json()
+            if response.status_code == 200:
+                # If successful, should have results (may be filtered)
+                # 如果成功，应该有结果（可能被过滤）
+                assert "error" in data or "individual_results" in data, (
+                    "Response should have results or error / 响应应该有结果或错误"
+                )
+            elif "error" in data:
+                # Error should not be about unknown parameter
+                # 错误不应该关于未知参数
+                error_msg = data.get("error", "").lower()
+                assert "selected_models" not in error_msg or "unknown" not in error_msg, (
+                    "API should accept selected_models parameter / API 应该接受 selected_models 参数"
+                )
+

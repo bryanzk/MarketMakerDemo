@@ -10,12 +10,12 @@ Owner: Agent TRADING
 import sys
 import time
 from collections import deque
-from typing import Dict, Optional
+from typing import Any, Dict, Optional
 
 from src.ai.agents.data import DataAgent
 from src.ai.agents.quant import QuantAgent
 from src.ai.agents.risk import RiskAgent
-from src.shared.config import STRATEGY_TYPE
+from src.shared.config import STRATEGY_TYPE, SYMBOL, HYPERLIQUID_ONLY
 from src.shared.logger import setup_logger
 from src.shared.tracing import get_trace_id
 from src.trading.exchange import BinanceClient
@@ -37,23 +37,50 @@ class AlphaLoop:
     支持多个策略实例独立运行。
     """
 
-    def __init__(self):
+    def __init__(self, hyperliquid_only: Optional[bool] = None, hyperliquid_exchange: Optional[Any] = None):
         # Multi-strategy support: dict of StrategyInstance objects
         self.strategy_instances: Dict[str, StrategyInstance] = {}
 
-        # Backward compatibility: create default strategy instance
-        default_strategy_id = "default"
-        if STRATEGY_TYPE == "funding_rate":
-            default_instance = StrategyInstance(default_strategy_id, "funding_rate")
-            logger.info("Using Strategy: Funding Rate Skew")
-        else:
-            default_instance = StrategyInstance(default_strategy_id, "fixed_spread")
-            logger.info("Using Strategy: Fixed Spread")
-        self.strategy_instances[default_strategy_id] = default_instance
-        default_instance.running = True
+        # Determine mode / 确定模式
+        self.hyperliquid_only = HYPERLIQUID_ONLY if hyperliquid_only is None else hyperliquid_only
 
-        # Legacy single strategy reference for backward compatibility
-        self.strategy = default_instance.strategy
+        if self.hyperliquid_only:
+            # Hyperliquid-only mode: create a Hyperliquid strategy instance and skip default Binance
+            # 仅 Hyperliquid 模式：创建 Hyperliquid 策略实例，跳过默认 Binance
+            try:
+                from src.trading.hyperliquid_client import HyperliquidClient
+
+                hl_exchange = hyperliquid_exchange or HyperliquidClient()
+                hl_instance = StrategyInstance(
+                    "hyperliquid",
+                    STRATEGY_TYPE,
+                    symbol=SYMBOL,
+                    exchange=hl_exchange,
+                )
+                hl_instance.running = True
+                self.strategy_instances["hyperliquid"] = hl_instance
+                self.strategy = hl_instance.strategy
+                logger.info("Started in Hyperliquid-only mode; default Binance instance disabled")
+            except Exception as e:
+                logger.error(
+                    f"Failed to initialize Hyperliquid-only mode: {e}. No default instance created.",
+                    exc_info=True,
+                )
+                self.strategy = None
+        else:
+            # Backward compatibility: create default Binance strategy instance
+            default_strategy_id = "default"
+            if STRATEGY_TYPE == "funding_rate":
+                default_instance = StrategyInstance(default_strategy_id, "funding_rate")
+                logger.info("Using Strategy: Funding Rate Skew")
+            else:
+                default_instance = StrategyInstance(default_strategy_id, "fixed_spread")
+                logger.info("Using Strategy: Fixed Spread")
+            self.strategy_instances[default_strategy_id] = default_instance
+            default_instance.running = True
+
+            # Legacy single strategy reference for backward compatibility
+            self.strategy = default_instance.strategy
 
         # Shared agents and resources
         self.quant = QuantAgent()
@@ -72,6 +99,7 @@ class AlphaLoop:
         strategy_id: str,
         strategy_type: str = "fixed_spread",
         symbol: Optional[str] = None,
+        exchange: Optional[Any] = None,
     ) -> bool:
         """
         Add a new strategy instance.
@@ -80,6 +108,7 @@ class AlphaLoop:
             strategy_id: Unique identifier for the strategy instance
             strategy_type: "fixed_spread" or "funding_rate"
             symbol: Optional trading symbol override
+            exchange: Optional exchange client instance (e.g., HyperliquidClient for hyperliquid instances)
 
         Returns:
             True if added successfully, False if strategy_id already exists
@@ -88,7 +117,7 @@ class AlphaLoop:
             logger.error(f"Strategy instance '{strategy_id}' already exists")
             return False
 
-        instance = StrategyInstance(strategy_id, strategy_type, symbol=symbol)
+        instance = StrategyInstance(strategy_id, strategy_type, symbol=symbol, exchange=exchange)
         self.strategy_instances[strategy_id] = instance
         logger.info(f"Added strategy instance '{strategy_id}' ({strategy_type})")
         return True
@@ -275,10 +304,13 @@ class AlphaLoop:
         """Run a single strategy instance cycle using its own exchange connection."""
         try:
             if not instance.refresh_data():
+                exchange_name = "exchange"
+                if instance.exchange:
+                    exchange_name = getattr(instance.exchange, "__class__", type(None)).__name__.replace("Client", "")
                 instance.alert = {
                     "type": "error",
                     "message": "Failed to refresh exchange data.",
-                    "suggestion": "Check Binance connectivity / API credentials.",
+                    "suggestion": f"Check {exchange_name} connectivity / API credentials.",
                 }
                 # Add error to error_history / 将错误添加到 error_history
                 error_record = {
@@ -297,6 +329,31 @@ class AlphaLoop:
                 }
                 instance.error_history.append(error_record)
                 self.error_history.append(error_record)
+                return
+
+            # Only allow Hyperliquid exchanges to place/cancel orders
+            # 仅允许 Hyperliquid 交易所下单/撤单，其他交易所直接跳过
+            try:
+                from src.trading.hyperliquid_client import HyperliquidClient
+            except Exception:
+                HyperliquidClient = None  # type: ignore
+
+            if not (
+                HyperliquidClient
+                and instance.exchange
+                and isinstance(instance.exchange, HyperliquidClient)
+            ):
+                logger.info(
+                    "Skipping order cycle for non-Hyperliquid exchange",
+                    extra={
+                        "strategy_id": instance.strategy_id,
+                        "strategy_type": instance.strategy_type,
+                        "exchange_type": type(instance.exchange).__name__
+                        if instance.exchange
+                        else "None",
+                        "trace_id": get_trace_id(),
+                    },
+                )
                 return
 
             market_data = instance.latest_market_data

@@ -584,3 +584,225 @@ class TestHyperliquidPageRealTimeUpdatesIntegration:
                 "Both refresh calls should work / 两次刷新调用都应该有效"
             )
 
+
+class TestHyperliquidStrategyInstanceCreationIntegration:
+    """
+    Integration tests for Hyperliquid strategy instance creation on page load
+    Hyperliquid 策略实例在页面加载时创建的集成测试
+    
+    Tests the complete workflow: page load → status endpoint → strategy instance creation → subsequent operations
+    测试完整工作流：页面加载 → 状态端点 → 策略实例创建 → 后续操作
+    """
+
+    @pytest.fixture
+    def mock_hyperliquid_client(self):
+        """Create a mock HyperliquidClient / 创建模拟 HyperliquidClient"""
+        client = Mock(spec=HyperliquidClient)
+        client.is_connected = True
+        client.symbol = "ETH/USDC:USDC"
+        client.testnet = False
+        client.fetch_market_data.return_value = {
+            "best_bid": 3000.0,
+            "best_ask": 3002.0,
+            "mid_price": 3001.0,
+            "funding_rate": 0.0001,
+        }
+        client.fetch_account_data.return_value = {
+            "position_amt": 0.1,
+            "entry_price": 3000.0,
+            "balance": 10000.0,
+            "available_balance": 5000.0,
+            "leverage": 5,
+        }
+        client.fetch_positions.return_value = []
+        client.fetch_open_orders.return_value = []
+        return client
+
+    @patch("server.get_exchange_by_name")
+    @patch("server.bot_engine")
+    def test_integration_page_load_creates_strategy_instance_then_uses_it(
+        self, mock_bot_engine, mock_get_exchange, mock_hyperliquid_client
+    ):
+        """
+        Integration Test: Page load creates strategy instance, then subsequent operations use it
+        集成测试：页面加载创建策略实例，然后后续操作使用它
+        
+        Tests the complete flow:
+        1. Page loads and calls /api/hyperliquid/status
+        2. Status endpoint creates Hyperliquid strategy instance
+        3. Subsequent operations (like config update) use the created instance
+        测试完整流程：
+        1. 页面加载并调用 /api/hyperliquid/status
+        2. 状态端点创建 Hyperliquid 策略实例
+        3. 后续操作（如配置更新）使用创建的实例
+        """
+        # Setup: No existing strategy instance
+        # 设置：没有现有的策略实例
+        mock_strategy_instances = MagicMock()
+        mock_strategy_instances.items.return_value = []
+        mock_strategy_instances.get.return_value = None
+        mock_bot_engine.strategy_instances = mock_strategy_instances
+        mock_bot_engine.add_strategy_instance = Mock(return_value=True)
+        
+        # Create instance after add_strategy_instance is called
+        # 在 add_strategy_instance 被调用后创建实例
+        mock_instance = MagicMock()
+        mock_instance.exchange = mock_hyperliquid_client
+        mock_instance.strategy = MagicMock()
+        mock_instance.strategy.spread = 0.015
+        mock_instance.strategy.quantity = 0.1
+        mock_strategy_instances.get = Mock(
+            side_effect=lambda key: mock_instance if key == "hyperliquid" else None
+        )
+        
+        mock_get_exchange.return_value = mock_hyperliquid_client
+
+        client = TestClient(server.app)
+
+        # Step 1: Page loads and calls status endpoint
+        # 步骤 1：页面加载并调用状态端点
+        status_response = client.get("/api/hyperliquid/status")
+        assert status_response.status_code == 200
+        status_data = status_response.json()
+        assert status_data["connected"] is True
+
+        # Verify strategy instance was created
+        # 验证策略实例已创建
+        assert mock_bot_engine.add_strategy_instance.called, "Strategy instance should be created"
+        call_args = mock_bot_engine.add_strategy_instance.call_args
+        assert call_args[0][0] == "hyperliquid"
+        assert call_args[0][1] == "fixed_spread"
+        assert call_args[1]["exchange"] == mock_hyperliquid_client
+
+        # Step 2: Update config (should use the created instance)
+        # 步骤 2：更新配置（应使用创建的实例）
+        # Find the instance in strategy_instances
+        # 在 strategy_instances 中查找实例
+        mock_strategy_instances["hyperliquid"] = mock_instance
+        mock_strategy_instances.items.return_value = [("hyperliquid", mock_instance)]
+        
+        config_response = client.post(
+            "/api/hyperliquid/config",
+            json={"spread": 1.5, "quantity": 0.2, "strategy_type": "fixed_spread"},
+        )
+        
+        # Verify config update worked (instance exists and was used)
+        # 验证配置更新有效（实例存在并被使用）
+        assert config_response.status_code == 200
+        config_data = config_response.json()
+        assert config_data.get("status") == "updated" or "error" not in config_data
+
+    @patch("server.get_exchange_by_name")
+    @patch("server.bot_engine")
+    def test_integration_multiple_status_calls_reuse_same_instance(
+        self, mock_bot_engine, mock_get_exchange, mock_hyperliquid_client
+    ):
+        """
+        Integration Test: Multiple status calls reuse the same strategy instance
+        集成测试：多次状态调用重用同一个策略实例
+        
+        Tests that calling /api/hyperliquid/status multiple times (e.g., during page refresh)
+        doesn't create duplicate instances.
+        测试多次调用 /api/hyperliquid/status（例如，在页面刷新期间）
+        不会创建重复实例。
+        """
+        # Setup: No existing strategy instance initially
+        # 设置：最初没有现有的策略实例
+        mock_strategy_instances = MagicMock()
+        mock_strategy_instances.items.return_value = []
+        mock_strategy_instances.get.return_value = None
+        mock_bot_engine.strategy_instances = mock_strategy_instances
+        
+        # Create instance after first add_strategy_instance call
+        # 在第一次 add_strategy_instance 调用后创建实例
+        mock_instance = MagicMock()
+        mock_instance.exchange = mock_hyperliquid_client
+        instance_created = False
+        
+        def get_instance(key):
+            nonlocal instance_created
+            if key == "hyperliquid" and instance_created:
+                return mock_instance
+            return None
+        
+        def add_instance(*args, **kwargs):
+            nonlocal instance_created
+            instance_created = True
+            mock_strategy_instances["hyperliquid"] = mock_instance
+            mock_strategy_instances.items.return_value = [("hyperliquid", mock_instance)]
+            return True
+        
+        mock_strategy_instances.get = Mock(side_effect=get_instance)
+        mock_bot_engine.add_strategy_instance = Mock(side_effect=add_instance)
+        
+        mock_get_exchange.return_value = mock_hyperliquid_client
+
+        client = TestClient(server.app)
+
+        # Call status endpoint multiple times
+        # 多次调用状态端点
+        response1 = client.get("/api/hyperliquid/status")
+        response2 = client.get("/api/hyperliquid/status")
+        response3 = client.get("/api/hyperliquid/status")
+
+        # All should succeed
+        # 所有调用都应该成功
+        assert response1.status_code == 200
+        assert response2.status_code == 200
+        assert response3.status_code == 200
+
+        # Verify add_strategy_instance was called only once
+        # 验证 add_strategy_instance 只被调用一次
+        assert mock_bot_engine.add_strategy_instance.call_count == 1, (
+            "Strategy instance should be created only once, not on every status call"
+        )
+
+    @patch("server.get_exchange_by_name")
+    @patch("server.bot_engine")
+    def test_integration_strategy_instance_has_correct_exchange_type(
+        self, mock_bot_engine, mock_get_exchange, mock_hyperliquid_client
+    ):
+        """
+        Integration Test: Created strategy instance uses HyperliquidClient, not BinanceClient
+        集成测试：创建的策略实例使用 HyperliquidClient，而不是 BinanceClient
+        
+        Ensures that the Hyperliquid page initializes with the correct exchange client type.
+        确保 Hyperliquid 页面使用正确的交易所客户端类型初始化。
+        """
+        from src.trading.exchange import BinanceClient
+
+        # Setup: No existing strategy instance
+        # 设置：没有现有的策略实例
+        mock_strategy_instances = MagicMock()
+        mock_strategy_instances.items.return_value = []
+        mock_strategy_instances.get.return_value = None
+        mock_bot_engine.strategy_instances = mock_strategy_instances
+        mock_bot_engine.add_strategy_instance = Mock(return_value=True)
+        
+        # Create instance after add_strategy_instance is called
+        # 在 add_strategy_instance 被调用后创建实例
+        mock_instance = MagicMock()
+        mock_instance.exchange = mock_hyperliquid_client
+        mock_strategy_instances.get = Mock(
+            side_effect=lambda key: mock_instance if key == "hyperliquid" else None
+        )
+        
+        mock_get_exchange.return_value = mock_hyperliquid_client
+
+        client = TestClient(server.app)
+        response = client.get("/api/hyperliquid/status")
+
+        assert response.status_code == 200
+
+        # Verify the instance was created with HyperliquidClient
+        # 验证实例是使用 HyperliquidClient 创建的
+        call_args = mock_bot_engine.add_strategy_instance.call_args
+        created_exchange = call_args[1]["exchange"]
+        
+        assert isinstance(created_exchange, type(mock_hyperliquid_client)), (
+            "Strategy instance should use HyperliquidClient"
+        )
+        assert not isinstance(created_exchange, BinanceClient), (
+            "Strategy instance should NOT use BinanceClient"
+        )
+

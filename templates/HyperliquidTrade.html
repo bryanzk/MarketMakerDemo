@@ -1468,6 +1468,58 @@
                 evaluationState.aggregated = data.aggregated || null;
                 evaluationState.lastRunSymbol = data.symbol || getEvaluationSymbol();
                 evaluationState.lastRunAt = new Date().toISOString();
+                
+                // Check for parse errors in individual results / 检查单个结果中的解析错误
+                const errorBox = document.getElementById('evaluationErrorBox');
+                const parseErrors = [];
+                if (evaluationState.results && evaluationState.results.length > 0) {
+                    evaluationState.results.forEach(result => {
+                        if (result.proposal && result.proposal.parse_error && result.proposal.parse_error.trim()) {
+                            parseErrors.push({
+                                provider: result.provider_name || 'Unknown',
+                                error: result.proposal.parse_error
+                            });
+                        }
+                    });
+                }
+                
+                // Display parse errors if any / 如果有解析错误则显示
+                if (parseErrors.length > 0) {
+                    const errorMessages = parseErrors.map(err => 
+                        `${err.provider}: ${err.error}`
+                    ).join('\n');
+                    const errorMessage = `LLM Parse Errors / LLM 解析错误:\n${errorMessages}`;
+                    evaluationState.lastError = errorMessage;
+                    
+                    // Use error handler to display formatted error / 使用错误处理器显示格式化的错误
+                    if (errorBox && typeof handleApiError === 'function') {
+                        handleApiError({
+                            error_type: 'llm_parse_error',
+                            message: `LLM parsing failed for ${parseErrors.length} model(s) / ${parseErrors.length} 个模型解析失败`,
+                            message_zh: `${parseErrors.length} 个模型解析失败`,
+                            severity: 'warning',
+                            suggestion: 'The evaluation completed but some models failed to parse their responses. You can still use the successfully parsed results. / 评估已完成，但某些模型未能解析其响应。您仍可以使用成功解析的结果。',
+                            suggestion_zh: '评估已完成，但某些模型未能解析其响应。您仍可以使用成功解析的结果。',
+                            details: {
+                                parse_errors: parseErrors,
+                                total_errors: parseErrors.length,
+                                total_results: evaluationState.results.length
+                            }
+                        }, errorBox, { showDetails: true });
+                    } else if (errorBox) {
+                        // Fallback to simple display / 回退到简单显示
+                        errorBox.innerText = errorMessage;
+                        errorBox.style.display = 'block';
+                    }
+                } else {
+                    // Clear error if no parse errors / 如果没有解析错误则清除错误
+                    evaluationState.lastError = null;
+                    if (errorBox && typeof clearError === 'function') {
+                        clearError(errorBox);
+                    } else if (errorBox) {
+                        errorBox.style.display = 'none';
+                    }
+                }
             } catch (err) {
                 // Mark all providers as failed / 标记所有提供商为失败
                 evaluationState.providers.forEach(name => {

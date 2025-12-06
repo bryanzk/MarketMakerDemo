@@ -440,16 +440,16 @@ def init_portfolio_capital():
             from src.trading.exchange import BinanceClient
 
             if isinstance(exchange, BinanceClient):
-                account_data = exchange.fetch_account_data()
-                if account_data and "balance" in account_data:
-                    actual_balance = account_data["balance"]
-                    if actual_balance > 0:
-                        initial_capital = actual_balance
-                        portfolio_manager.total_capital = actual_balance
-                        print(
-                            f"✅ Portfolio capital initialized from Binance: ${actual_balance:.2f} USDT"
-                        )
-                        return actual_balance
+            account_data = exchange.fetch_account_data()
+            if account_data and "balance" in account_data:
+                actual_balance = account_data["balance"]
+                if actual_balance > 0:
+                    initial_capital = actual_balance
+                    portfolio_manager.total_capital = actual_balance
+                    print(
+                        f"✅ Portfolio capital initialized from Binance: ${actual_balance:.2f} USDT"
+                    )
+                    return actual_balance
             else:
                 # Not Binance, skip initialization (e.g., Hyperliquid)
                 # 不是 Binance，跳过初始化（例如 Hyperliquid）
@@ -642,10 +642,10 @@ async def get_status(request: Request, exchange: Optional[str] = Query(None)):
         return await get_hyperliquid_status()
 
     try:
-        status = bot_engine.get_status()
+    status = bot_engine.get_status()
         # Override active with actual running state / 用实际运行状态覆盖 active
-        status["active"] = is_running
-        status["stage"] = bot_engine.current_stage
+    status["active"] = is_running
+    status["stage"] = bot_engine.current_stage
 
         # Ensure symbol is present (fallback if not in get_status) / 确保 symbol 存在（如果 get_status 中没有则回退）
         if "symbol" not in status or status["symbol"] is None:
@@ -662,24 +662,24 @@ async def get_status(request: Request, exchange: Optional[str] = Query(None)):
             # Keep the error field as is for backward compatibility / 保持 error 字段不变以保持向后兼容
             pass
 
-        # Add strategy info & core config for UI display
-        strategy_type_name = type(bot_engine.strategy).__name__
-        status["strategy_type"] = (
-            "funding_rate"
-            if strategy_type_name == "FundingRateStrategy"
-            else "fixed_spread"
-        )
+    # Add strategy info & core config for UI display
+    strategy_type_name = type(bot_engine.strategy).__name__
+    status["strategy_type"] = (
+        "funding_rate"
+        if strategy_type_name == "FundingRateStrategy"
+        else "fixed_spread"
+    )
 
-        # Expose current spread, quantity, leverage from engine strategy when they are simple numeric types.
-        spread = getattr(bot_engine.strategy, "spread", None)
-        quantity = getattr(bot_engine.strategy, "quantity", None)
-        leverage = getattr(bot_engine.strategy, "leverage", None)
-        if isinstance(spread, (int, float)):
-            status["spread"] = spread
-        if isinstance(quantity, (int, float)):
-            status["quantity"] = quantity
-        if isinstance(leverage, (int, float)):
-            status["leverage"] = leverage
+    # Expose current spread, quantity, leverage from engine strategy when they are simple numeric types.
+    spread = getattr(bot_engine.strategy, "spread", None)
+    quantity = getattr(bot_engine.strategy, "quantity", None)
+    leverage = getattr(bot_engine.strategy, "leverage", None)
+    if isinstance(spread, (int, float)):
+        status["spread"] = spread
+    if isinstance(quantity, (int, float)):
+        status["quantity"] = quantity
+    if isinstance(leverage, (int, float)):
+        status["leverage"] = leverage
 
         # Add error information / 添加错误信息
         # Phase 7: Expose Strategy Instance Errors / 阶段 7：暴露策略实例错误
@@ -730,59 +730,59 @@ async def get_status(request: Request, exchange: Optional[str] = Query(None)):
 
         status["errors"] = errors
 
-        # Only add skew_factor for funding strategies and when it's numeric
-        skew = getattr(bot_engine.strategy, "skew_factor", None)
-        if isinstance(skew, (int, float)):
-            status["skew_factor"] = skew
+    # Only add skew_factor for funding strategies and when it's numeric
+    skew = getattr(bot_engine.strategy, "skew_factor", None)
+    if isinstance(skew, (int, float)):
+        status["skew_factor"] = skew
 
-        # Fetch Binance Exchange Limits for current trading pair
-        exchange = get_default_exchange()
-        if exchange is not None:
-            try:
-                limits = exchange.get_symbol_limits()
-                status["limits"] = limits
-            except Exception as e:
-                # If limits fetch fails, set empty limits to avoid breaking UI
-                status["limits"] = {
-                    "minQty": None,
-                    "maxQty": None,
-                    "stepSize": None,
-                    "minNotional": None,
-                }
-                print(f"Error fetching symbol limits: {e}")
-        else:
-            # No exchange connection, set empty limits
+    # Fetch Binance Exchange Limits for current trading pair
+    exchange = get_default_exchange()
+    if exchange is not None:
+        try:
+            limits = exchange.get_symbol_limits()
+            status["limits"] = limits
+        except Exception as e:
+            # If limits fetch fails, set empty limits to avoid breaking UI
             status["limits"] = {
                 "minQty": None,
                 "maxQty": None,
                 "stepSize": None,
                 "minNotional": None,
             }
+            print(f"Error fetching symbol limits: {e}")
+    else:
+        # No exchange connection, set empty limits
+        status["limits"] = {
+            "minQty": None,
+            "maxQty": None,
+            "stepSize": None,
+            "minNotional": None,
+        }
 
-        # Add strategy instance running states (regardless of exchange connection)
-        if hasattr(bot_engine, "strategy_instances"):
-            status["strategy_instances_running"] = {
-                strategy_id: instance.running
-                for strategy_id, instance in bot_engine.strategy_instances.items()
-            }
-            # Map strategy names to instance IDs for UI
-            status["strategy_instance_status"] = {}
-
-            # Initialize both strategy types to False
-            status["strategy_instance_status"]["fixed_spread"] = False
-            status["strategy_instance_status"]["funding_rate"] = False
-
-            # Map instances to their strategy types
-            # If multiple instances of the same type exist, use OR logic (if any is running, mark as running)
-            for strategy_id, instance in bot_engine.strategy_instances.items():
-                if instance.strategy_type == "fixed_spread":
-                    # If any fixed_spread instance is running, mark fixed_spread as running
-                    if instance.running:
-                        status["strategy_instance_status"]["fixed_spread"] = True
-                elif instance.strategy_type == "funding_rate":
-                    # If any funding_rate instance is running, mark funding_rate as running
-                    if instance.running:
-                        status["strategy_instance_status"]["funding_rate"] = True
+    # Add strategy instance running states (regardless of exchange connection)
+    if hasattr(bot_engine, "strategy_instances"):
+        status["strategy_instances_running"] = {
+            strategy_id: instance.running 
+            for strategy_id, instance in bot_engine.strategy_instances.items()
+        }
+        # Map strategy names to instance IDs for UI
+        status["strategy_instance_status"] = {}
+        
+        # Initialize both strategy types to False
+        status["strategy_instance_status"]["fixed_spread"] = False
+        status["strategy_instance_status"]["funding_rate"] = False
+        
+        # Map instances to their strategy types
+        # If multiple instances of the same type exist, use OR logic (if any is running, mark as running)
+        for strategy_id, instance in bot_engine.strategy_instances.items():
+            if instance.strategy_type == "fixed_spread":
+                # If any fixed_spread instance is running, mark fixed_spread as running
+                if instance.running:
+                    status["strategy_instance_status"]["fixed_spread"] = True
+            elif instance.strategy_type == "funding_rate":
+                # If any funding_rate instance is running, mark funding_rate as running
+                if instance.running:
+                    status["strategy_instance_status"]["funding_rate"] = True
 
         # Ensure required fields are present for backward compatibility / 确保必需字段存在以保持向后兼容
         if "symbol" not in status:
@@ -794,7 +794,7 @@ async def get_status(request: Request, exchange: Optional[str] = Query(None)):
         status["trace_id"] = trace_id
         status["ok"] = True
 
-        return status
+    return status
     except Exception as e:
         logger.error(
             "Error getting status",
@@ -1190,7 +1190,7 @@ async def update_config(config: ConfigUpdate):
     # Update skew factor if applicable
     if hasattr(target_instance.strategy, "skew_factor"):
         target_instance.strategy.skew_factor = config.skew_factor
-
+    
     # Update legacy default reference only when default instance was targeted
     default_instance = bot_engine.strategy_instances.get("default")
     if target_instance.strategy_id == "default" and default_instance:
@@ -1215,7 +1215,7 @@ async def update_leverage(leverage: int):
     exchange = get_default_exchange()
     if not exchange:
         return {"error": "Exchange not available"}
-
+    
     success = exchange.set_leverage(leverage)
     if success:
         return {"status": "updated", "leverage": leverage}
@@ -1625,12 +1625,12 @@ _last_evaluation_aggregated = None
 async def run_evaluation(request: EvaluationRunRequest):
     """
     Run multi-LLM evaluation for a trading symbol.
-
+    
     运行多 LLM 评估
-
+    
     Args:
         request: EvaluationRunRequest with symbol, optional simulation_steps, and exchange parameter
-
+        
     Returns:
         {
             "symbol": str,
@@ -1673,7 +1673,7 @@ async def run_evaluation(request: EvaluationRunRequest):
         )
         if not is_connected:
             return connection_error, status_code if status_code else 400
-
+        
         # Fetch market data
         # 获取市场数据
         try:
@@ -1682,10 +1682,10 @@ async def run_evaluation(request: EvaluationRunRequest):
             original_symbol = getattr(exchange, "symbol", None)
             if hasattr(exchange, "set_symbol"):
                 exchange.set_symbol(symbol)
-
+            
             market_data = exchange.fetch_market_data()
             account_data = exchange.fetch_account_data()
-
+            
             # Restore original symbol
             if original_symbol and hasattr(exchange, "set_symbol"):
                 exchange.set_symbol(original_symbol)
@@ -1712,7 +1712,7 @@ async def run_evaluation(request: EvaluationRunRequest):
                     "exchange": exchange_name,
                 },
             )
-
+        
         if not market_data:
             # Provide more detailed error information / 提供更详细的错误信息
             error_details = {
@@ -1730,7 +1730,7 @@ async def run_evaluation(request: EvaluationRunRequest):
                 error_code="NO_MARKET_DATA",
                 details=error_details,
             )
-
+        
         # Build MarketContext
         # 构建市场上下文
         mid_price = market_data.get("mid_price", 0.0)
@@ -1739,12 +1739,12 @@ async def run_evaluation(request: EvaluationRunRequest):
         spread_bps = (
             ((best_ask - best_bid) / mid_price * 10000) if mid_price > 0 else 10.0
         )
-
+        
         # Get funding rate if available
         # 获取资金费率（如果可用）
         funding_rate = market_data.get("funding_rate", 0.0)
         funding_rate_trend = "stable"  # Default, could be enhanced
-
+        
         # Get position and account info
         # 获取仓位和账户信息
         position_amt = account_data.get("position_amt", 0.0) if account_data else 0.0
@@ -1756,7 +1756,7 @@ async def run_evaluation(request: EvaluationRunRequest):
         )
         balance = account_data.get("balance", 10000.0) if account_data else 10000.0
         leverage = account_data.get("leverage", 1.0) if account_data else 1.0
-
+        
         # Get historical performance (simplified)
         # 获取历史绩效（简化版）
         win_rate = 0.0
@@ -1773,7 +1773,7 @@ async def run_evaluation(request: EvaluationRunRequest):
                 recent_pnl = sum(
                     t.get("pnl", 0) for t in trades[-10:]
                 )  # Last 10 trades
-
+        
         # Estimate volatility (simplified - could be enhanced)
         # 估算波动率（简化版 - 可以增强）
         volatility_24h = 0.03  # 3% default
@@ -1784,7 +1784,7 @@ async def run_evaluation(request: EvaluationRunRequest):
         # This ensures the LLM knows which exchange the evaluation is for
         # 这确保 LLM 知道评估是针对哪个交易所的
         symbol_with_exchange = _format_symbol_with_exchange(symbol, exchange_name)
-
+        
         context = MarketContext(
             symbol=symbol_with_exchange,  # Include exchange name in symbol for LLM context
             mid_price=mid_price,
@@ -1804,7 +1804,7 @@ async def run_evaluation(request: EvaluationRunRequest):
             sharpe_ratio=sharpe_ratio,
             recent_pnl=recent_pnl,
         )
-
+        
         # Create evaluator with selected providers
         # 使用选中的提供商创建评估器
         try:
@@ -1848,32 +1848,32 @@ async def run_evaluation(request: EvaluationRunRequest):
                 providers = all_providers
         except Exception as e:
             return {"error": f"Failed to create LLM providers: {str(e)}"}
-
+        
         if not providers:
             return {"error": "No LLM providers available. Please configure API keys."}
-
+        
         evaluator = MultiLLMEvaluator(
             providers=providers,
             simulation_steps=request.simulation_steps,
             parallel=True,
         )
-
+        
         # Run evaluation (in thread to avoid blocking)
         import asyncio
 
         results = await asyncio.to_thread(evaluator.evaluate, context)
-
+        
         # Aggregate results
         aggregated = evaluator.aggregate_results(results)
-
+        
         # Generate comparison table and consensus report
         comparison_table = MultiLLMEvaluator.generate_comparison_table(results)
         consensus_report = MultiLLMEvaluator.generate_consensus_summary(aggregated)
-
+        
         # Store results for apply endpoint
         _last_evaluation_results = results
         _last_evaluation_aggregated = aggregated
-
+        
         # Convert results to dict for JSON response
         def result_to_dict(result):
             return {
@@ -1891,6 +1891,7 @@ async def run_evaluation(request: EvaluationRunRequest):
                     "risk_level": result.proposal.risk_level,
                     "reasoning": result.proposal.reasoning,
                     "parse_success": result.proposal.parse_success,
+                    "parse_error": result.proposal.parse_error or "",
                 },
                 "simulation": {
                     "realized_pnl": result.simulation.realized_pnl,
@@ -1900,7 +1901,7 @@ async def run_evaluation(request: EvaluationRunRequest):
                     "simulation_steps": result.simulation.simulation_steps,
                 },
             }
-
+        
         def aggregated_to_dict(agg):
             return {
                 "strategy_consensus": {
@@ -1939,8 +1940,8 @@ async def run_evaluation(request: EvaluationRunRequest):
             "best_ask": best_ask,
             "funding_rate": funding_rate,
             "spread_bps": spread_bps,
-        }
-
+            }
+        
         return {
             "symbol": symbol,
             "exchange": exchange_name,
@@ -1950,7 +1951,7 @@ async def run_evaluation(request: EvaluationRunRequest):
             "consensus_report": {"summary": consensus_report},
             "market_data": response_market_data,
         }
-
+        
     except Exception as e:
         logger.error(f"Evaluation error: {e}", exc_info=True)
         return {"error": str(e)}
@@ -1960,13 +1961,13 @@ async def run_evaluation(request: EvaluationRunRequest):
 async def apply_evaluation(request: EvaluationApplyRequest):
     """
     Apply evaluation proposal to strategy configuration.
-
+    
     应用评估建议到策略配置
-
+    
     Args:
         request: EvaluationApplyRequest with source ("consensus" or "individual"),
                  optional provider_name, and exchange parameter
-
+        
     Returns:
         {
             "status": "success" or "error",
@@ -1995,7 +1996,7 @@ async def apply_evaluation(request: EvaluationApplyRequest):
         }
 
     exchange_name = request.exchange.lower()
-
+    
     if _last_evaluation_aggregated is None:
         return {
             "status": "error",
@@ -2014,7 +2015,7 @@ async def apply_evaluation(request: EvaluationApplyRequest):
                 return connection_error, status_code if status_code else 400
 
         proposal = None
-
+        
         if request.source == "consensus":
             if (
                 not _last_evaluation_aggregated
@@ -2039,7 +2040,7 @@ async def apply_evaluation(request: EvaluationApplyRequest):
                     "status": "error",
                     "error": "provider_name required for individual source / 个人来源需要 provider_name",
                 }
-
+            
             # Find result by provider name
             found = False
             for result in _last_evaluation_results:
@@ -2047,7 +2048,7 @@ async def apply_evaluation(request: EvaluationApplyRequest):
                     proposal = result.proposal
                     found = True
                     break
-
+            
             if not found:
                 available_providers = [
                     r.provider_name for r in _last_evaluation_results
@@ -2056,8 +2057,8 @@ async def apply_evaluation(request: EvaluationApplyRequest):
                     "status": "error",
                     "error": f"Provider {request.provider_name} not found in evaluation results. Available providers: {', '.join(available_providers)} / 在评估结果中未找到提供商 {request.provider_name}。可用提供商：{', '.join(available_providers)}",
                 }
-
-            if not proposal or not proposal.parse_success:
+        
+        if not proposal or not proposal.parse_success:
                 strategy = (
                     getattr(proposal, "recommended_strategy", "Unknown")
                     if proposal
@@ -2078,7 +2079,7 @@ async def apply_evaluation(request: EvaluationApplyRequest):
                 "status": "error",
                 "error": "Proposal is None. This should not happen. / 建议为 None。这不应该发生。",
             }
-
+        
         # Map strategy name to strategy_type
         # 将策略名称映射到 strategy_type
         strategy_name = proposal.recommended_strategy
@@ -2091,7 +2092,7 @@ async def apply_evaluation(request: EvaluationApplyRequest):
                 "status": "error",
                 "error": f"Unsupported strategy: {strategy_name} / 不支持的策略：{strategy_name}",
             }
-
+        
         # Apply configuration
         # 应用配置
         # For Hyperliquid, use the dedicated endpoint that ensures instance creation
@@ -2155,16 +2156,16 @@ async def apply_evaluation(request: EvaluationApplyRequest):
         else:
             # For other exchanges (e.g., binance), use the standard update_config
             # 对于其他交易所（例如 binance），使用标准的 update_config
-            config_update = ConfigUpdate(
-                spread=proposal.spread * 100,  # Convert to percentage
-                quantity=proposal.quantity,
-                strategy_type=strategy_type,
-                strategy_id="default",
-                skew_factor=proposal.skew_factor,
-            )
-
-            config_result = await update_config(config_update)
-            if "error" in config_result:
+        config_update = ConfigUpdate(
+            spread=proposal.spread * 100,  # Convert to percentage
+            quantity=proposal.quantity,
+            strategy_type=strategy_type,
+            strategy_id="default",
+            skew_factor=proposal.skew_factor,
+        )
+        
+        config_result = await update_config(config_update)
+        if "error" in config_result:
                 return {
                     "status": "error",
                     "error": config_result.get(
@@ -2172,7 +2173,7 @@ async def apply_evaluation(request: EvaluationApplyRequest):
                     ),
                     "exchange": exchange_name,
                 }
-
+        
         # Apply leverage if provided
         # 如果提供了杠杆，应用杠杆
         if proposal.leverage:
@@ -2192,7 +2193,7 @@ async def apply_evaluation(request: EvaluationApplyRequest):
             f"Configuration applied successfully to {exchange_name.upper()} exchange. / "
             f"配置已成功应用到 {exchange_name.upper()} 交易所。"
         )
-
+        
         return {
             "status": "success",
             "applied_config": {
@@ -2205,7 +2206,7 @@ async def apply_evaluation(request: EvaluationApplyRequest):
             "exchange": exchange_name,
             "message": success_message,
         }
-
+        
     except Exception as e:
         logger.error(f"Apply evaluation error: {e}", exc_info=True)
         return {
@@ -2953,9 +2954,9 @@ async def control_strategy_instance(
 ):
     """
     控制指定策略实例的启动/停止
-
+    
     对应用户故事: 策略实例隔离运行
-
+    
     Args:
         strategy_id: 策略实例 ID (如 "fixed_spread", "funding_rate", "default")
         action: "start" 或 "stop" (通过 query parameter 传递，例如: ?action=start)
@@ -2965,14 +2966,14 @@ async def control_strategy_instance(
         "fixed_spread": "fixed_spread",
         "funding_rate": "funding_rate",
     }
-
+    
     # Determine the strategy type for this strategy_id
     target_strategy_type = strategy_type_map.get(strategy_id)
-
+    
     # Find or create the appropriate instance
     instance = None
     instance_id = None
-
+    
     if strategy_id == "default":
         # Use default instance
         instance = bot_engine.strategy_instances.get("default")
@@ -2991,27 +2992,27 @@ async def control_strategy_instance(
         instance = bot_engine.strategy_instances[instance_id]
     else:
         return {"error": f"Strategy instance '{strategy_id}' not found"}
-
+    
     if not instance:
         return {
             "error": f"Failed to get or create strategy instance for '{strategy_id}'"
         }
-
+    
     if action == "start":
         # Validate config before starting
         current_spread = instance.strategy.spread
         approved, reason = bot_engine.risk.validate_proposal({"spread": current_spread})
-
+        
         if not approved:
             return {
                 "error": f"Risk Rejection: {reason}",
                 "suggestion": "Please adjust strategy parameters before starting",
             }
-
+        
         # Start the strategy instance
         instance.running = True
         instance.alert = None
-
+        
         # Ensure bot loop is running (if not already)
         global is_running, bot_thread
         if not is_running:
@@ -3019,17 +3020,17 @@ async def control_strategy_instance(
             bot_thread = threading.Thread(target=run_bot_loop)
             bot_thread.daemon = True
             bot_thread.start()
-
+        
         # Update portfolio manager status
         portfolio_manager.resume_strategy(strategy_id)
-
+        
         return {"status": "started", "strategy_id": strategy_id}
-
+    
     elif action == "stop":
         # Stop the strategy instance
         instance.running = False
         instance.alert = None
-
+        
         # Cancel orders for this strategy instance using its own exchange connection
         if instance.use_real_exchange and instance.exchange is not None:
             try:
@@ -3052,12 +3053,12 @@ async def control_strategy_instance(
                             )
             except Exception as e:
                 logger.error(f"Error canceling orders for strategy {strategy_id}: {e}")
-
+        
         # Update portfolio manager status
         portfolio_manager.pause_strategy(strategy_id)
-
+        
         return {"status": "stopped", "strategy_id": strategy_id}
-
+    
     return {"error": "Invalid action. Use 'start' or 'stop'"}
 
 
@@ -3072,7 +3073,7 @@ async def pause_strategy(strategy_id: str):
     result = await control_strategy_instance(strategy_id, "stop")
     if "error" in result:
         return result
-
+    
     return {"status": "paused", "strategy_id": strategy_id}
 
 
@@ -3087,7 +3088,7 @@ async def resume_strategy(strategy_id: str):
     result = await control_strategy_instance(strategy_id, "start")
     if "error" in result:
         return result
-
+    
     return {"status": "live", "strategy_id": strategy_id}
 
 
@@ -3114,20 +3115,20 @@ async def get_allocation():
         }
     """
     _sync_portfolio_with_bot()
-
+    
     strategies_data = []
     for strategy_id, strategy in portfolio_manager.strategies.items():
         allocated_capital = portfolio_manager.total_capital * strategy.allocation
         strategies_data.append(
             {
-                "strategy_id": strategy_id,
-                "name": strategy.name,
-                "allocation": round(strategy.allocation, 4),
-                "allocated_capital": round(allocated_capital, 2),
-                "status": strategy.status.value,
+            "strategy_id": strategy_id,
+            "name": strategy.name,
+            "allocation": round(strategy.allocation, 4),
+            "allocated_capital": round(allocated_capital, 2),
+            "status": strategy.status.value,
             }
         )
-
+    
     return {
         "total_capital": round(portfolio_manager.total_capital, 2),
         "min_allocation": portfolio_manager.min_allocation,
@@ -3163,17 +3164,17 @@ async def rebalance_portfolio(request: RebalanceRequest):
         }
     """
     _sync_portfolio_with_bot()
-
+    
     # Update metrics before rebalancing (ensure we have latest data)
     # This is done in _sync_portfolio_with_bot, but we call it again to be safe
     _sync_portfolio_with_bot()
-
+    
     # Perform rebalancing
     new_allocations = portfolio_manager.rebalance_allocations(
         method=request.method,
         weights=request.weights,
     )
-
+    
     return {
         "method": request.method,
         "new_allocations": {
@@ -3202,7 +3203,7 @@ async def update_allocation_limits(request: AllocationLimitsUpdate):
         min_allocation=request.min_allocation,
         max_allocation=request.max_allocation,
     )
-
+    
     return {
         "min_allocation": portfolio_manager.min_allocation,
         "max_allocation": portfolio_manager.max_allocation,
@@ -3236,29 +3237,29 @@ async def update_strategy_allocation(
     """
     if strategy_id not in portfolio_manager.strategies:
         return {"error": f"Strategy '{strategy_id}' not found"}
-
+    
     # Validate allocation
     if request.allocation < 0 or request.allocation > 1:
         return {"error": "Allocation must be between 0 and 1"}
-
+    
     # Get old allocation
     old_allocation = portfolio_manager.strategies[strategy_id].allocation
-
+    
     # Update allocation
     portfolio_manager.strategies[strategy_id].allocation = request.allocation
-
+    
     # Normalize all allocations
     portfolio_manager._normalize_allocations()
-
+    
     # Get new allocation after normalization
     new_allocation = portfolio_manager.strategies[strategy_id].allocation
     allocated_capital = portfolio_manager.total_capital * new_allocation
-
+    
     # Get all allocations
     all_allocations = {
         sid: round(s.allocation, 4) for sid, s in portfolio_manager.strategies.items()
     }
-
+    
     return {
         "strategy_id": strategy_id,
         "old_allocation": round(old_allocation, 4),
@@ -3287,10 +3288,10 @@ async def get_strategy_allocation(strategy_id: str):
     """
     if strategy_id not in portfolio_manager.strategies:
         return {"error": f"Strategy '{strategy_id}' not found"}
-
+    
     strategy = portfolio_manager.strategies[strategy_id]
     allocated_capital = portfolio_manager.total_capital * strategy.allocation
-
+    
     return {
         "strategy_id": strategy_id,
         "name": strategy.name,
@@ -3339,7 +3340,7 @@ def _sync_portfolio_with_bot():
             # Map instance to portfolio strategy_id
             # Use strategy_type to find the corresponding portfolio strategy
             portfolio_strategy_id = strategy_type_to_id.get(instance.strategy_type)
-
+            
             # Skip if this instance type doesn't have a corresponding portfolio strategy
             if (
                 not portfolio_strategy_id
@@ -3402,7 +3403,7 @@ def _sync_portfolio_with_bot():
                             if o.get("status") == "filled"
                         ]
                     )
-
+                    
                     # Calculate fill rate (orders filled / orders placed)
                     placed_orders = len(
                         [
@@ -3435,7 +3436,7 @@ def _sync_portfolio_with_bot():
                     if not trades:
                         # If no strategy-specific trades, use all trades (backward compatibility)
                         trades = bot_engine.data.trade_history
-
+                    
                     realized_pnl = sum(t.get("pnl", 0.0) for t in trades)
                     total_trades = len(trades)
 

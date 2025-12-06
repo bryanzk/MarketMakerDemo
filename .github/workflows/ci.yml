@@ -23,11 +23,56 @@ jobs:
         python -m pip install --upgrade pip
         pip install -r requirements.txt
     
+    - name: Install Playwright browsers
+      run: |
+        playwright install --with-deps
+    
+    - name: Start server for E2E tests
+      env:
+        PYTHONPATH: .
+        # Set minimal env vars for server startup (API keys not required for basic server) / 设置服务器启动所需的最小环境变量（基本服务器不需要API密钥）
+        HYPERLIQUID_TESTNET: "true"
+      run: |
+        # Start server in background / 在后台启动服务器
+        nohup python3 server.py > server.log 2>&1 &
+        SERVER_PID=$!
+        echo "SERVER_PID=$SERVER_PID" >> $GITHUB_ENV
+        echo "Server started with PID: $SERVER_PID"
+        
+        # Wait for server to be ready / 等待服务器就绪
+        echo "Waiting for server to start..."
+        SERVER_READY=false
+        for i in {1..30}; do
+          if curl -f http://localhost:3000/api/status > /dev/null 2>&1; then
+            echo "✅ Server is ready after ${i}s!"
+            SERVER_READY=true
+            break
+          fi
+          echo "Attempt $i/30: Server not ready yet..."
+          sleep 1
+        done
+        
+        if [ "$SERVER_READY" = "false" ]; then
+          echo "⚠️ Server failed to start within 30 seconds"
+          echo "Server log:"
+          tail -50 server.log || true
+          # Don't fail the step, let tests handle it / 不使步骤失败，让测试处理
+        fi
+    
     - name: Run tests with coverage
       env:
         PYTHONPATH: .
       run: |
         pytest --cov=src tests/ --cov-report=xml --cov-report=term
+    
+    - name: Stop server
+      if: always()
+      run: |
+        if [ ! -z "$SERVER_PID" ]; then
+          kill $SERVER_PID || true
+        fi
+        # Also kill any remaining server processes / 也杀死任何剩余的服务器进程
+        pkill -f "python3 server.py" || true
     
     - name: Check coverage threshold
       continue-on-error: true

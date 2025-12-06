@@ -36,7 +36,7 @@ class LLMProvider(ABC):
 class GeminiProvider(LLMProvider):
     """Google Gemini implementation of LLMProvider"""
 
-    def __init__(self, api_key: Optional[str] = None, model: str = "gemini-1.5-flash"):
+    def __init__(self, api_key: Optional[str] = None, model: Optional[str] = None):
         """
         Initialize Gemini Provider
 
@@ -49,17 +49,27 @@ class GeminiProvider(LLMProvider):
             raise ValueError("GEMINI_API_KEY is not set")
         genai.configure(api_key=self.api_key)
 
-        preferred = model or "gemini-1.5-flash"
-        default_candidates = [
-            preferred,
+        env_preferred = os.getenv("GEMINI_MODEL")
+        env_fallbacks = os.getenv("GEMINI_FALLBACK_MODELS")
+        preferred = model or env_preferred or "gemini-1.5-flash"
+
+        fallback_list = [
             "gemini-1.5-flash",
             "gemini-1.5-flash-8b",
             "gemini-1.0-pro",
         ]
-        deduped = []
-        for candidate in default_candidates:
+        env_extra = (
+            [m.strip() for m in env_fallbacks.split(",") if m.strip()]
+            if env_fallbacks
+            else []
+        )
+
+        candidate_sequence = [preferred] + env_extra + fallback_list
+        deduped: List[str] = []
+        for candidate in candidate_sequence:
             if candidate and candidate not in deduped:
                 deduped.append(candidate)
+
         self._model_candidates: Deque[str] = deque(deduped)
         self._initialize_model()
 

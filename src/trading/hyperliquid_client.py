@@ -293,9 +293,11 @@ class HyperliquidClient:
         self.session = requests.Session()
         self.session.verify = ca_bundle
 
-        # Retry configuration
-        self.max_retries = 3
-        self.retry_delays = [1, 2, 4]  # Exponential backoff: 1s, 2s, 4s
+        # Network timeouts and retry config tuned to return quickly for UI health checks
+        # 网络超时和重试配置，避免阻塞前端健康检查
+        self.request_timeout = 8  # seconds / 秒
+        self.max_retries = 2
+        self.retry_delays = [1, 2]  # Backoff between attempts / 尝试间的退避时间
         
         # Rate limiter for API requests / API 请求速率限制器
         # Hyperliquid REST API limit: ~1200 weight per minute per IP
@@ -342,7 +344,7 @@ class HyperliquidClient:
                     url,
                     headers=headers,
                     json={"type": "meta"},
-                    timeout=10,
+                    timeout=self.request_timeout,
                     verify=self.session.verify,
                 )
 
@@ -362,7 +364,7 @@ class HyperliquidClient:
                     auth_url,
                     headers=headers,
                     json={},
-                    timeout=10,
+                    timeout=self.request_timeout,
                     verify=self.session.verify,
                 )
 
@@ -537,7 +539,7 @@ class HyperliquidClient:
         endpoint: str,
         data: Optional[Dict] = None,
         public: bool = False,
-        max_retries: int = 2,
+        max_retries: int = 1,
     ) -> Optional[Dict]:
         """
         Make HTTP request to Hyperliquid API with retry logic for rate limits.
@@ -548,7 +550,7 @@ class HyperliquidClient:
             endpoint: API endpoint path
             data: Request data (for POST requests)
             public: Whether this is a public endpoint (no auth required)
-            max_retries: Maximum number of retries for rate limit errors (default: 2)
+            max_retries: Maximum number of retries for rate limit errors (default: 1)
 
         Returns:
             Response data as dictionary, or None on error
@@ -608,18 +610,28 @@ class HyperliquidClient:
             try:
                 if method.upper() == "GET":
                     if is_mocked:
-                        response = requests.get(url, headers=headers, timeout=10)
+                        response = requests.get(
+                            url, headers=headers, timeout=self.request_timeout
+                        )
                     else:
-                        response = self.session.get(url, headers=headers, timeout=10)
+                        response = self.session.get(
+                            url, headers=headers, timeout=self.request_timeout
+                        )
                 elif method.upper() == "POST":
                     if is_mocked:
                         # In test environment, use requests.post directly
                         response = requests.post(
-                            url, headers=headers, json=data, timeout=10
+                            url,
+                            headers=headers,
+                            json=data,
+                            timeout=self.request_timeout,
                         )
                     else:
                         response = self.session.post(
-                            url, headers=headers, json=data, timeout=10
+                            url,
+                            headers=headers,
+                            json=data,
+                            timeout=self.request_timeout,
                         )
                 else:
                     raise ValueError(f"Unsupported HTTP method: {method}")
@@ -659,6 +671,8 @@ class HyperliquidClient:
                             retry_after = int(e.response.headers["Retry-After"])
                         except (ValueError, TypeError):
                             pass
+                    # Cap wait time to keep HTTP handlers responsive / 限制等待时间，保持 HTTP 处理快速响应
+                    retry_after = min(retry_after, 5)
 
                     # Store rate limit error for API endpoints to return quickly
                     # 存储速率限制错误，以便 API 端点快速返回

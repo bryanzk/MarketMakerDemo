@@ -262,11 +262,21 @@ python3 run.py
 **Option 2: Web Interface / Web 界面**
 ```bash
 # Start the FastAPI server
-python3 server.py
+# 启动 FastAPI 服务器
+
+# Recommended: Use startup script (handles venv automatically)
+# 推荐：使用启动脚本（自动处理虚拟环境）
+./start_server.sh
+
+# Alternative: Manual start (if startup script doesn't work)
+# 备选：手动启动（如果启动脚本不工作）
+# The script automatically finds venv site-packages and sets PYTHONPATH
+# 脚本会自动查找虚拟环境 site-packages 并设置 PYTHONPATH
 
 # Then open in browser:
 # - Main dashboard: http://localhost:3000/
 # - LLM Trade Lab: http://localhost:3000/evaluation
+# - Hyperliquid Trading: http://localhost:3000/hyperliquid
 ```
 
 ### What to Watch / 观察内容

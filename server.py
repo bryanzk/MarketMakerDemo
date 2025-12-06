@@ -4,7 +4,7 @@ import threading
 import time
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, List
 
 import uvicorn
 
@@ -102,6 +102,11 @@ app.mount(
 bot_engine = AlphaLoop()
 bot_thread = None
 is_running = False
+# Cache Hyperliquid client to avoid expensive re-inits on every status ping
+# 缓存 Hyperliquid 客户端，避免每次状态检查都重新初始化
+_hyperliquid_client_cache = None
+_hyperliquid_last_failed_init = 0.0
+_HYPERLIQUID_INIT_COOLDOWN = 30.0  # seconds
 
 
 def get_default_exchange():
@@ -135,6 +140,8 @@ def get_exchange_by_name(exchange_name: str):
     from src.trading.exchange import BinanceClient
 
     if exchange_name == "hyperliquid":
+        global _hyperliquid_client_cache, _hyperliquid_last_failed_init
+
         # Look for HyperliquidClient in strategy instances
         # 在策略实例中查找 HyperliquidClient
         if hasattr(bot_engine, "strategy_instances") and bot_engine.strategy_instances:
@@ -153,11 +160,28 @@ def get_exchange_by_name(exchange_name: str):
                                     hasattr(instance.exchange, "is_connected")
                                     and instance.exchange.is_connected
                                 ):
+                                    # Cache the connected client for reuse
+                                    _hyperliquid_client_cache = instance.exchange
                                     return instance.exchange
             except (TypeError, AttributeError):
                 # Handle case where bot_engine is a Mock in tests
                 # 处理测试中 bot_engine 是 Mock 的情况
                 pass
+
+        # Reuse cached client if we already initialized one
+        if _hyperliquid_client_cache:
+            return _hyperliquid_client_cache
+
+        # Throttle re-initialization after failures to avoid repeated long timeouts
+        now = time.time()
+        if (
+            _hyperliquid_last_failed_init
+            and now - _hyperliquid_last_failed_init < _HYPERLIQUID_INIT_COOLDOWN
+        ):
+            logger.warning(
+                "Skipping Hyperliquid client re-initialization (cooldown in effect)"
+            )
+            return None
 
         # If not found in instances, try to create a new one
         # 如果在实例中未找到，尝试创建新的
@@ -168,6 +192,8 @@ def get_exchange_by_name(exchange_name: str):
             logger.debug(
                 f"HyperliquidClient created: is_connected={getattr(hyperliquid_client, 'is_connected', None)}"
             )
+            _hyperliquid_client_cache = hyperliquid_client
+            get_exchange_by_name._last_error = None
             return hyperliquid_client
         except AuthenticationError as e:
             # Authentication error - credentials missing or invalid
@@ -180,6 +206,7 @@ def get_exchange_by_name(exchange_name: str):
                 "message": str(e),
                 "exception": e,
             }
+            _hyperliquid_last_failed_init = time.time()
             return None
         except HyperliquidConnectionError as e:
             # Connection error - network or API issue
@@ -192,6 +219,7 @@ def get_exchange_by_name(exchange_name: str):
                 "message": str(e),
                 "exception": e,
             }
+            _hyperliquid_last_failed_init = time.time()
             return None
         except Exception as e:
             # Other errors during initialization
@@ -204,6 +232,7 @@ def get_exchange_by_name(exchange_name: str):
                 "message": str(e),
                 "exception": e,
             }
+            _hyperliquid_last_failed_init = time.time()
             return None
 
     elif exchange_name == "binance":
@@ -504,6 +533,7 @@ class EvaluationRunRequest(BaseModel):
     symbol: str
     simulation_steps: int = 500
     exchange: str = "binance"  # "binance" or "hyperliquid"
+    selected_models: Optional[List[str]] = None  # List of model names: ["gemini", "openai", "claude"]
 
 
 class EvaluationApplyRequest(BaseModel):
@@ -1626,8 +1656,11 @@ async def run_evaluation(request: EvaluationRunRequest):
 
         exchange_name = request.exchange.lower()
 
-        # Normalize symbol (remove / and :)
-        symbol = request.symbol.upper().replace("/", "").replace(":", "")
+        # Keep symbol in original format (e.g., "ETH/USDC:USDC")
+        # HyperliquidClient.fetch_market_data() will handle the conversion
+        # 保持 symbol 的原始格式（例如，"ETH/USDC:USDC"）
+        # HyperliquidClient.fetch_market_data() 会处理转换
+        symbol = request.symbol
 
         # Get exchange client by name
         # 根据名称获取交易所客户端
@@ -1644,7 +1677,8 @@ async def run_evaluation(request: EvaluationRunRequest):
         # Fetch market data
         # 获取市场数据
         try:
-            # Temporarily set symbol if needed
+            # Temporarily set symbol if needed (use original format)
+            # 如果需要，临时设置 symbol（使用原始格式）
             original_symbol = getattr(exchange, "symbol", None)
             if hasattr(exchange, "set_symbol"):
                 exchange.set_symbol(symbol)
@@ -1771,9 +1805,47 @@ async def run_evaluation(request: EvaluationRunRequest):
             recent_pnl=recent_pnl,
         )
 
-        # Create evaluator with all available providers
+        # Create evaluator with selected providers
+        # 使用选中的提供商创建评估器
         try:
-            providers = create_all_providers()
+            all_providers = create_all_providers()
+            
+            # Filter providers based on selected_models if provided
+            # 如果提供了 selected_models，则根据选中的模型过滤提供商
+            if request.selected_models and len(request.selected_models) > 0:
+                # Map model names to provider names
+                # 将模型名称映射到提供商名称
+                model_to_provider_map = {
+                    "gemini": "Gemini",
+                    "openai": "OpenAI",
+                    "claude": "Claude"
+                }
+                
+                # Get provider names from selected models
+                # 从选中的模型获取提供商名称
+                selected_provider_names = [
+                    model_to_provider_map.get(model.lower(), model.capitalize())
+                    for model in request.selected_models
+                ]
+                
+                # Filter providers by name
+                # 按名称过滤提供商
+                providers = [
+                    p for p in all_providers
+                    if any(p.name.startswith(name) for name in selected_provider_names)
+                ]
+                
+                if not providers:
+                    return {
+                        "error": f"No matching providers found for selected models: {', '.join(request.selected_models)}. "
+                                f"Available providers: {', '.join([p.name for p in all_providers])}. "
+                                f"未找到匹配的提供商，选中的模型: {', '.join(request.selected_models)}。"
+                                f"可用提供商: {', '.join([p.name for p in all_providers])}。"
+                    }
+            else:
+                # Use all available providers if no selection
+                # 如果没有选择，使用所有可用的提供商
+                providers = all_providers
         except Exception as e:
             return {"error": f"Failed to create LLM providers: {str(e)}"}
 

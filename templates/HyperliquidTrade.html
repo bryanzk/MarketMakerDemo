@@ -468,8 +468,8 @@
             <div id="evaluationConsensusCard" class="consensus-card" style="display:none;">
                 <div style="font-size:14px; font-weight:bold; color:#6d28d9;">🤝 Consensus Recommendation / 共识建议</div>
                 <div style="margin-top:8px; font-size:13px;">
-                    <div>Strategy: <span id="evaluationConsensusStrategy" style="font-weight:bold;">--</span></div>
-                    <div>Spread / Qty / Lev:
+                    <div>Strategy / 策略: <span id="evaluationConsensusStrategy" style="font-weight:bold;">--</span></div>
+                    <div>Spread / Qty / Lev / 价差 / 数量 / 杠杆:
                         <span id="evaluationConsensusParams" style="font-weight:bold;">--</span>
                     </div>
                 </div>
@@ -477,9 +477,9 @@
                 <div id="evaluationConsensusReasoning" style="margin-top:8px; font-size:12px; color:#6b7280;">--</div>
                 <div style="display:flex; gap:8px; margin-top:12px;">
                     <button class="btn btn-success" style="flex:1;"
-                        onclick="applyEvaluation('consensus')">Apply Consensus</button>
+                        onclick="applyEvaluation('consensus')">Apply Consensus / 应用共识</button>
                     <button class="btn btn-primary" style="flex:1;"
-                        onclick="startBotWithLLMSuggestion()">🚀 Start Bot</button>
+                        onclick="startBotWithLLMSuggestion()">🚀 Start Bot / 启动机器人</button>
                 </div>
             </div>
 
@@ -1296,22 +1296,41 @@
             // Update progress display / 更新进度显示
             updateProgressDisplay();
 
+            // Map strategy names to bilingual display / 将策略名称映射到双语显示
+            function getBilingualStrategyName(strategy) {
+                const strategyMap = {
+                    'FixedSpread': 'Fixed Spread / 固定价差',
+                    'FundingRate': 'Funding Rate / 资金费率',
+                    'fixed_spread': 'Fixed Spread / 固定价差',
+                    'funding_rate': 'Funding Rate / 资金费率',
+                };
+                return strategyMap[strategy] || strategy || '--';
+            }
+
             if (consensusCard) {
                 const aggregated = evaluationState.aggregated;
                 if (aggregated && aggregated.consensus_proposal && aggregated.strategy_consensus) {
                     const proposal = aggregated.consensus_proposal;
                     consensusCard.style.display = 'block';
-                    document.getElementById('evaluationConsensusStrategy').innerText = proposal.recommended_strategy || '--';
+                    
+                    // Display strategy name in bilingual format / 以双语格式显示策略名称
+                    const strategyName = getBilingualStrategyName(proposal.recommended_strategy);
+                    document.getElementById('evaluationConsensusStrategy').innerText = strategyName;
+                    
+                    // Display parameters in bilingual format / 以双语格式显示参数
                     document.getElementById('evaluationConsensusParams').innerText =
                         `${formatPercent(proposal.spread || 0, 2)} · Qty ${formatNumber(proposal.quantity || 0, 3)} · Lev ${formatNumber(proposal.leverage || 0, 1)}x`;
+                    
                     // Display reasoning, or show default message if empty
                     // 显示推理，如果为空则显示默认消息
                     const reasoning = proposal.reasoning && proposal.reasoning.trim() 
                         ? proposal.reasoning 
                         : 'Consensus reasoning unavailable. / 共识推理不可用。';
                     document.getElementById('evaluationConsensusReasoning').innerText = reasoning;
+                    
+                    // Display stats in bilingual format / 以双语格式显示统计信息
                     document.getElementById('evaluationConsensusStats').innerText =
-                        `Avg PnL ${formatCurrency(aggregated.avg_pnl || 0)} · Avg Sharpe ${formatNumber(aggregated.avg_sharpe || 0, 2)} · Avg Win ${formatPercent(aggregated.avg_win_rate || 0, 1)}`;
+                        `Avg PnL / 平均盈亏 ${formatCurrency(aggregated.avg_pnl || 0)} · Avg Sharpe / 平均夏普 ${formatNumber(aggregated.avg_sharpe || 0, 2)} · Avg Win / 平均胜率 ${formatPercent(aggregated.avg_win_rate || 0, 1)}`;
                 } else {
                     consensusCard.style.display = 'none';
                 }
@@ -1333,7 +1352,7 @@
                             <tr ${highlight}>
                                 <td>${result.rank ?? '--'}</td>
                                 <td>${result.provider_name || '--'}</td>
-                                <td>${proposal.recommended_strategy || '--'}</td>
+                                <td>${getBilingualStrategyName(proposal.recommended_strategy)}</td>
                                 <td>${formatPercent(proposal.spread || 0, 2)}</td>
                                 <td>${formatNumber(proposal.quantity || 0, 3)}</td>
                                 <td>${formatNumber(proposal.leverage || 0, 1)}x</td>

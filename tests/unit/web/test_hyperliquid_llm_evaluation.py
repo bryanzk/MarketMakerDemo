@@ -485,7 +485,12 @@ class TestHyperliquidApplyAPI:
         When: I call the apply API with a specific LLM provider's suggestion
         Then: The system should apply the suggested trading parameters to Hyperliquid
         """
+        from src.trading.hyperliquid_client import HyperliquidClient
         mock_hyperliquid_client.symbol = "ETHUSDC"
+        mock_hyperliquid_client.is_connected = True
+        # Make isinstance() check pass for HyperliquidClient
+        # 使 isinstance() 检查对 HyperliquidClient 通过
+        mock_hyperliquid_client.__class__ = HyperliquidClient
         mock_get_exchange.return_value = mock_hyperliquid_client
 
         # Mock evaluation results with consensus proposal
@@ -563,9 +568,7 @@ class TestHyperliquidApplyAPI:
 
         with patch("server.bot_engine", mock_bot_engine), patch(
             "server._last_evaluation_results", []
-        ), patch("server._last_evaluation_aggregated", aggregated), patch(
-            "server.get_exchange_by_name", mock_get_exchange
-        ):
+        ), patch("server._last_evaluation_aggregated", aggregated):
             client = TestClient(server.app)
 
             response = client.post(

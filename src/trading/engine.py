@@ -368,6 +368,44 @@ class AlphaLoop:
                         "trace_id": get_trace_id(),
                     },
                 )
+                # Clear strategy_switched flag even when skipping order cycle
+                # 即使跳过订单周期，也清除 strategy_switched 标志
+                if instance.strategy_switched:
+                    instance.strategy_switched = False
+                
+                # Check for order errors even when skipping order cycle
+                # 即使跳过订单周期，也检查订单错误
+                if hasattr(instance.exchange, "last_order_error"):
+                    last_error = getattr(instance.exchange, "last_order_error", None)
+                    if last_error and isinstance(last_error, dict):
+                        err = last_error
+                        error_type = err.get("type", "unknown")
+                        error_message = err.get("message", "")
+
+                        error_record = {
+                            "timestamp": time.time(),
+                            "symbol": err.get("symbol", getattr(instance.exchange, "symbol", "unknown")),
+                            "type": error_type,
+                            "message": error_message,
+                            "details": err.get("details"),
+                            "strategy_id": instance.strategy_id,
+                            "strategy_type": instance.strategy_type,
+                            "trace_id": get_trace_id(),
+                        }
+                        instance.error_history.append(error_record)
+                        self.error_history.append(error_record)
+
+                        if error_type in [
+                            "insufficient_funds",
+                            "invalid_order",
+                            "exchange_error",
+                        ]:
+                            instance.alert = {
+                                "type": "error",
+                                "message": error_message,
+                                "suggestion": "Check order parameters or account balance.",
+                            }
+                
                 return
 
             market_data = instance.latest_market_data

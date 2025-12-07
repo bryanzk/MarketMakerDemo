@@ -729,25 +729,49 @@ async def get_status(request: Request, exchange: Optional[str] = Query(None)):
 
         # Add instance-specific errors / 添加实例特定错误
         if hasattr(bot_engine, "strategy_instances") and bot_engine.strategy_instances:
-            for instance_id, instance in bot_engine.strategy_instances.items():
+            try:
+                instances_dict = dict(bot_engine.strategy_instances.items())
+            except (TypeError, AttributeError):
+                instances_dict = {}
+            
+            for instance_id, instance in instances_dict.items():
                 # Safely convert error_history to list (handle Mock objects) / 安全地将 error_history 转换为列表（处理 Mock 对象）
                 try:
                     if hasattr(instance, "error_history"):
                         error_history = instance.error_history
-                        # Check if it's iterable / 检查是否可迭代
+                        # Check if it's iterable and not a Mock / 检查是否可迭代且不是 Mock
                         if hasattr(error_history, "__iter__") and not isinstance(
                             error_history, (str, bytes)
                         ):
-                            error_history_list = list(error_history)[-20:]
+                            # Convert to list, but limit to avoid recursion / 转换为列表，但限制以避免递归
+                            try:
+                                error_history_list = [
+                                    {
+                                        k: v for k, v in (item.items() if isinstance(item, dict) else {"error": str(item)}).items()
+                                        if not isinstance(v, (type, object)) or v is None
+                                    }
+                                    for item in list(error_history)[-20:]
+                                ]
+                            except (TypeError, RecursionError, AttributeError):
+                                error_history_list = []
                         else:
                             error_history_list = []
                     else:
                         error_history_list = []
-                except (TypeError, AttributeError):
+                except (TypeError, AttributeError, RecursionError):
                     error_history_list = []
 
+                # Safely get alert (avoid Mock objects) / 安全获取 alert（避免 Mock 对象）
+                try:
+                    alert = instance.alert if hasattr(instance, "alert") else None
+                    # Ensure alert is a simple type / 确保 alert 是简单类型
+                    if alert is not None and not isinstance(alert, (str, type(None))):
+                        alert = str(alert) if alert else None
+                except (TypeError, AttributeError, RecursionError):
+                    alert = None
+
                 errors["instance_errors"][instance_id] = {
-                    "alert": instance.alert if hasattr(instance, "alert") else None,
+                    "alert": alert,
                     "error_history": error_history_list,
                 }
 

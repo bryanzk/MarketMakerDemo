@@ -372,7 +372,7 @@ class AlphaLoop:
                 # 即使跳过订单周期，也清除 strategy_switched 标志
                 if instance.strategy_switched:
                     instance.strategy_switched = False
-                
+
                 # Check for order errors even when skipping order cycle
                 # 即使跳过订单周期，也检查订单错误
                 if hasattr(instance.exchange, "last_order_error"):
@@ -384,7 +384,10 @@ class AlphaLoop:
 
                         error_record = {
                             "timestamp": time.time(),
-                            "symbol": err.get("symbol", getattr(instance.exchange, "symbol", "unknown")),
+                            "symbol": err.get(
+                                "symbol",
+                                getattr(instance.exchange, "symbol", "unknown"),
+                            ),
                             "type": error_type,
                             "message": error_message,
                             "details": err.get("details"),
@@ -405,7 +408,7 @@ class AlphaLoop:
                                 "message": error_message,
                                 "suggestion": "Check order parameters or account balance.",
                             }
-                
+
                 return
 
             market_data = instance.latest_market_data

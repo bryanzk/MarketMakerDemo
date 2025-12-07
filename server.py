@@ -2,6 +2,7 @@ import logging
 import os
 import threading
 import time
+from collections import deque
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional, List
@@ -256,6 +257,65 @@ def get_exchange_by_name(exchange_name: str):
 # Initialize error storage
 # 初始化错误存储
 get_exchange_by_name._last_error = None
+
+
+def _safe_to_simple(value: Any, depth: int = 0, max_depth: int = 2, seen=None):
+    """
+    Convert a value to JSON-safe primitives with recursion protection.
+    将值转换为 JSON 安全的基础类型，并防止递归。
+    """
+    if seen is None:
+        seen = set()
+    if id(value) in seen or depth > max_depth:
+        return "<recursion>"
+
+    simple_types = (str, int, float, bool, type(None))
+    if isinstance(value, simple_types):
+        return value
+
+    if isinstance(value, dict):
+        seen.add(id(value))
+        safe_dict: Dict[str, Any] = {}
+        for k, v in value.items():
+            try:
+                safe_dict[str(k)] = _safe_to_simple(v, depth + 1, max_depth, seen)
+            except Exception:
+                safe_dict[str(k)] = "<error>"
+        return safe_dict
+
+    if isinstance(value, (list, tuple, set, deque)):
+        seen.add(id(value))
+        safe_list: List[Any] = []
+        for item in list(value):
+            try:
+                safe_list.append(_safe_to_simple(item, depth + 1, max_depth, seen))
+            except Exception:
+                safe_list.append("<error>")
+        return safe_list
+
+    try:
+        return str(value)
+    except Exception:
+        return "<unserializable>"
+
+
+def _safe_error_history(history: Any, limit: int = 20) -> List[Dict[str, Any]]:
+    """
+    Safely convert an error history iterable to a list of simple dicts.
+    安全地将 error_history 可迭代对象转换为简单字典列表。
+    """
+    try:
+        items = list(history)[-limit:]
+    except Exception:
+        return []
+
+    safe_items: List[Dict[str, Any]] = []
+    for item in items:
+        if isinstance(item, dict):
+            safe_items.append(_safe_to_simple(item, depth=0, max_depth=2))
+        else:
+            safe_items.append({"error": _safe_to_simple(item, depth=0, max_depth=1)})
+    return safe_items
 
 
 def _validate_exchange_parameter(exchange: str) -> tuple[bool, Optional[dict]]:
@@ -713,30 +773,7 @@ async def get_status(request: Request, exchange: Optional[str] = Query(None)):
                 if hasattr(error_history, "__iter__") and not isinstance(
                     error_history, (str, bytes)
                 ):
-                    # Safely convert error_history items to simple dicts / 安全地将 error_history 项转换为简单字典
-                    global_error_history = []
-                    try:
-                        for item in list(error_history)[-20:]:
-                            if isinstance(item, dict):
-                                # Only include simple types to avoid recursion / 只包含简单类型以避免递归
-                                safe_item = {}
-                                for k, v in item.items():
-                                    if isinstance(v, (str, int, float, bool, type(None))):
-                                        safe_item[k] = v
-                                    elif isinstance(v, dict):
-                                        # Recursively convert nested dicts, but limit depth / 递归转换嵌套字典，但限制深度
-                                        try:
-                                            safe_item[k] = {k2: v2 for k2, v2 in v.items() 
-                                                           if isinstance(v2, (str, int, float, bool, type(None)))}
-                                        except (TypeError, RecursionError):
-                                            safe_item[k] = str(v)
-                                    else:
-                                        safe_item[k] = str(v) if v is not None else None
-                                global_error_history.append(safe_item)
-                            else:
-                                global_error_history.append({"error": str(item)})
-                    except (TypeError, RecursionError, AttributeError):
-                        global_error_history = []
+                    global_error_history = _safe_error_history(error_history, limit=20)
                 else:
                     global_error_history = []
             else:
@@ -768,38 +805,9 @@ async def get_status(request: Request, exchange: Optional[str] = Query(None)):
                         ):
                             # Convert to list, but limit to avoid recursion / 转换为列表，但限制以避免递归
                             try:
-                                # Safely convert error_history items to simple dicts / 安全地将 error_history 项转换为简单字典
-                                error_history_list = []
-                                for item in list(error_history)[-20:]:
-                                    if isinstance(item, dict):
-                                        # Only include simple types to avoid recursion / 只包含简单类型以避免递归
-                                        safe_item = {}
-                                        for k, v in item.items():
-                                            try:
-                                                if isinstance(v, (str, int, float, bool, type(None))):
-                                                    safe_item[k] = v
-                                                elif isinstance(v, dict):
-                                                    # Recursively convert nested dicts, but limit depth / 递归转换嵌套字典，但限制深度
-                                                    # Use a helper function to avoid deep recursion / 使用辅助函数以避免深度递归
-                                                    try:
-                                                        nested_dict = {}
-                                                        for k2, v2 in v.items():
-                                                            if isinstance(v2, (str, int, float, bool, type(None))):
-                                                                nested_dict[k2] = v2
-                                                            else:
-                                                                nested_dict[k2] = str(v2) if v2 is not None else None
-                                                        safe_item[k] = nested_dict
-                                                    except (TypeError, RecursionError, AttributeError):
-                                                        safe_item[k] = str(v)
-                                                else:
-                                                    # For any other type, convert to string / 对于任何其他类型，转换为字符串
-                                                    safe_item[k] = str(v) if v is not None else None
-                                            except (TypeError, RecursionError, AttributeError):
-                                                # If conversion fails, skip this key / 如果转换失败，跳过此键
-                                                safe_item[k] = None
-                                        error_history_list.append(safe_item)
-                                    else:
-                                        error_history_list.append({"error": str(item)})
+                                error_history_list = _safe_error_history(
+                                    error_history, limit=20
+                                )
                             except (TypeError, RecursionError, AttributeError):
                                 error_history_list = []
                         else:

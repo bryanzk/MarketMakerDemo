@@ -37,12 +37,18 @@ class AlphaLoop:
     支持多个策略实例独立运行。
     """
 
-    def __init__(self, hyperliquid_only: Optional[bool] = None, hyperliquid_exchange: Optional[Any] = None):
+    def __init__(
+        self,
+        hyperliquid_only: Optional[bool] = None,
+        hyperliquid_exchange: Optional[Any] = None,
+    ):
         # Multi-strategy support: dict of StrategyInstance objects
         self.strategy_instances: Dict[str, StrategyInstance] = {}
 
         # Determine mode / 确定模式
-        self.hyperliquid_only = HYPERLIQUID_ONLY if hyperliquid_only is None else hyperliquid_only
+        self.hyperliquid_only = (
+            HYPERLIQUID_ONLY if hyperliquid_only is None else hyperliquid_only
+        )
 
         if self.hyperliquid_only:
             # Hyperliquid-only mode: create a Hyperliquid strategy instance and skip default Binance
@@ -60,7 +66,9 @@ class AlphaLoop:
                 hl_instance.running = True
                 self.strategy_instances["hyperliquid"] = hl_instance
                 self.strategy = hl_instance.strategy
-                logger.info("Started in Hyperliquid-only mode; default Binance instance disabled")
+                logger.info(
+                    "Started in Hyperliquid-only mode; default Binance instance disabled"
+                )
             except Exception as e:
                 logger.error(
                     f"Failed to initialize Hyperliquid-only mode: {e}. No default instance created.",
@@ -117,7 +125,9 @@ class AlphaLoop:
             logger.error(f"Strategy instance '{strategy_id}' already exists")
             return False
 
-        instance = StrategyInstance(strategy_id, strategy_type, symbol=symbol, exchange=exchange)
+        instance = StrategyInstance(
+            strategy_id, strategy_type, symbol=symbol, exchange=exchange
+        )
         self.strategy_instances[strategy_id] = instance
         logger.info(f"Added strategy instance '{strategy_id}' ({strategy_type})")
         return True
@@ -306,7 +316,9 @@ class AlphaLoop:
             if not instance.refresh_data():
                 exchange_name = "exchange"
                 if instance.exchange:
-                    exchange_name = getattr(instance.exchange, "__class__", type(None)).__name__.replace("Client", "")
+                    exchange_name = getattr(
+                        instance.exchange, "__class__", type(None)
+                    ).__name__.replace("Client", "")
                 instance.alert = {
                     "type": "error",
                     "message": "Failed to refresh exchange data.",
@@ -348,9 +360,11 @@ class AlphaLoop:
                     extra={
                         "strategy_id": instance.strategy_id,
                         "strategy_type": instance.strategy_type,
-                        "exchange_type": type(instance.exchange).__name__
-                        if instance.exchange
-                        else "None",
+                        "exchange_type": (
+                            type(instance.exchange).__name__
+                            if instance.exchange
+                            else "None"
+                        ),
                         "trace_id": get_trace_id(),
                     },
                 )

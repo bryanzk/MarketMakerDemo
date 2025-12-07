@@ -1412,10 +1412,29 @@ async def get_performance():
             # Pass start_time to fetch data from session start
             pnl_data = exchange.fetch_pnl_and_fees(start_time=start_time_ms)
             commission = pnl_data.get("commission", 0.0)
+            # Ensure commission is a number / 确保 commission 是数字
+            if not isinstance(commission, (int, float)):
+                try:
+                    commission = float(commission) if commission else 0.0
+                except (ValueError, TypeError):
+                    commission = 0.0
+            
             # Use exchange's realized PnL if available, otherwise use local calculation
             if pnl_data.get("realized_pnl", 0) != 0:
                 realized_pnl = pnl_data["realized_pnl"]
-                net_pnl = pnl_data["net_pnl"]
+                # Ensure realized_pnl is a number, not a Mock object / 确保 realized_pnl 是数字，而不是 Mock 对象
+                if not isinstance(realized_pnl, (int, float)):
+                    try:
+                        realized_pnl = float(realized_pnl) if realized_pnl else 0.0
+                    except (ValueError, TypeError):
+                        realized_pnl = 0.0
+                net_pnl = pnl_data.get("net_pnl", realized_pnl - commission)
+                # Ensure net_pnl is a number / 确保 net_pnl 是数字
+                if not isinstance(net_pnl, (int, float)):
+                    try:
+                        net_pnl = float(net_pnl) if net_pnl else realized_pnl - commission
+                    except (ValueError, TypeError):
+                        net_pnl = realized_pnl - commission
             else:
                 net_pnl = realized_pnl - commission
         except Exception:
@@ -2306,11 +2325,12 @@ async def get_hyperliquid_status(request: Request):
             # 获取详细的错误信息（如果可用）
             last_error = getattr(get_exchange_by_name, "_last_error", None)
 
-            if last_error:
+            if last_error and not isinstance(last_error, type):  # Check it's not a Mock/type
                 # Use the actual exception that occurred
                 # 使用实际发生的异常
-                actual_exception = last_error.get("exception")
-                error_type = last_error.get("type", "unknown")
+                actual_exception = last_error.get("exception") if isinstance(last_error, dict) else None
+                error_type = last_error.get("type", "unknown") if isinstance(last_error, dict) else "unknown"
+                error_message = last_error.get("message", "") if isinstance(last_error, dict) else str(last_error)
 
                 if error_type == "authentication":
                     error_code = "EXCHANGE_AUTHENTICATION_FAILED"
@@ -2326,14 +2346,14 @@ async def get_hyperliquid_status(request: Request):
                 return create_error_response(
                     (
                         actual_exception
-                        if actual_exception
-                        else ConnectionError(last_error["message"])
+                        if actual_exception and not isinstance(actual_exception, type)
+                        else ConnectionError(error_message if error_message and not isinstance(error_message, type) else "Hyperliquid exchange not connected")
                     ),
                     error_code=error_code,
                     details={
                         **request_context,
-                        "initialization_error_type": error_type,
-                        "initialization_error_message": last_error["message"],
+                        "initialization_error_type": error_type if isinstance(error_type, str) else "unknown",
+                        "initialization_error_message": error_message if isinstance(error_message, str) else "",
                         "suggestion": "Check environment variables HYPERLIQUID_API_KEY and HYPERLIQUID_API_SECRET / 检查环境变量 HYPERLIQUID_API_KEY 和 HYPERLIQUID_API_SECRET",
                     },
                 )
@@ -2986,7 +3006,20 @@ async def get_portfolio():
             # Fetch PnL and commission from session start time
             pnl_data = exchange.fetch_pnl_and_fees(start_time=start_time_ms)
             commission = pnl_data.get("commission", 0.0)
+            # Ensure commission is a number / 确保 commission 是数字
+            if not isinstance(commission, (int, float)):
+                try:
+                    commission = float(commission) if commission else 0.0
+                except (ValueError, TypeError):
+                    commission = 0.0
+            
             realized_pnl = pnl_data.get("realized_pnl", 0.0)
+            # Ensure realized_pnl is a number, not a Mock object / 确保 realized_pnl 是数字，而不是 Mock 对象
+            if not isinstance(realized_pnl, (int, float)):
+                try:
+                    realized_pnl = float(realized_pnl) if realized_pnl else 0.0
+                except (ValueError, TypeError):
+                    realized_pnl = 0.0
         except Exception:
             pass
 
@@ -3518,6 +3551,12 @@ def _sync_portfolio_with_bot():
                             start_time=start_time_ms
                         )
                         realized_pnl = pnl_data.get("realized_pnl", 0.0)
+                        # Ensure realized_pnl is a number, not a Mock object / 确保 realized_pnl 是数字，而不是 Mock 对象
+                        if not isinstance(realized_pnl, (int, float)):
+                            try:
+                                realized_pnl = float(realized_pnl) if realized_pnl else 0.0
+                            except (ValueError, TypeError):
+                                realized_pnl = 0.0
                 except Exception as e:
                     logger.debug(f"Error fetching PnL for {instance_id}: {e}")
 

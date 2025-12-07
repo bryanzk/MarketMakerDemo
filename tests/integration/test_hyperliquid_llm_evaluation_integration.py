@@ -369,6 +369,11 @@ class TestHyperliquidLLMEvaluationAPIIntegration:
             # Verify error response
             # 验证错误响应
             data = response.json()
+            # Handle tuple response (error, status_code) returned by FastAPI
+            # 处理 FastAPI 返回的元组响应（error, status_code）
+            if isinstance(data, list) and len(data) > 0:
+                data = data[0]
+            
             assert "error" in data, "Error message should be present / 应该存在错误消息"
 
 
@@ -832,10 +837,11 @@ class TestHyperliquidLLMApplyIntegration:
         mock_instance.strategy.quantity = 0.05
 
         mock_bot_engine = Mock()
-        # Use MagicMock for strategy_instances to support items() method
-        # 使用 MagicMock 用于 strategy_instances 以支持 items() 方法
+        # Use MagicMock for strategy_instances to support items() and values() methods
+        # 使用 MagicMock 用于 strategy_instances 以支持 items() 和 values() 方法
         mock_strategy_instances = MagicMock()
         mock_strategy_instances.items.return_value = [("hyperliquid", mock_instance)]
+        mock_strategy_instances.values.return_value = [mock_instance]
         mock_strategy_instances.get.return_value = mock_instance
         mock_bot_engine.strategy_instances = mock_strategy_instances
         mock_bot_engine.add_strategy_instance = Mock(return_value=True)

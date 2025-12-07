@@ -142,9 +142,13 @@ class TestBusinessLogicIntegration:
         with patch(
             "src.trading.strategy_instance.BinanceClient",
             return_value=mock_exchange,
+        ), patch(
+            "src.trading.engine.HYPERLIQUID_ONLY", False
         ):
-            bot = AlphaLoop()
-            default_instance = bot.strategy_instances["default"]
+            bot = AlphaLoop(hyperliquid_only=False)
+            # Get the default instance
+            # 获取默认实例
+            default_instance = bot.strategy_instances.get("default") or next(iter(bot.strategy_instances.values()))
 
             # Return stale data (10 seconds old)
             stale_time = (time.time() - 10) * 1000
@@ -198,11 +202,13 @@ class TestBusinessLogicIntegration:
         with patch(
             "src.trading.strategy_instance.BinanceClient",
             return_value=mock_exchange,
+        ), patch(
+            "src.trading.engine.HYPERLIQUID_ONLY", False
         ):
-            bot = AlphaLoop()
+            bot = AlphaLoop(hyperliquid_only=False)
 
             # Set custom params on default strategy
-            default_instance = bot.strategy_instances["default"]
+            default_instance = bot.strategy_instances.get("default") or next(iter(bot.strategy_instances.values()))
             default_instance.strategy.spread = 0.005
             default_instance.strategy.quantity = 0.1
             default_instance.strategy.leverage = 10
@@ -211,7 +217,7 @@ class TestBusinessLogicIntegration:
             bot.set_strategy("funding_rate")
 
             # Get updated instance
-            default_instance = bot.strategy_instances["default"]
+            default_instance = bot.strategy_instances.get("default") or next(iter(bot.strategy_instances.values()))
 
             # Verify params preserved
             assert default_instance.strategy.spread == 0.005
@@ -223,11 +229,13 @@ class TestBusinessLogicIntegration:
         with patch(
             "src.trading.strategy_instance.BinanceClient",
             return_value=mock_exchange,
+        ), patch(
+            "src.trading.engine.HYPERLIQUID_ONLY", False
         ):
-            bot = AlphaLoop()
+            bot = AlphaLoop(hyperliquid_only=False)
 
             # Custom config on default strategy
-            default_instance = bot.strategy_instances["default"]
+            default_instance = bot.strategy_instances.get("default") or next(iter(bot.strategy_instances.values()))
             default_instance.strategy.spread = 0.003
             default_instance.strategy.quantity = 0.2
             default_instance.strategy.leverage = 5
@@ -246,18 +254,27 @@ class TestBusinessLogicIntegration:
         from src.trading.hyperliquid_client import HyperliquidClient
         
         with patch(
-            "src.trading.strategy_instance.HyperliquidClient",
-            return_value=mock_exchange,
-        ), patch(
             "src.trading.strategy_instance.BinanceClient",
             return_value=mock_exchange,
+        ), patch(
+            "src.trading.engine.HYPERLIQUID_ONLY", False
         ):
             # Make mock_exchange appear as HyperliquidClient
             # 使 mock_exchange 看起来像 HyperliquidClient
-            mock_exchange.__class__ = HyperliquidClient
+            # Create a mock that passes isinstance check
+            # 创建一个通过 isinstance 检查的 mock
+            class MockHyperliquidClient(HyperliquidClient):
+                def __init__(self):
+                    # Skip parent __init__ to avoid real initialization
+                    # 跳过父类 __init__ 以避免真实初始化
+                    pass
             
-            bot = AlphaLoop()
-            default_instance = bot.strategy_instances["default"]
+            # Replace the class of mock_exchange
+            # 替换 mock_exchange 的类
+            mock_exchange.__class__ = MockHyperliquidClient
+            
+            bot = AlphaLoop(hyperliquid_only=False)
+            default_instance = bot.strategy_instances.get("default") or next(iter(bot.strategy_instances.values()))
             default_instance.exchange = mock_exchange
             default_instance.use_real_exchange = True
             default_instance.running = True
@@ -291,9 +308,11 @@ class TestBusinessLogicIntegration:
         with patch(
             "src.trading.strategy_instance.BinanceClient",
             return_value=mock_exchange,
+        ), patch(
+            "src.trading.engine.HYPERLIQUID_ONLY", False
         ):
-            bot = AlphaLoop()
-            default_instance = bot.strategy_instances["default"]
+            bot = AlphaLoop(hyperliquid_only=False)
+            default_instance = bot.strategy_instances.get("default") or next(iter(bot.strategy_instances.values()))
 
             # Clear any orders
             default_instance.active_orders = []

@@ -31,11 +31,11 @@ class StrategyInstance:
     """
 
     def __init__(
-        self, 
-        strategy_id: str, 
-        strategy_type: str = "fixed_spread", 
+        self,
+        strategy_id: str,
+        strategy_type: str = "fixed_spread",
         symbol: str = None,
-        exchange: Optional[Any] = None
+        exchange: Optional[Any] = None,
     ):
         """
         Initialize a strategy instance with its own exchange connection.
@@ -65,7 +65,7 @@ class StrategyInstance:
         # 如果提供了 exchange，使用它；否则，仅对非 hyperliquid 实例创建 BinanceClient
         self.exchange: Optional[Any] = None
         self.use_real_exchange = False
-        
+
         if exchange is not None:
             # Use provided exchange client / 使用提供的交易所客户端
             self.exchange = exchange

@@ -760,54 +760,57 @@ class MultiLLMEvaluator:
         def translate_reasoning_to_bilingual(text: str) -> str:
             """
             Translate English reasoning to bilingual format / 将英文推理翻译为双语格式
-            
+
             Args:
                 text: English reasoning text / 英文推理文本
-                
+
             Returns:
                 Bilingual text (English / Chinese) / 双语文本（英文 / 中文）
             """
             # Check if text already contains Chinese / 检查文本是否已包含中文
             if any("\u4e00" <= char <= "\u9fff" for char in text):
                 return text  # Already bilingual / 已经是双语
-            
+
             # Extract key information for Chinese translation / 提取关键信息用于中文翻译
             import re
+
             key_points = []
-            
+
             # Note: Consensus info is already bilingual in combined_reasoning prefix
             # 注意：共识信息在 combined_reasoning 前缀中已经是双语的
             # Skip extracting consensus info here to avoid duplication
             # 跳过提取共识信息以避免重复
-            
+
             # Extract volatility info / 提取波动率信息
-            vol_matches = re.findall(r'(\d+\.?\d*)%', text)
+            vol_matches = re.findall(r"(\d+\.?\d*)%", text)
             if "volatility" in text.lower() and vol_matches:
                 # Check for 1 hour volatility / 检查 1 小时波动率
-                if ("1 hour" in text.lower() or "1h" in text.lower()) and len(vol_matches) > 0:
+                if ("1 hour" in text.lower() or "1h" in text.lower()) and len(
+                    vol_matches
+                ) > 0:
                     key_points.append(f"1小时波动率 {vol_matches[0]}%")
                 # Check for 24 hours volatility / 检查 24 小时波动率
-                if ("24 hours" in text.lower() or "24h" in text.lower()):
+                if "24 hours" in text.lower() or "24h" in text.lower():
                     if len(vol_matches) > 1:
                         key_points.append(f"24小时波动率 {vol_matches[1]}%")
                     elif len(vol_matches) == 1 and "24" in text:
                         key_points.append(f"24小时波动率 {vol_matches[0]}%")
-            
+
             # Extract spread info / 提取价差信息
-            spread_match = re.search(r'(\d+\.?\d*)\s*bps', text)
+            spread_match = re.search(r"(\d+\.?\d*)\s*bps", text)
             if spread_match:
                 key_points.append(f"价差 {spread_match.group(1)} 基点")
-            
+
             # Extract quantity info / 提取数量信息
-            qty_match = re.search(r'quantity of (\d+\.?\d*)', text)
+            qty_match = re.search(r"quantity of (\d+\.?\d*)", text)
             if qty_match:
                 key_points.append(f"数量 {qty_match.group(1)}")
-            
+
             # Extract leverage info / 提取杠杆信息
-            lev_match = re.search(r'(\d+\.?\d*)x', text)
+            lev_match = re.search(r"(\d+\.?\d*)x", text)
             if lev_match and "leverage" in text.lower():
                 key_points.append(f"杠杆 {lev_match.group(1)}倍")
-            
+
             # Translate key concepts / 翻译关键概念
             if "low volatility" in text.lower():
                 key_points.append("低波动环境")
@@ -821,7 +824,7 @@ class MultiLLMEvaluator:
                 key_points.append("最优参数")
             if "competitive" in text.lower():
                 key_points.append("保持竞争力")
-            
+
             # Build bilingual text / 构建双语文本
             if key_points:
                 chinese_summary = "。".join(key_points) + "。"
@@ -829,7 +832,7 @@ class MultiLLMEvaluator:
             else:
                 # Fallback: add general translation / 回退：添加通用翻译
                 return f"{text} / 基于市场分析的共识建议。"
-        
+
         combined_reasoning = (
             f"Consensus from {len(agreeing_results)}/{len(valid_results)} models. / "
             f"共识来自 {len(agreeing_results)}/{len(valid_results)} 个模型。"
@@ -838,15 +841,17 @@ class MultiLLMEvaluator:
             # Extract non-empty reasoning from agreeing results
             # 从同意的结果中提取非空推理
             reasons = [
-                r.proposal.reasoning.strip() 
-                for r in agreeing_results 
+                r.proposal.reasoning.strip()
+                for r in agreeing_results
                 if r.proposal.reasoning and r.proposal.reasoning.strip()
             ]
             if reasons:
                 # Combine up to 3 reasoning statements and translate to bilingual
                 # 组合最多 3 个推理陈述并翻译为双语
                 combined_reasoning_text = " | ".join(reasons[:3])
-                combined_reasoning += translate_reasoning_to_bilingual(combined_reasoning_text)
+                combined_reasoning += translate_reasoning_to_bilingual(
+                    combined_reasoning_text
+                )
             else:
                 # If no detailed reasoning available, add summary information
                 # 如果没有详细推理，添加摘要信息

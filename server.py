@@ -116,6 +116,11 @@ _hyperliquid_client_cache = None
 _hyperliquid_last_failed_init = 0.0
 _HYPERLIQUID_INIT_COOLDOWN = 30.0  # seconds
 
+# Price cache for Hyperliquid pairs / Hyperliquid 交易对价格缓存
+# Format: {symbol: {"price": float, "timestamp": float}}
+_hyperliquid_price_cache: Dict[str, Dict[str, Any]] = {}
+_PRICE_CACHE_TTL = 60.0  # Cache prices for 60 seconds / 价格缓存 60 秒
+
 
 def get_default_exchange():
     """
@@ -2688,34 +2693,96 @@ async def get_hyperliquid_prices(request: Request):
                 details=request_context,
             )
 
-        # Check if exchange supports fetch_multiple_prices / 检查交易所是否支持 fetch_multiple_prices
-        if not hasattr(exchange, "fetch_multiple_prices"):
-            # Fallback: fetch prices one by one / 回退：逐个获取价格
-            prices = {}
-            original_symbol = getattr(exchange, "symbol", None)
-            for symbol in symbols:
-                try:
-                    if hasattr(exchange, "set_symbol"):
-                        exchange.set_symbol(symbol)
-                    market_data = exchange.fetch_market_data()
-                    if market_data and market_data.get("mid_price"):
-                        prices[symbol] = market_data["mid_price"]
-                    else:
-                        prices[symbol] = None
-                except Exception as e:
-                    logger.warning(f"Error fetching price for {symbol}: {e}")
-                    prices[symbol] = None
-            # Restore original symbol / 恢复原始交易对
-            if original_symbol and hasattr(exchange, "set_symbol"):
-                exchange.set_symbol(original_symbol)
-        else:
-            # Use efficient batch method / 使用高效的批量方法
-            prices = exchange.fetch_multiple_prices(symbols)
+        # Initialize prices dict with cached values / 使用缓存值初始化价格字典
+        current_time = time.time()
+        prices = {}
+        use_cache = False
+        
+        # Check cache first / 先检查缓存
+        for symbol in symbols:
+            cached = _hyperliquid_price_cache.get(symbol)
+            if cached and (current_time - cached["timestamp"]) < _PRICE_CACHE_TTL:
+                prices[symbol] = cached["price"]
+            else:
+                prices[symbol] = None
+
+        # Try to fetch fresh prices / 尝试获取最新价格
+        fresh_prices = {}
+        rate_limit_error = False
+        try:
+            # Check if exchange supports fetch_multiple_prices / 检查交易所是否支持 fetch_multiple_prices
+            if not hasattr(exchange, "fetch_multiple_prices"):
+                # Fallback: fetch prices one by one / 回退：逐个获取价格
+                original_symbol = getattr(exchange, "symbol", None)
+                for symbol in symbols:
+                    try:
+                        if hasattr(exchange, "set_symbol"):
+                            exchange.set_symbol(symbol)
+                        market_data = exchange.fetch_market_data()
+                        if market_data and market_data.get("mid_price"):
+                            fresh_prices[symbol] = market_data["mid_price"]
+                    except Exception as e:
+                        error_msg = str(e).lower()
+                        if "429" in error_msg or "rate limit" in error_msg or "too many requests" in error_msg:
+                            rate_limit_error = True
+                            logger.warning(f"Rate limit when fetching price for {symbol}: {e}")
+                        else:
+                            logger.warning(f"Error fetching price for {symbol}: {e}")
+                # Restore original symbol / 恢复原始交易对
+                if original_symbol and hasattr(exchange, "set_symbol"):
+                    exchange.set_symbol(original_symbol)
+            else:
+                # Use efficient batch method / 使用高效的批量方法
+                fresh_prices = exchange.fetch_multiple_prices(symbols)
+                # Check if we got rate limit error from exchange / 检查是否从交易所收到速率限制错误
+                if hasattr(exchange, "last_api_error") and exchange.last_api_error:
+                    error_type = exchange.last_api_error.get("type", "")
+                    if error_type == "rate_limit":
+                        rate_limit_error = True
+        except Exception as e:
+            error_msg = str(e).lower()
+            if "429" in error_msg or "rate limit" in error_msg or "too many requests" in error_msg:
+                rate_limit_error = True
+                logger.warning(f"Rate limit error when fetching prices: {e}")
+            else:
+                logger.error(f"Error fetching prices: {e}", exc_info=True)
+
+        # Update prices: use fresh prices if available, otherwise fall back to cache / 更新价格：如果有新价格则使用，否则回退到缓存
+        for symbol in symbols:
+            if symbol in fresh_prices and fresh_prices[symbol] is not None:
+                # Update cache with fresh price / 使用新价格更新缓存
+                _hyperliquid_price_cache[symbol] = {
+                    "price": fresh_prices[symbol],
+                    "timestamp": current_time,
+                }
+                prices[symbol] = fresh_prices[symbol]
+            elif prices[symbol] is None:
+                # No fresh price and no cache, keep None / 没有新价格也没有缓存，保持 None
+                pass
+            else:
+                # Use cached price (already set above) / 使用缓存价格（上面已设置）
+                use_cache = True
+
+        # Log if using cache / 如果使用缓存则记录日志
+        if use_cache or rate_limit_error:
+            logger.info(
+                f"Using cached prices for some symbols due to rate limit or missing data. "
+                f"Rate limit error: {rate_limit_error}, Using cache: {use_cache}. "
+                f"由于速率限制或缺少数据，部分交易对使用缓存价格。速率限制错误: {rate_limit_error}，使用缓存: {use_cache}。",
+                extra={
+                    "trace_id": trace_id,
+                    "symbols": symbols,
+                    "rate_limit_error": rate_limit_error,
+                    "use_cache": use_cache,
+                },
+            )
 
         return {
             "prices": prices,
             "trace_id": trace_id,
             "ok": True,
+            "cached": use_cache,  # Indicate if any cached prices were used / 指示是否使用了缓存价格
+            "rate_limited": rate_limit_error,  # Indicate if rate limit was encountered / 指示是否遇到速率限制
         }
     except Exception as e:
         logger.error(

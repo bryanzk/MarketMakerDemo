@@ -741,12 +741,67 @@ class HyperliquidClient:
                             f"Retry after {retry_after}s. "
                             f"速率限制已超出 (429) {endpoint}。{retry_after} 秒后重试。"
                         ) from e
+                elif status_code == 422:
+                    # Unprocessable Entity - usually means invalid request format or parameters
+                    # 无法处理的实体 - 通常意味着请求格式或参数无效
+                    error_detail = "Unknown error"
+                    try:
+                        if hasattr(e, "response") and e.response:
+                            response_text = e.response.text
+                            try:
+                                error_json = e.response.json()
+                                error_detail = str(error_json)
+                            except (ValueError, AttributeError):
+                                error_detail = response_text[:500]  # Limit length / 限制长度
+                    except Exception:
+                        error_detail = str(e)
+                    
+                    error_msg = (
+                        f"Invalid request (422) for {endpoint}: {error_detail}. "
+                        f"请求无效 (422) {endpoint}: {error_detail}。"
+                    )
+                    
+                    self.last_api_error = {
+                        "type": "invalid_request",
+                        "message": error_msg,
+                        "status_code": 422,
+                        "error_detail": error_detail,
+                    }
+                    
+                    logger.error(
+                        f"Hyperliquid invalid request (422) for {endpoint}",
+                        extra={
+                            **request_meta,
+                            "status_code": status_code,
+                            "latency_ms": latency_ms,
+                            "attempt": attempt,
+                            "error_detail": error_detail,
+                            "request_data": str(data)[:500] if data else None,  # Log request data for debugging / 记录请求数据以便调试
+                        },
+                    )
+                    
+                    # Don't retry 422 errors as they indicate a problem with the request itself
+                    # 不重试 422 错误，因为它们表示请求本身有问题
+                    return None
                 else:
                     # Other HTTP errors - return None / 其他 HTTP 错误 - 返回 None
+                    error_detail = "Unknown error"
+                    try:
+                        if hasattr(e, "response") and e.response:
+                            response_text = e.response.text
+                            try:
+                                error_json = e.response.json()
+                                error_detail = str(error_json)
+                            except (ValueError, AttributeError):
+                                error_detail = response_text[:500]  # Limit length / 限制长度
+                    except Exception:
+                        error_detail = str(e)
+                    
                     self.last_api_error = {
                         "type": "http_error",
-                        "message": f"HTTP error: {str(e)}",
+                        "message": f"HTTP error ({status_code}): {error_detail}",
                         "status_code": status_code,
+                        "error_detail": error_detail,
                     }
                     logger.error(
                         "Hyperliquid HTTP error",
@@ -756,6 +811,7 @@ class HyperliquidClient:
                             "status_code": status_code,
                             "latency_ms": latency_ms,
                             "attempt": attempt,
+                            "error_detail": error_detail,
                         },
                     )
                     return None
@@ -1831,17 +1887,45 @@ class HyperliquidClient:
                 )
 
                 if not response:
-                    error_msg = (
-                        f"Failed to place order: No response from API. "
-                        f"下单失败：API 无响应。"
+                    # Get detailed error from last_api_error if available / 如果可用，从 last_api_error 获取详细错误
+                    api_error = self.last_api_error or {}
+                    error_detail = api_error.get("error_detail", api_error.get("message", "Unknown error"))
+                    status_code = api_error.get("status_code", "Unknown")
+                    
+                    if status_code == 422:
+                        error_msg = (
+                            f"Failed to place order: Invalid request (422). "
+                            f"Error: {error_detail}. "
+                            f"下单失败：请求无效 (422)。错误: {error_detail}。"
+                        )
+                        error_type = "invalid_request"
+                    else:
+                        error_msg = (
+                            f"Failed to place order: No response from API (HTTP {status_code}). "
+                            f"Error: {error_detail}. "
+                            f"下单失败：API 无响应 (HTTP {status_code})。错误: {error_detail}。"
+                        )
+                        error_type = "network_error"
+                    
+                    logger.error(
+                        error_msg,
+                        extra={
+                            "trace_id": get_trace_id(),
+                            "order_req_id": order_req_id,
+                            "symbol": self.symbol,
+                            "order": order_snapshot,
+                            "order_payload": order_payload,
+                            "api_error": api_error,
+                        }
                     )
-                    logger.error(error_msg)
                     self.last_order_error = {
-                        "type": "network_error",
+                        "type": error_type,
                         "message": error_msg,
                         "symbol": self.symbol,
                         "order": order_snapshot,
                         "order_req_id": order_req_id,
+                        "order_payload": order_payload,
+                        "api_error": api_error,
                     }
                     continue
 

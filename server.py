@@ -2,14 +2,22 @@ import logging
 import os
 import threading
 import time
+from collections import deque
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, List
 
 import uvicorn
+from dotenv import load_dotenv
+
+# Load environment variables from .env file / 从 .env 文件加载环境变量
+try:
+    load_dotenv()
+except PermissionError as e:
+    logging.warning("Could not load .env file due to permission error: %s", e)
 
 logger = logging.getLogger(__name__)
-from contextlib import asynccontextmanager
-from fastapi import FastAPI, Query, Request
+from fastapi import FastAPI, Query, Request, Body
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -28,7 +36,13 @@ from src.ai.evaluation.schemas import MarketContext
 from src.ai import create_all_providers
 
 # Import tracing utilities / 导入追踪工具
-from src.shared.tracing import generate_trace_id, set_trace_id, get_trace_id, create_request_context, hash_payload
+from src.shared.tracing import (
+    generate_trace_id,
+    set_trace_id,
+    get_trace_id,
+    create_request_context,
+    hash_payload,
+)
 from src.shared.error_mapper import ErrorMapper
 from src.shared.errors import StandardErrorResponse
 from src.shared.exchange_metrics import metrics_collector, ExchangeName
@@ -54,13 +68,13 @@ app = FastAPI(lifespan=lifespan)
 async def add_trace_id(request: Request, call_next):
     """
     Add trace_id to all requests / 为所有请求添加 trace_id
-    
+
     Trace ID is included in:
     - Request context (for logging)
     - Response headers
     - Error responses
     - Strategy instance error_history entries
-    
+
     追踪ID包含在：
     - 请求上下文（用于日志记录）
     - 响应头
@@ -69,15 +83,15 @@ async def add_trace_id(request: Request, call_next):
     """
     trace_id = generate_trace_id()
     set_trace_id(trace_id)
-    
+
     # Add trace_id to request state / 将 trace_id 添加到请求状态
     request.state.trace_id = trace_id
-    
+
     response = await call_next(request)
-    
+
     # Add trace_id to response headers / 将 trace_id 添加到响应头
     response.headers["X-Trace-ID"] = trace_id
-    
+
     return response
 
 
@@ -86,12 +100,21 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "templates"))
 
 # Mount static files / 挂载静态文件
-app.mount("/static", StaticFiles(directory=os.path.join(BASE_DIR, "templates", "js")), name="static")
+app.mount(
+    "/static",
+    StaticFiles(directory=os.path.join(BASE_DIR, "templates", "js")),
+    name="static",
+)
 
 # Global Bot Instance
 bot_engine = AlphaLoop()
 bot_thread = None
 is_running = False
+# Cache Hyperliquid client to avoid expensive re-inits on every status ping
+# 缓存 Hyperliquid 客户端，避免每次状态检查都重新初始化
+_hyperliquid_client_cache = None
+_hyperliquid_last_failed_init = 0.0
+_HYPERLIQUID_INIT_COOLDOWN = 30.0  # seconds
 
 
 def get_default_exchange():
@@ -108,12 +131,12 @@ def get_default_exchange():
 def get_exchange_by_name(exchange_name: str):
     """
     Get exchange client by name (binance or hyperliquid).
-    
+
     根据名称获取交易所客户端（binance 或 hyperliquid）。
-    
+
     Args:
         exchange_name: "binance" or "hyperliquid"
-        
+
     Returns:
         Exchange client instance or None if not found/connected
     """
@@ -123,30 +146,62 @@ def get_exchange_by_name(exchange_name: str):
         ConnectionError as HyperliquidConnectionError,
     )
     from src.trading.exchange import BinanceClient
-    
+
     if exchange_name == "hyperliquid":
+        global _hyperliquid_client_cache, _hyperliquid_last_failed_init
+
         # Look for HyperliquidClient in strategy instances
         # 在策略实例中查找 HyperliquidClient
         if hasattr(bot_engine, "strategy_instances") and bot_engine.strategy_instances:
             try:
                 for instance in bot_engine.strategy_instances.values():
-                    if hasattr(instance, "use_real_exchange") and instance.use_real_exchange:
-                        if hasattr(instance, "exchange") and instance.exchange is not None:
+                    if (
+                        hasattr(instance, "use_real_exchange")
+                        and instance.use_real_exchange
+                    ):
+                        if (
+                            hasattr(instance, "exchange")
+                            and instance.exchange is not None
+                        ):
                             if isinstance(instance.exchange, HyperliquidClient):
-                                if hasattr(instance.exchange, "is_connected") and instance.exchange.is_connected:
+                                if (
+                                    hasattr(instance.exchange, "is_connected")
+                                    and instance.exchange.is_connected
+                                ):
+                                    # Cache the connected client for reuse
+                                    _hyperliquid_client_cache = instance.exchange
                                     return instance.exchange
             except (TypeError, AttributeError):
                 # Handle case where bot_engine is a Mock in tests
                 # 处理测试中 bot_engine 是 Mock 的情况
                 pass
-        
+
+        # Reuse cached client if we already initialized one
+        if _hyperliquid_client_cache:
+            return _hyperliquid_client_cache
+
+        # Throttle re-initialization after failures to avoid repeated long timeouts
+        now = time.time()
+        if (
+            _hyperliquid_last_failed_init
+            and now - _hyperliquid_last_failed_init < _HYPERLIQUID_INIT_COOLDOWN
+        ):
+            logger.warning(
+                "Skipping Hyperliquid client re-initialization (cooldown in effect)"
+            )
+            return None
+
         # If not found in instances, try to create a new one
         # 如果在实例中未找到，尝试创建新的
         try:
             hyperliquid_client = HyperliquidClient()
             # Return client even if not connected, let caller decide
             # 即使未连接也返回客户端，让调用者决定
-            logger.debug(f"HyperliquidClient created: is_connected={getattr(hyperliquid_client, 'is_connected', None)}")
+            logger.debug(
+                f"HyperliquidClient created: is_connected={getattr(hyperliquid_client, 'is_connected', None)}"
+            )
+            _hyperliquid_client_cache = hyperliquid_client
+            get_exchange_by_name._last_error = None
             return hyperliquid_client
         except AuthenticationError as e:
             # Authentication error - credentials missing or invalid
@@ -159,6 +214,7 @@ def get_exchange_by_name(exchange_name: str):
                 "message": str(e),
                 "exception": e,
             }
+            _hyperliquid_last_failed_init = time.time()
             return None
         except HyperliquidConnectionError as e:
             # Connection error - network or API issue
@@ -171,6 +227,7 @@ def get_exchange_by_name(exchange_name: str):
                 "message": str(e),
                 "exception": e,
             }
+            _hyperliquid_last_failed_init = time.time()
             return None
         except Exception as e:
             # Other errors during initialization
@@ -183,30 +240,91 @@ def get_exchange_by_name(exchange_name: str):
                 "message": str(e),
                 "exception": e,
             }
+            _hyperliquid_last_failed_init = time.time()
             return None
-    
+
     elif exchange_name == "binance":
         # For binance, use get_default_exchange which is usually BinanceClient
         # 对于 binance，使用 get_default_exchange，通常是 BinanceClient
         # This maintains compatibility with existing tests and code
         # 这保持了与现有测试和代码的兼容性
         return get_default_exchange()
-    
+
     else:
         return None
+
 
 # Initialize error storage
 # 初始化错误存储
 get_exchange_by_name._last_error = None
 
 
+def _safe_to_simple(value: Any, depth: int = 0, max_depth: int = 2, seen=None):
+    """
+    Convert a value to JSON-safe primitives with recursion protection.
+    将值转换为 JSON 安全的基础类型，并防止递归。
+    """
+    if seen is None:
+        seen = set()
+    if id(value) in seen or depth > max_depth:
+        return "<recursion>"
+
+    simple_types = (str, int, float, bool, type(None))
+    if isinstance(value, simple_types):
+        return value
+
+    if isinstance(value, dict):
+        seen.add(id(value))
+        safe_dict: Dict[str, Any] = {}
+        for k, v in value.items():
+            try:
+                safe_dict[str(k)] = _safe_to_simple(v, depth + 1, max_depth, seen)
+            except Exception:
+                safe_dict[str(k)] = "<error>"
+        return safe_dict
+
+    if isinstance(value, (list, tuple, set, deque)):
+        seen.add(id(value))
+        safe_list: List[Any] = []
+        for item in list(value):
+            try:
+                safe_list.append(_safe_to_simple(item, depth + 1, max_depth, seen))
+            except Exception:
+                safe_list.append("<error>")
+        return safe_list
+
+    try:
+        return str(value)
+    except Exception:
+        return "<unserializable>"
+
+
+def _safe_error_history(history: Any, limit: int = 20) -> List[Dict[str, Any]]:
+    """
+    Safely convert an error history iterable to a list of simple dicts.
+    安全地将 error_history 可迭代对象转换为简单字典列表。
+    """
+    try:
+        items = list(history)[-limit:]
+    except Exception:
+        return []
+
+    safe_items: List[Dict[str, Any]] = []
+    for item in items:
+        if isinstance(item, dict):
+            safe_items.append(_safe_to_simple(item, depth=0, max_depth=2))
+        else:
+            safe_items.append({"error": _safe_to_simple(item, depth=0, max_depth=1)})
+    return safe_items
+
+
 def _validate_exchange_parameter(exchange: str) -> tuple[bool, Optional[dict]]:
     """
     Validate exchange parameter / 验证交易所参数
-    
+
     Args:
         exchange: Exchange name to validate
-        
+
     Returns:
         Tuple of (is_valid, error_response)
         - is_valid: True if valid, False otherwise
@@ -229,12 +347,12 @@ def _check_exchange_connection(
 ) -> tuple[bool, Optional[dict], Optional[int]]:
     """
     Check exchange connection status / 检查交易所连接状态
-    
+
     Args:
         exchange_name: Exchange name ("binance" or "hyperliquid")
         exchange: Exchange client instance or None
         error_format: Response format ("error" for run endpoint, "status" for apply endpoint)
-        
+
     Returns:
         Tuple of (is_connected, error_response, status_code)
         - is_connected: True if connected, False otherwise
@@ -258,34 +376,50 @@ def _check_exchange_connection(
                 return False, {"status": "error", "error": error_msg}, None
             else:
                 return False, {"error": error_msg}, None
-    
+
     # For Hyperliquid, check is_connected attribute
     # 对于 Hyperliquid，检查 is_connected 属性
     if exchange_name == "hyperliquid":
         from src.trading.hyperliquid_client import HyperliquidClient
-        
-        if isinstance(exchange, HyperliquidClient) and not exchange.is_connected:
-            error_msg = (
-                "Hyperliquid exchange not connected. "
-                "Please connect to Hyperliquid first. / "
-                "Hyperliquid 交易所未连接。请先连接到 Hyperliquid。"
-            )
-            if error_format == "status":
-                return False, {"status": "error", "error": error_msg}, 503
-            else:
-                return False, {"error": error_msg}, 503
-    
+
+        # Check if exchange is HyperliquidClient instance or has is_connected attribute
+        # 检查 exchange 是否是 HyperliquidClient 实例或具有 is_connected 属性
+        if isinstance(exchange, HyperliquidClient):
+            if not exchange.is_connected:
+                error_msg = (
+                    "Hyperliquid exchange not connected. "
+                    "Please connect to Hyperliquid first. / "
+                    "Hyperliquid 交易所未连接。请先连接到 Hyperliquid。"
+                )
+                if error_format == "status":
+                    return False, {"status": "error", "error": error_msg}, 503
+                else:
+                    return False, {"error": error_msg}, 503
+        elif hasattr(exchange, "is_connected"):
+            # For mock objects in tests, check is_connected attribute
+            # 对于测试中的 mock 对象，检查 is_connected 属性
+            if not exchange.is_connected:
+                error_msg = (
+                    "Hyperliquid exchange not connected. "
+                    "Please connect to Hyperliquid first. / "
+                    "Hyperliquid 交易所未连接。请先连接到 Hyperliquid。"
+                )
+                if error_format == "status":
+                    return False, {"status": "error", "error": error_msg}, 503
+                else:
+                    return False, {"error": error_msg}, 503
+
     return True, None, None
 
 
 def _format_symbol_with_exchange(symbol: str, exchange_name: str) -> str:
     """
     Format symbol with exchange name for LLM context / 为 LLM 上下文格式化带交易所名称的交易对
-    
+
     Args:
         symbol: Trading symbol
         exchange_name: Exchange name ("binance" or "hyperliquid")
-        
+
     Returns:
         Formatted symbol string with exchange name
     """
@@ -299,10 +433,10 @@ def create_error_response(
 ) -> Dict[str, Any]:
     """
     Create standardized error response / 创建标准化错误响应
-    
+
     Automatically includes trace_id from request context.
     自动包含来自请求上下文的 trace_id。
-    
+
     Usage / 用法:
         try:
             # ... API logic ...
@@ -312,6 +446,7 @@ def create_error_response(
     trace_id = get_trace_id()
     error_response = ErrorMapper.map_exception(exception, error_code, details, trace_id)
     return error_response.to_dict()
+
 
 # Portfolio Manager for multi-strategy management
 # Initial capital will be fetched from Binance on startup
@@ -369,28 +504,49 @@ def get_session_start_time_ms() -> int:
 
 def init_portfolio_capital():
     """
-    Initialize portfolio capital from Binance Demo Trading account.
-    Fetches actual USDT balance and stores it as the initial capital.
+    Initialize portfolio capital from exchange account.
+    Fetches actual balance and stores it as the initial capital.
+    Only attempts to fetch from Binance if Binance is the default exchange.
+    从交易所账户初始化投资组合资金。
+    获取实际余额并存储为初始资金。
+    仅当 Binance 是默认交易所时才尝试从 Binance 获取。
     """
     global initial_capital
 
     try:
-        # Fetch actual balance from Binance using default strategy instance's exchange
+        # Only fetch from Binance if it's the default exchange
+        # 仅当 Binance 是默认交易所时才获取
         exchange = get_default_exchange()
         if exchange is not None:
-            account_data = exchange.fetch_account_data()
-            if account_data and "balance" in account_data:
-                actual_balance = account_data["balance"]
-                if actual_balance > 0:
-                    initial_capital = actual_balance
-                    portfolio_manager.total_capital = actual_balance
-                    print(
-                        f"✅ Portfolio capital initialized from Binance: ${actual_balance:.2f} USDT"
-                    )
-                    return actual_balance
+            # Check if it's a Binance client (not Hyperliquid)
+            # 检查是否是 Binance 客户端（不是 Hyperliquid）
+            from src.trading.exchange import BinanceClient
+
+            if isinstance(exchange, BinanceClient):
+                account_data = exchange.fetch_account_data()
+                if account_data and "balance" in account_data:
+                    actual_balance = account_data["balance"]
+                    if actual_balance > 0:
+                        initial_capital = actual_balance
+                        portfolio_manager.total_capital = actual_balance
+                        print(
+                            f"✅ Portfolio capital initialized from Binance: ${actual_balance:.2f} USDT"
+                        )
+                        return actual_balance
+            else:
+                # Not Binance, skip initialization (e.g., Hyperliquid)
+                # 不是 Binance，跳过初始化（例如 Hyperliquid）
+                logger.debug(
+                    "Skipping portfolio capital initialization: default exchange is not Binance / "
+                    "跳过投资组合资金初始化：默认交易所不是 Binance"
+                )
     except Exception as e:
-        print(f"⚠️ Failed to fetch balance from Binance: {e}")
-        print(f"   Using default capital: ${initial_capital:.2f} USDT")
+        # Only log error if it's a Binance-related error
+        # 仅当是 Binance 相关错误时才记录
+        logger.debug(
+            f"Portfolio capital initialization skipped or failed: {e} / "
+            f"投资组合资金初始化已跳过或失败: {e}"
+        )
 
     return initial_capital
 
@@ -429,24 +585,30 @@ class PairUpdate(BaseModel):
 
 class SessionStartUpdate(BaseModel):
     """Model for updating session start time"""
+
     timestamp_ms: int = None  # Timestamp in milliseconds
     reset_to_9am: bool = False  # If True, reset to today's 9:00 AM
 
 
 class RebalanceRequest(BaseModel):
     """Model for rebalancing request"""
+
     method: str = "composite"  # equal, sharpe, health, roi, composite, risk_adjusted
-    weights: dict = None  # For composite method: {"sharpe": 0.4, "roi": 0.3, "health": 0.3}
+    weights: dict = (
+        None  # For composite method: {"sharpe": 0.4, "roi": 0.3, "health": 0.3}
+    )
 
 
 class AllocationLimitsUpdate(BaseModel):
     """Model for updating allocation limits"""
+
     min_allocation: float = None
     max_allocation: float = None
 
 
 class StrategyAllocationUpdate(BaseModel):
     """Model for updating single strategy allocation"""
+
     allocation: float  # 0-1
 
 
@@ -454,6 +616,7 @@ class EvaluationRunRequest(BaseModel):
     symbol: str
     simulation_steps: int = 500
     exchange: str = "binance"  # "binance" or "hyperliquid"
+    selected_models: Optional[List[str]] = None  # List of model names: ["gemini", "openai", "claude"]
 
 
 class EvaluationApplyRequest(BaseModel):
@@ -462,9 +625,7 @@ class EvaluationApplyRequest(BaseModel):
     exchange: str = "binance"  # "binance" or "hyperliquid"
 
 
-def _get_or_create_strategy_instance(
-    desired_id: Optional[str], strategy_type: str
-):
+def _get_or_create_strategy_instance(desired_id: Optional[str], strategy_type: str):
     """
     Resolve or create a strategy instance with the requested type.
     """
@@ -545,17 +706,30 @@ async def debug_balance():
 
 
 @app.get("/api/status")
-async def get_status(request: Request):
-    """Get bot status / 获取 Bot 状态"""
+async def get_status(request: Request, exchange: Optional[str] = Query(None)):
+    """
+    Get bot status / 获取 Bot 状态
+
+    Args:
+        exchange: Optional exchange name ("binance" or "hyperliquid").
+                  If not provided, returns default exchange status.
+                  可选的交易所名称（"binance" 或 "hyperliquid"）。
+                  如果未提供，返回默认交易所状态。
+    """
     trace_id = get_trace_id()
     request_context = create_request_context("/api/status", "GET")
-    
+
+    # If exchange parameter is provided, get exchange-specific status
+    # 如果提供了交易所参数，获取特定交易所的状态
+    if exchange and exchange.lower() == "hyperliquid":
+        return await get_hyperliquid_status()
+
     try:
         status = bot_engine.get_status()
         # Override active with actual running state / 用实际运行状态覆盖 active
         status["active"] = is_running
         status["stage"] = bot_engine.current_stage
-        
+
         # Ensure symbol is present (fallback if not in get_status) / 确保 symbol 存在（如果 get_status 中没有则回退）
         if "symbol" not in status or status["symbol"] is None:
             # Try to get symbol from default instance / 尝试从默认实例获取 symbol
@@ -565,11 +739,15 @@ async def get_status(request: Request):
             else:
                 # Fallback to a default symbol / 回退到默认 symbol
                 status["symbol"] = "ETH/USDT:USDT"
-        
+
         # Preserve error field from get_status if present (for backward compatibility) / 如果存在，保留 get_status 中的 error 字段（向后兼容）
         if "error" in status and status["error"] is not None:
             # Keep the error field as is for backward compatibility / 保持 error 字段不变以保持向后兼容
             pass
+
+        # Capture alert once and store safe copies to avoid shared references
+        raw_alert = getattr(bot_engine, "alert", None)
+        safe_alert_for_status = _safe_to_simple(raw_alert, max_depth=2)
 
         # Add strategy info & core config for UI display
         strategy_type_name = type(bot_engine.strategy).__name__
@@ -589,52 +767,79 @@ async def get_status(request: Request):
             status["quantity"] = quantity
         if isinstance(leverage, (int, float)):
             status["leverage"] = leverage
-        
+
         # Add error information / 添加错误信息
         # Phase 7: Expose Strategy Instance Errors / 阶段 7：暴露策略实例错误
         # Safely convert error_history to list (handle Mock objects) / 安全地将 error_history 转换为列表（处理 Mock 对象）
         try:
             if hasattr(bot_engine, "error_history"):
                 error_history = bot_engine.error_history
-                if hasattr(error_history, "__iter__") and not isinstance(error_history, (str, bytes)):
-                    global_error_history = list(error_history)[-20:]
+                if hasattr(error_history, "__iter__") and not isinstance(
+                    error_history, (str, bytes)
+                ):
+                    global_error_history = _safe_error_history(error_history, limit=20)
                 else:
                     global_error_history = []
             else:
                 global_error_history = []
-        except (TypeError, AttributeError):
+        except (TypeError, AttributeError, RecursionError):
             global_error_history = []
-        
+
         errors = {
-            "global_alert": bot_engine.alert if hasattr(bot_engine, "alert") else None,
+            "global_alert": _safe_to_simple(raw_alert, max_depth=2),
             "global_error_history": global_error_history,
-            "instance_errors": {}
+            "instance_errors": {},
         }
-        
+
         # Add instance-specific errors / 添加实例特定错误
         if hasattr(bot_engine, "strategy_instances") and bot_engine.strategy_instances:
-            for instance_id, instance in bot_engine.strategy_instances.items():
+            try:
+                instances_dict = dict(bot_engine.strategy_instances.items())
+            except (TypeError, AttributeError):
+                instances_dict = {}
+            
+            for instance_id, instance in instances_dict.items():
                 # Safely convert error_history to list (handle Mock objects) / 安全地将 error_history 转换为列表（处理 Mock 对象）
                 try:
                     if hasattr(instance, "error_history"):
                         error_history = instance.error_history
-                        # Check if it's iterable / 检查是否可迭代
-                        if hasattr(error_history, "__iter__") and not isinstance(error_history, (str, bytes)):
-                            error_history_list = list(error_history)[-20:]
+                        # Check if it's iterable and not a Mock / 检查是否可迭代且不是 Mock
+                        if hasattr(error_history, "__iter__") and not isinstance(
+                            error_history, (str, bytes)
+                        ):
+                            # Convert to list, but limit to avoid recursion / 转换为列表，但限制以避免递归
+                            try:
+                                error_history_list = _safe_error_history(
+                                    error_history, limit=20
+                                )
+                            except (TypeError, RecursionError, AttributeError):
+                                error_history_list = []
                         else:
                             error_history_list = []
                     else:
                         error_history_list = []
-                except (TypeError, AttributeError):
+                except (TypeError, AttributeError, RecursionError):
                     error_history_list = []
-                
+
+                # Safely get alert (avoid Mock objects) / 安全获取 alert（避免 Mock 对象）
+                try:
+                    alert = instance.alert if hasattr(instance, "alert") else None
+                    # Ensure alert is a simple type / 确保 alert 是简单类型
+                    if alert is not None and not isinstance(alert, (str, type(None))):
+                        alert = str(alert) if alert else None
+                except (TypeError, AttributeError, RecursionError):
+                    alert = None
+
                 errors["instance_errors"][instance_id] = {
-                    "alert": instance.alert if hasattr(instance, "alert") else None,
+                    "alert": alert,
                     "error_history": error_history_list,
                 }
-        
+
+        # Use the safe alert copy in the overall status payload
+        status["alert"] = safe_alert_for_status
+
         status["errors"] = errors
-        
+
         # Only add skew_factor for funding strategies and when it's numeric
         skew = getattr(bot_engine.strategy, "skew_factor", None)
         if isinstance(skew, (int, float)):
@@ -688,18 +893,19 @@ async def get_status(request: Request):
                     # If any funding_rate instance is running, mark funding_rate as running
                     if instance.running:
                         status["strategy_instance_status"]["funding_rate"] = True
-        
+
         # Ensure required fields are present for backward compatibility / 确保必需字段存在以保持向后兼容
         if "symbol" not in status:
             status["symbol"] = "ETH/USDT:USDT"
         if "active" not in status:
             status["active"] = is_running
-        
+
         # Add trace_id to success response / 将 trace_id 添加到成功响应
         status["trace_id"] = trace_id
         status["ok"] = True
-        
-        return status
+
+        # Ensure response is JSON-safe and recursion-proof
+        return _safe_to_simple(status, max_depth=4)
     except Exception as e:
         logger.error(
             "Error getting status",
@@ -708,7 +914,7 @@ async def get_status(request: Request):
                 "trace_id": trace_id,
                 **request_context,
                 "error": str(e),
-            }
+            },
         )
         # For backward compatibility with tests, return simple error format / 为了与测试向后兼容，返回简单错误格式
         # Check if error message contains expected text / 检查错误消息是否包含预期文本
@@ -718,12 +924,197 @@ async def get_status(request: Request):
             error_message = "Connection failed"
         elif "TypeError" in error_message:
             # For TypeError, return the original message / 对于 TypeError，返回原始消息
-            error_message = error_message.split(":")[0] if ":" in error_message else error_message
-        
+            error_message = (
+                error_message.split(":")[0] if ":" in error_message else error_message
+            )
+
         return {
             "error": error_message,
             "trace_id": trace_id,
             "ok": False,
+        }
+
+
+@app.post("/api/hyperliquid/cancel-order")
+async def cancel_hyperliquid_order(order_id: str = Body(..., embed=True)):
+    """
+    Cancel a Hyperliquid order / 取消 Hyperliquid 订单
+
+    Args:
+        order_id: Order ID to cancel
+    """
+    try:
+        exchange = get_exchange_by_name("hyperliquid")
+        if not exchange or not exchange.is_connected:
+            return {
+                "error": "Hyperliquid exchange not connected / Hyperliquid 交易所未连接"
+            }
+
+        # Cancel the order
+        exchange.cancel_orders([order_id])
+
+        return {
+            "status": "success",
+            "message": f"Order {order_id} canceled / 订单 {order_id} 已取消",
+            "order_id": order_id,
+        }
+    except Exception as e:
+        logger.error(f"Error canceling Hyperliquid order: {e}")
+        return {"error": f"Failed to cancel order: {str(e)} / 取消订单失败：{str(e)}"}
+
+
+@app.post("/api/hyperliquid/config")
+async def update_hyperliquid_config(config: ConfigUpdate):
+    """
+    Update Hyperliquid strategy configuration / 更新 Hyperliquid 策略配置
+    """
+    try:
+        from src.trading.hyperliquid_client import HyperliquidClient
+
+        exchange = get_exchange_by_name("hyperliquid")
+        if not exchange or not exchange.is_connected:
+            return {
+                "error": "Hyperliquid exchange not connected / Hyperliquid 交易所未连接"
+            }
+
+        # Find or create Hyperliquid strategy instance
+        # 查找或创建 Hyperliquid 策略实例
+        hyperliquid_instance = None
+        for instance_id, instance in bot_engine.strategy_instances.items():
+            if isinstance(instance.exchange, HyperliquidClient):
+                hyperliquid_instance = instance
+                break
+
+        if not hyperliquid_instance:
+            # Create a new instance for Hyperliquid with the exchange client
+            # 为 Hyperliquid 创建新实例，直接传入 exchange 客户端
+            success = bot_engine.add_strategy_instance(
+                "hyperliquid",
+                "fixed_spread",
+                symbol=exchange.symbol if hasattr(exchange, "symbol") else None,
+                exchange=exchange,  # Pass HyperliquidClient directly / 直接传入 HyperliquidClient
+            )
+            if success:
+                hyperliquid_instance = bot_engine.strategy_instances.get("hyperliquid")
+
+        if not hyperliquid_instance:
+            return {
+                "error": "Failed to get or create Hyperliquid strategy instance / 无法获取或创建 Hyperliquid 策略实例"
+            }
+
+        # Update strategy parameters
+        new_spread = config.spread / 100
+        hyperliquid_instance.strategy.spread = new_spread
+        hyperliquid_instance.strategy.quantity = config.quantity
+
+        return {
+            "status": "updated",
+            "config": {
+                "spread": config.spread,
+                "quantity": config.quantity,
+                "strategy_type": config.strategy_type,
+            },
+        }
+    except Exception as e:
+        logger.error(f"Error updating Hyperliquid config: {e}")
+        return {"error": f"Failed to update config: {str(e)} / 更新配置失败：{str(e)}"}
+
+
+@app.post("/api/hyperliquid/leverage")
+async def update_hyperliquid_leverage(leverage: int = Body(..., embed=True)):
+    """
+    Update Hyperliquid leverage / 更新 Hyperliquid 杠杆
+
+    Args:
+        leverage: Leverage value (1-125) sent as JSON body
+    """
+    try:
+        exchange = get_exchange_by_name("hyperliquid")
+        if not exchange or not exchange.is_connected:
+            return {
+                "error": "Hyperliquid exchange not connected / Hyperliquid 交易所未连接"
+            }
+
+        if leverage < 1 or leverage > 125:
+            return {
+                "error": "Leverage must be between 1 and 125 / 杠杆必须在 1 到 125 之间"
+            }
+
+        success = exchange.set_leverage(leverage)
+        if success:
+            # Return leverage in response to confirm the update
+            # 在响应中返回杠杆值以确认更新
+            return {
+                "status": "updated",
+                "leverage": leverage,
+                "message": f"Leverage updated to {leverage}x / 杠杆已更新至 {leverage}x",
+            }
+        else:
+            return {
+                "error": "Failed to update leverage on Hyperliquid / 在 Hyperliquid 上更新杠杆失败"
+            }
+    except Exception as e:
+        logger.error(f"Error updating Hyperliquid leverage: {e}")
+        return {
+            "error": f"Failed to update leverage: {str(e)} / 更新杠杆失败：{str(e)}"
+        }
+
+
+@app.post("/api/hyperliquid/pair")
+async def update_hyperliquid_pair(pair: PairUpdate):
+    """
+    Update Hyperliquid trading pair / 更新 Hyperliquid 交易对
+
+    Note: This endpoint allows updating the symbol even if Hyperliquid is not connected.
+    The symbol will be updated when connection is established.
+    注意：即使 Hyperliquid 未连接，此端点也允许更新交易对。连接建立时将更新交易对。
+    """
+    try:
+        from src.trading.hyperliquid_client import HyperliquidClient
+
+        exchange = get_exchange_by_name("hyperliquid")
+
+        # If exchange is connected, update it immediately
+        # 如果交易所已连接，立即更新
+        if exchange and exchange.is_connected:
+            success = exchange.set_symbol(pair.symbol)
+            if success:
+                # Also update strategy instance if exists
+                # 如果存在，也更新策略实例
+                for instance_id, instance in bot_engine.strategy_instances.items():
+                    if isinstance(instance.exchange, HyperliquidClient):
+                        instance.symbol = pair.symbol
+                        instance.refresh_data()
+                        break
+
+                return {"status": "updated", "symbol": pair.symbol}
+            else:
+                return {
+                    "status": "error",
+                    "message": f"Failed to update to symbol {pair.symbol} / 更新到交易对 {pair.symbol} 失败",
+                }
+        else:
+            # Exchange not connected, but we still allow symbol update for UI
+            # Store the symbol preference for when connection is established
+            # 交易所未连接，但我们仍然允许更新交易对以用于 UI
+            # 存储交易对偏好，以便连接建立时使用
+            for instance_id, instance in bot_engine.strategy_instances.items():
+                if isinstance(instance.exchange, HyperliquidClient):
+                    instance.symbol = pair.symbol
+                    break
+
+            # Return success with a warning that connection is needed for actual trading
+            # 返回成功，但警告需要连接才能进行实际交易
+            return {
+                "status": "updated",
+                "symbol": pair.symbol,
+                "warning": "Hyperliquid not connected. Symbol updated for UI. Please connect to Hyperliquid for trading. / Hyperliquid 未连接。交易对已更新用于 UI。请连接到 Hyperliquid 进行交易。",
+            }
+    except Exception as e:
+        logger.error(f"Error updating Hyperliquid pair: {e}")
+        return {
+            "status": "error",
+            "message": f"Failed to update pair: {str(e)} / 更新交易对失败：{str(e)}",
         }
 
 
@@ -734,7 +1125,32 @@ async def control_bot(action: str):
     if action == "start":
         if not is_running:
             # Validate current config before starting
-            current_spread = bot_engine.strategy.spread
+            # Get strategy from default instance or first available instance
+            # 从默认实例或第一个可用实例获取策略
+            default_instance = bot_engine.strategy_instances.get("default")
+            if default_instance and default_instance.strategy:
+                current_strategy = default_instance.strategy
+            elif bot_engine.strategy:
+                current_strategy = bot_engine.strategy
+            else:
+                # Fallback: get first available instance's strategy
+                # 回退：获取第一个可用实例的策略
+                first_instance = next(iter(bot_engine.strategy_instances.values()), None)
+                if first_instance and first_instance.strategy:
+                    current_strategy = first_instance.strategy
+                    # Update bot_engine.strategy for backward compatibility
+                    # 更新 bot_engine.strategy 以保持向后兼容
+                    bot_engine.strategy = current_strategy
+                else:
+                    return {
+                        "error": "No strategy instance available. Please configure the bot first. / 没有可用的策略实例。请先配置机器人。"
+                    }
+            
+            current_spread = getattr(current_strategy, "spread", None)
+            if current_spread is None:
+                return {
+                    "error": "Strategy spread not configured. Please set a spread value first. / 策略价差未配置。请先设置价差值。"
+                }
 
             approved, reason = bot_engine.risk.validate_proposal(
                 {"spread": current_spread}
@@ -742,8 +1158,11 @@ async def control_bot(action: str):
 
             if not approved:
                 # Generate 3 suggestions
-                min_spread = bot_engine.risk.risk_limits["MIN_SPREAD"]
-                max_spread = bot_engine.risk.risk_limits["MAX_SPREAD"]
+                # Import RISK_LIMITS from config module
+                # 从配置模块导入 RISK_LIMITS
+                from src.shared.config import RISK_LIMITS
+                min_spread = RISK_LIMITS["MIN_SPREAD"]
+                max_spread = RISK_LIMITS["MAX_SPREAD"]
 
                 suggestions = [
                     {
@@ -829,7 +1248,9 @@ async def update_config(config: ConfigUpdate):
     )
 
     if not target_instance:
-        return {"error": f"Failed to get or create strategy instance for {config.strategy_type}"}
+        return {
+            "error": f"Failed to get or create strategy instance for {config.strategy_type}"
+        }
 
     # Update parameters on the target instance's strategy
     target_instance.strategy.spread = new_spread
@@ -880,6 +1301,13 @@ async def update_pair(pair: PairUpdate):
         target_instance = bot_engine.strategy_instances.get(target_strategy_id)
         if target_instance:
             target_instance.refresh_data()
+            # Ensure bot_engine.strategy is set for backward compatibility
+            # 确保 bot_engine.strategy 被设置以保持向后兼容
+            if target_instance.strategy:
+                # Update bot_engine.strategy if target is default, or if bot_engine.strategy is None
+                # 如果目标是 default，或者 bot_engine.strategy 为 None，则更新 bot_engine.strategy
+                if target_strategy_id == "default" or bot_engine.strategy is None:
+                    bot_engine.strategy = target_instance.strategy
         return {"status": "updated", "symbol": pair.symbol}
     else:
         return {
@@ -895,10 +1323,28 @@ async def get_suggestions():
     sharpe = metrics.get("sharpe_ratio", 0)
 
     # Get current config
+    # Get strategy from default instance or bot_engine.strategy
+    # 从默认实例或 bot_engine.strategy 获取策略
+    default_instance = bot_engine.strategy_instances.get("default")
+    if default_instance and default_instance.strategy:
+        current_strategy = default_instance.strategy
+    elif bot_engine.strategy:
+        current_strategy = bot_engine.strategy
+    else:
+        # Fallback: get first available instance's strategy
+        # 回退：获取第一个可用实例的策略
+        first_instance = next(iter(bot_engine.strategy_instances.values()), None)
+        if first_instance and first_instance.strategy:
+            current_strategy = first_instance.strategy
+        else:
+            return {
+                "error": "No strategy instance available. / 没有可用的策略实例。"
+            }
+    
     current_spread = (
-        bot_engine.strategy.spread * 100
+        getattr(current_strategy, "spread", 0.0) * 100
     )  # Convert back to percentage for display
-    current_leverage = bot_engine.strategy.leverage  # Assuming strategy has leverage
+    current_leverage = getattr(current_strategy, "leverage", 1)  # Assuming strategy has leverage
 
     # Risk-aware suggestions
     suggestion = {
@@ -1054,10 +1500,29 @@ async def get_performance():
             # Pass start_time to fetch data from session start
             pnl_data = exchange.fetch_pnl_and_fees(start_time=start_time_ms)
             commission = pnl_data.get("commission", 0.0)
+            # Ensure commission is a number / 确保 commission 是数字
+            if not isinstance(commission, (int, float)):
+                try:
+                    commission = float(commission) if commission else 0.0
+                except (ValueError, TypeError):
+                    commission = 0.0
+            
             # Use exchange's realized PnL if available, otherwise use local calculation
             if pnl_data.get("realized_pnl", 0) != 0:
                 realized_pnl = pnl_data["realized_pnl"]
-                net_pnl = pnl_data["net_pnl"]
+                # Ensure realized_pnl is a number, not a Mock object / 确保 realized_pnl 是数字，而不是 Mock 对象
+                if not isinstance(realized_pnl, (int, float)):
+                    try:
+                        realized_pnl = float(realized_pnl) if realized_pnl else 0.0
+                    except (ValueError, TypeError):
+                        realized_pnl = 0.0
+                net_pnl = pnl_data.get("net_pnl", realized_pnl - commission)
+                # Ensure net_pnl is a number / 确保 net_pnl 是数字
+                if not isinstance(net_pnl, (int, float)):
+                    try:
+                        net_pnl = float(net_pnl) if net_pnl else realized_pnl - commission
+                    except (ValueError, TypeError):
+                        net_pnl = realized_pnl - commission
             else:
                 net_pnl = realized_pnl - commission
         except Exception:
@@ -1092,13 +1557,13 @@ async def get_performance():
 async def get_metrics(request: Request):
     """
     Get exchange health metrics and observability data / 获取交易所健康指标和可观测性数据
-    
+
     Returns metrics for all exchanges including:
     - Latency buckets per operation type
     - Error rates and counts
     - Recent errors with trace_ids
     - Health status
-    
+
     返回所有交易所的指标，包括：
     - 每种操作类型的延迟桶
     - 错误率和计数
@@ -1106,12 +1571,12 @@ async def get_metrics(request: Request):
     - 健康状态
     """
     trace_id = get_trace_id()
-    
+
     try:
         # Get all metrics / 获取所有指标
         all_metrics = metrics_collector.get_all_metrics()
         health_summary = metrics_collector.get_health_summary()
-        
+
         return {
             "ok": True,
             "trace_id": trace_id,
@@ -1126,12 +1591,10 @@ async def get_metrics(request: Request):
             extra={
                 "trace_id": trace_id,
                 "error": str(e),
-            }
+            },
         )
         return create_error_response(
-            e,
-            error_code="METRICS_FETCH_ERROR",
-            details={"trace_id": trace_id}
+            e, error_code="METRICS_FETCH_ERROR", details={"trace_id": trace_id}
         )
 
 
@@ -1293,23 +1756,29 @@ async def run_evaluation(request: EvaluationRunRequest):
         }
     """
     global _last_evaluation_results, _last_evaluation_aggregated
-    
+
+    trace_id = get_trace_id()
+    request_context = create_request_context("/api/evaluation/run", "POST", hash_payload(request.model_dump()))
+
     try:
         # Validate exchange parameter
         # 验证交易所参数
         is_valid, validation_error = _validate_exchange_parameter(request.exchange)
         if not is_valid:
             return validation_error
-        
+
         exchange_name = request.exchange.lower()
-        
-        # Normalize symbol (remove / and :)
-        symbol = request.symbol.upper().replace("/", "").replace(":", "")
-        
+
+        # Keep symbol in original format (e.g., "ETH/USDC:USDC")
+        # HyperliquidClient.fetch_market_data() will handle the conversion
+        # 保持 symbol 的原始格式（例如，"ETH/USDC:USDC"）
+        # HyperliquidClient.fetch_market_data() 会处理转换
+        symbol = request.symbol
+
         # Get exchange client by name
         # 根据名称获取交易所客户端
         exchange = get_exchange_by_name(exchange_name)
-        
+
         # Check exchange connection
         # 检查交易所连接
         is_connected, connection_error, status_code = _check_exchange_connection(
@@ -1321,7 +1790,8 @@ async def run_evaluation(request: EvaluationRunRequest):
         # Fetch market data
         # 获取市场数据
         try:
-            # Temporarily set symbol if needed
+            # Temporarily set symbol if needed (use original format)
+            # 如果需要，临时设置 symbol（使用原始格式）
             original_symbol = getattr(exchange, "symbol", None)
             if hasattr(exchange, "set_symbol"):
                 exchange.set_symbol(symbol)
@@ -1333,18 +1803,55 @@ async def run_evaluation(request: EvaluationRunRequest):
             if original_symbol and hasattr(exchange, "set_symbol"):
                 exchange.set_symbol(original_symbol)
         except Exception as e:
-            error_msg = f"Failed to fetch market data: {str(e)} / 获取市场数据失败：{str(e)}"
-            return {"error": error_msg}
+            error_msg = (
+                f"Failed to fetch market data: {str(e)} / 获取市场数据失败：{str(e)}"
+            )
+            logger.error(
+                f"Error fetching market data for evaluation: {error_msg}",
+                exc_info=True,
+                extra={
+                    "trace_id": trace_id,
+                    "symbol": symbol,
+                    "exchange": exchange_name,
+                    **request_context,
+                },
+            )
+            # Return a concise, user-facing error message for tests/UI
+            # 返回简洁的用户错误信息，便于测试和前端展示
+            return {
+                "error": error_msg,
+                "error_code": "MARKET_DATA_FETCH_ERROR",
+                "error_type": "market_data",
+                "trace_id": trace_id,
+                "ok": False,
+            }, 500
         
         if not market_data:
-            return {"error": "No market data available / 无可用市场数据"}
+            # Provide more detailed error information / 提供更详细的错误信息
+            error_details = {
+                **request_context,
+                "symbol": symbol,
+                "exchange": exchange_name,
+                "suggestion": "The exchange may be rate-limited or the symbol may not be available. Try again in a few seconds. / 交易所可能受到速率限制或交易对不可用。请几秒后重试。",
+            }
+            logger.warning(
+                f"No market data available for symbol {symbol} on {exchange_name}",
+                extra={"trace_id": trace_id, **error_details},
+            )
+            return create_error_response(
+                ValueError("No market data available / 无可用市场数据"),
+                error_code="NO_MARKET_DATA",
+                details=error_details,
+            )
         
         # Build MarketContext
         # 构建市场上下文
         mid_price = market_data.get("mid_price", 0.0)
         best_bid = market_data.get("best_bid", mid_price * 0.999)
         best_ask = market_data.get("best_ask", mid_price * 1.001)
-        spread_bps = ((best_ask - best_bid) / mid_price * 10000) if mid_price > 0 else 10.0
+        spread_bps = (
+            ((best_ask - best_bid) / mid_price * 10000) if mid_price > 0 else 10.0
+        )
         
         # Get funding rate if available
         # 获取资金费率（如果可用）
@@ -1354,8 +1861,12 @@ async def run_evaluation(request: EvaluationRunRequest):
         # Get position and account info
         # 获取仓位和账户信息
         position_amt = account_data.get("position_amt", 0.0) if account_data else 0.0
-        position_side = "long" if position_amt > 0 else ("short" if position_amt < 0 else "neutral")
-        unrealized_pnl = account_data.get("unrealizedProfit", 0.0) if account_data else 0.0
+        position_side = (
+            "long" if position_amt > 0 else ("short" if position_amt < 0 else "neutral")
+        )
+        unrealized_pnl = (
+            account_data.get("unrealizedProfit", 0.0) if account_data else 0.0
+        )
         balance = account_data.get("balance", 10000.0) if account_data else 10000.0
         leverage = account_data.get("leverage", 1.0) if account_data else 1.0
         
@@ -1372,13 +1883,15 @@ async def run_evaluation(request: EvaluationRunRequest):
             if trades:
                 winning = len([t for t in trades if t.get("pnl", 0) > 0])
                 win_rate = winning / len(trades) if len(trades) > 0 else 0.0
-                recent_pnl = sum(t.get("pnl", 0) for t in trades[-10:])  # Last 10 trades
+                recent_pnl = sum(
+                    t.get("pnl", 0) for t in trades[-10:]
+                )  # Last 10 trades
         
         # Estimate volatility (simplified - could be enhanced)
         # 估算波动率（简化版 - 可以增强）
         volatility_24h = 0.03  # 3% default
-        volatility_1h = 0.01   # 1% default
-        
+        volatility_1h = 0.01  # 1% default
+
         # Add exchange information to symbol for LLM context
         # 在 symbol 中添加交易所信息以供 LLM 上下文使用
         # This ensures the LLM knows which exchange the evaluation is for
@@ -1405,9 +1918,85 @@ async def run_evaluation(request: EvaluationRunRequest):
             recent_pnl=recent_pnl,
         )
         
-        # Create evaluator with all available providers
+        # Create evaluator with selected providers
+        # 使用选中的提供商创建评估器
         try:
-            providers = create_all_providers()
+            all_providers = create_all_providers()
+            
+            # Filter providers based on selected_models if provided
+            # 如果提供了 selected_models，则根据选中的模型过滤提供商
+            if request.selected_models and len(request.selected_models) > 0:
+                # Map model names to provider names
+                # 将模型名称映射到提供商名称
+                model_to_provider_map = {
+                    "gemini": "Gemini",
+                    "openai": "OpenAI",
+                    "claude": "Claude"
+                }
+                
+                # Get provider names from selected models
+                # 从选中的模型获取提供商名称
+                selected_provider_names = [
+                    model_to_provider_map.get(model.lower(), model.capitalize())
+                    for model in request.selected_models
+                ]
+                
+                # Filter providers by name
+                # 按名称过滤提供商
+                providers = [
+                    p for p in all_providers
+                    if any(p.name.startswith(name) for name in selected_provider_names)
+                ]
+                
+                if not providers:
+                    # Check which selected providers are missing / 检查哪些选中的提供商缺失
+                    available_provider_names = [p.name for p in all_providers]
+                    missing_providers = []
+                    for selected_name in selected_provider_names:
+                        if not any(p.name.startswith(selected_name) for p in all_providers):
+                            missing_providers.append(selected_name)
+                    
+                    # Map provider names to API key names / 将提供商名称映射到 API key 名称
+                    api_key_map = {
+                        "Gemini": "GEMINI_API_KEY",
+                        "OpenAI": "OPENAI_API_KEY",
+                        "Claude": "ANTHROPIC_API_KEY"
+                    }
+                    
+                    # Build detailed error message / 构建详细的错误消息
+                    if missing_providers:
+                        missing_keys = [api_key_map.get(p, f"{p.upper()}_API_KEY") for p in missing_providers]
+                        error_message = (
+                            f"Selected LLM providers not available: {', '.join(missing_providers)}. "
+                            f"Please configure the following API keys: {', '.join(missing_keys)}. "
+                            f"Available providers: {', '.join(available_provider_names) if available_provider_names else 'None'}. / "
+                            f"选中的 LLM 提供商不可用: {', '.join(missing_providers)}。"
+                            f"请配置以下 API 密钥: {', '.join(missing_keys)}。"
+                            f"可用提供商: {', '.join(available_provider_names) if available_provider_names else '无'}。"
+                        )
+                    else:
+                        error_message = (
+                            f"No matching providers found for selected models: {', '.join(request.selected_models)}. "
+                            f"Available providers: {', '.join(available_provider_names) if available_provider_names else 'None'}. / "
+                            f"未找到匹配的提供商，选中的模型: {', '.join(request.selected_models)}。"
+                            f"可用提供商: {', '.join(available_provider_names) if available_provider_names else '无'}。"
+                        )
+                    
+                    # Use standardized error response / 使用标准化错误响应
+                    return create_error_response(
+                        ValueError(error_message),
+                        error_code="LLM_PROVIDER_NOT_AVAILABLE",
+                        details={
+                            "selected_models": request.selected_models,
+                            "missing_providers": missing_providers,
+                            "available_providers": available_provider_names,
+                            "required_api_keys": [api_key_map.get(p, f"{p.upper()}_API_KEY") for p in missing_providers] if missing_providers else [],
+                        }
+                    )
+            else:
+                # Use all available providers if no selection
+                # 如果没有选择，使用所有可用的提供商
+                providers = all_providers
         except Exception as e:
             return {"error": f"Failed to create LLM providers: {str(e)}"}
         
@@ -1422,6 +2011,7 @@ async def run_evaluation(request: EvaluationRunRequest):
         
         # Run evaluation (in thread to avoid blocking)
         import asyncio
+
         results = await asyncio.to_thread(evaluator.evaluate, context)
         
         # Aggregate results
@@ -1452,6 +2042,7 @@ async def run_evaluation(request: EvaluationRunRequest):
                     "risk_level": result.proposal.risk_level,
                     "reasoning": result.proposal.reasoning,
                     "parse_success": result.proposal.parse_success,
+                    "parse_error": result.proposal.parse_error or "",
                 },
                 "simulation": {
                     "realized_pnl": result.simulation.realized_pnl,
@@ -1490,7 +2081,7 @@ async def run_evaluation(request: EvaluationRunRequest):
                 "successful_evaluations": agg.successful_evaluations,
                 "failed_evaluations": agg.failed_evaluations,
             }
-        
+
         # Prepare market_data for response
         # 准备响应中的市场数据
         response_market_data = {
@@ -1500,7 +2091,7 @@ async def run_evaluation(request: EvaluationRunRequest):
             "best_ask": best_ask,
             "funding_rate": funding_rate,
             "spread_bps": spread_bps,
-        }
+            }
         
         return {
             "symbol": symbol,
@@ -1525,7 +2116,7 @@ async def apply_evaluation(request: EvaluationApplyRequest):
     应用评估建议到策略配置
     
     Args:
-        request: EvaluationApplyRequest with source ("consensus" or "individual"), 
+        request: EvaluationApplyRequest with source ("consensus" or "individual"),
                  optional provider_name, and exchange parameter
         
     Returns:
@@ -1543,44 +2134,68 @@ async def apply_evaluation(request: EvaluationApplyRequest):
         }
     """
     global _last_evaluation_results, _last_evaluation_aggregated
-    
+
     # Validate exchange parameter
     # 验证交易所参数
     is_valid, validation_error = _validate_exchange_parameter(request.exchange)
     if not is_valid:
         return {
             "status": "error",
-            "error": validation_error.get("error", "Invalid exchange parameter / 无效的交易所参数")
+            "error": validation_error.get(
+                "error", "Invalid exchange parameter / 无效的交易所参数"
+            ),
         }
-    
+
     exchange_name = request.exchange.lower()
     
     if _last_evaluation_aggregated is None:
         return {
             "status": "error",
-            "error": "No evaluation results available. Please run evaluation first. / 没有可用的评估结果。请先运行评估。"
+            "error": "No evaluation results available. Please run evaluation first. / 没有可用的评估结果。请先运行评估。",
         }
-    
+
     try:
         # Check exchange connection if hyperliquid
         # 如果是 hyperliquid，检查交易所连接
         if exchange_name == "hyperliquid":
-            exchange = get_exchange_by_name(exchange_name)
+            exchange = get_exchange_by_name("hyperliquid")
+            if not exchange:
+                return {
+                    "status": "error",
+                    "error": "Hyperliquid exchange not connected / Hyperliquid 交易所未连接",
+                    "exchange": exchange_name,
+                }
             is_connected, connection_error, status_code = _check_exchange_connection(
                 exchange_name, exchange, error_format="status"
             )
             if not is_connected:
                 return connection_error, status_code if status_code else 400
-        
+
         proposal = None
         
         if request.source == "consensus":
+            if (
+                not _last_evaluation_aggregated
+                or not _last_evaluation_aggregated.consensus_proposal
+            ):
+                return {
+                    "status": "error",
+                    "error": "No consensus proposal available. This may happen if all LLM providers failed to parse their responses. / 没有可用的共识建议。如果所有 LLM 提供商都未能解析其响应，可能会发生这种情况。",
+                }
             proposal = _last_evaluation_aggregated.consensus_proposal
+            if not proposal.parse_success:
+                # Provide more detailed error information
+                # 提供更详细的错误信息
+                strategy = getattr(proposal, "recommended_strategy", "Unknown")
+                return {
+                    "status": "error",
+                    "error": f"Consensus proposal parsing failed. Strategy: {strategy}. Please check LLM responses and try running evaluation again. / 共识建议解析失败。策略：{strategy}。请检查 LLM 响应并重试运行评估。",
+                }
         elif request.source == "individual":
             if not request.provider_name:
                 return {
                     "status": "error",
-                    "error": "provider_name required for individual source / 个人来源需要 provider_name"
+                    "error": "provider_name required for individual source / 个人来源需要 provider_name",
                 }
             
             # Find result by provider name
@@ -1592,20 +2207,42 @@ async def apply_evaluation(request: EvaluationApplyRequest):
                     break
             
             if not found:
+                available_providers = [
+                    r.provider_name for r in _last_evaluation_results
+                ]
                 return {
                     "status": "error",
-                    "error": f"Provider {request.provider_name} not found in evaluation results / 在评估结果中未找到提供商 {request.provider_name}"
+                    "error": f"Provider {request.provider_name} not found in evaluation results. Available providers: {', '.join(available_providers)} / 在评估结果中未找到提供商 {request.provider_name}。可用提供商：{', '.join(available_providers)}",
+                }
+            
+            if not proposal or not proposal.parse_success:
+                strategy = (
+                    getattr(proposal, "recommended_strategy", "Unknown")
+                    if proposal
+                    else "None"
+                )
+                return {
+                    "status": "error",
+                    "error": f"Provider {request.provider_name} proposal parsing failed. Strategy: {strategy}. Please try running evaluation again. / 提供商 {request.provider_name} 建议解析失败。策略：{strategy}。请重试运行评估。",
                 }
         else:
             return {
                 "status": "error",
-                "error": f"Invalid source: {request.source}. Use 'consensus' or 'individual'. / 无效的来源：{request.source}。使用 'consensus' 或 'individual'。"
+                "error": f"Invalid source: {request.source}. Use 'consensus' or 'individual'. / 无效的来源：{request.source}。使用 'consensus' 或 'individual'。",
             }
         
-        if not proposal or not proposal.parse_success:
+        # Verify proposal exists and is valid
+        # 验证 proposal 存在且有效
+        if not proposal:
             return {
                 "status": "error",
-                "error": "Invalid proposal or proposal parsing failed / 无效的建议或建议解析失败"
+                "error": "No proposal available / 没有可用的建议",
+            }
+
+        if not proposal:
+            return {
+                "status": "error",
+                "error": "Proposal is None. This should not happen. / 建议为 None。这不应该发生。",
             }
         
         # Map strategy name to strategy_type
@@ -1618,38 +2255,115 @@ async def apply_evaluation(request: EvaluationApplyRequest):
         else:
             return {
                 "status": "error",
-                "error": f"Unsupported strategy: {strategy_name} / 不支持的策略：{strategy_name}"
+                "error": f"Unsupported strategy: {strategy_name} / 不支持的策略：{strategy_name}",
             }
         
         # Apply configuration
         # 应用配置
-        config_update = ConfigUpdate(
-            spread=proposal.spread * 100,  # Convert to percentage
-            quantity=proposal.quantity,
-            strategy_type=strategy_type,
-            strategy_id="default",
-            skew_factor=proposal.skew_factor,
-        )
-        
-        config_result = await update_config(config_update)
+        # For Hyperliquid, use the dedicated endpoint that ensures instance creation
+        # 对于 Hyperliquid，使用专用端点确保实例创建
+        if exchange_name == "hyperliquid":
+            from src.trading.hyperliquid_client import HyperliquidClient
+            
+            # Ensure Hyperliquid exchange is connected
+            # 确保 Hyperliquid 交易所已连接
+            exchange = get_exchange_by_name("hyperliquid")
+            if not exchange or not exchange.is_connected:
+                return {
+                    "status": "error",
+                    "error": "Hyperliquid exchange not connected / Hyperliquid 交易所未连接",
+                    "exchange": exchange_name,
+                }
+            
+            # Find or create Hyperliquid strategy instance
+            # 查找或创建 Hyperliquid 策略实例
+            hyperliquid_instance = None
+            for instance_id, instance in bot_engine.strategy_instances.items():
+                if isinstance(instance.exchange, HyperliquidClient):
+                    hyperliquid_instance = instance
+                    break
+            
+            if not hyperliquid_instance:
+                # Create a new instance for Hyperliquid with the exchange client
+                # 为 Hyperliquid 创建新实例，直接传入 exchange 客户端
+                success = bot_engine.add_strategy_instance(
+                    "hyperliquid",
+                    strategy_type,
+                    symbol=exchange.symbol if hasattr(exchange, "symbol") else None,
+                    exchange=exchange,  # Pass HyperliquidClient directly / 直接传入 HyperliquidClient
+                )
+                if success:
+                    hyperliquid_instance = bot_engine.strategy_instances.get("hyperliquid")
+                    logger.info(
+                        f"Created Hyperliquid strategy instance with exchange connection"
+                    )
+            
+            if not hyperliquid_instance:
+                return {
+                    "status": "error",
+                    "error": "Failed to get or create Hyperliquid strategy instance / 无法获取或创建 Hyperliquid 策略实例",
+                    "exchange": exchange_name,
+                }
+            
+            # Update strategy parameters
+            # 更新策略参数
+            new_spread = proposal.spread
+            hyperliquid_instance.strategy.spread = new_spread
+            hyperliquid_instance.strategy.quantity = proposal.quantity
+            if hasattr(hyperliquid_instance.strategy, "skew_factor") and proposal.skew_factor:
+                hyperliquid_instance.strategy.skew_factor = proposal.skew_factor
+            
+            config_result = {"status": "updated"}
+
+            # Apply leverage directly on Hyperliquid exchange to avoid default-exchange dependency
+            # 直接在 Hyperliquid 交易所上设置杠杆，避免依赖默认交易所
+            if proposal.leverage:
+                if hasattr(exchange, "set_leverage"):
+                    leverage_success = exchange.set_leverage(int(proposal.leverage))
+                    if not leverage_success:
+                        return {
+                            "status": "error",
+                            "error": "Failed to update leverage on Hyperliquid / 无法在 Hyperliquid 上更新杠杆",
+                            "exchange": exchange_name,
+                        }
+                else:
+                    logger.warning(
+                        "Hyperliquid client missing set_leverage; skipping leverage apply"
+                    )
+        else:
+            # For other exchanges (e.g., binance), use the standard update_config
+            # 对于其他交易所（例如 binance），使用标准的 update_config
+            config_update = ConfigUpdate(
+                spread=proposal.spread * 100,  # Convert to percentage
+                quantity=proposal.quantity,
+                strategy_type=strategy_type,
+                strategy_id="default",
+                skew_factor=proposal.skew_factor,
+            )
+            
+            config_result = await update_config(config_update)
         if "error" in config_result:
-            return {
-                "status": "error",
-                "error": config_result.get("error", "Failed to apply configuration / 应用配置失败"),
-                "exchange": exchange_name,
-            }
+                return {
+                    "status": "error",
+                    "error": config_result.get(
+                        "error", "Failed to apply configuration / 应用配置失败"
+                    ),
+                    "exchange": exchange_name,
+                }
         
-        # Apply leverage if provided
-        # 如果提供了杠杆，应用杠杆
-        if proposal.leverage:
+        # Apply leverage if provided (non-Hyperliquid path)
+        # 如果提供了杠杆，应用杠杆（非 Hyperliquid 路径）
+        if proposal.leverage and exchange_name != "hyperliquid":
             leverage_result = await update_leverage(int(proposal.leverage))
             if "error" in leverage_result:
                 return {
                     "status": "error",
-                    "error": leverage_result.get("error", "Failed to apply leverage / 应用杠杆失败"),
+                    "error": leverage_result.get(
+                        "error", "Failed to apply leverage / 应用杠杆失败"
+                    ),
                     "exchange": exchange_name,
                 }
-        
+
         # Success message in bilingual format
         # 双语格式的成功消息
         success_message = (
@@ -1684,84 +2398,142 @@ async def get_hyperliquid_status(request: Request):
     """
     Get Hyperliquid-specific status including positions, balance, and orders
     获取 Hyperliquid 特定状态，包括仓位、余额和订单
+    
+    This endpoint also ensures that a Hyperliquid strategy instance is created
+    and added to bot_engine when the page loads.
+    此端点还确保在页面加载时创建 Hyperliquid 策略实例并将其添加到 bot_engine。
     """
     trace_id = get_trace_id()
     request_context = create_request_context("/api/hyperliquid/status", "GET")
-    
+
     try:
         exchange = get_exchange_by_name("hyperliquid")
         if not exchange:
             # Get detailed error information if available
             # 获取详细的错误信息（如果可用）
             last_error = getattr(get_exchange_by_name, "_last_error", None)
-            
-            if last_error:
+
+            if last_error and not isinstance(last_error, type):  # Check it's not a Mock/type
                 # Use the actual exception that occurred
                 # 使用实际发生的异常
-                actual_exception = last_error.get("exception")
-                error_type = last_error.get("type", "unknown")
-                
+                actual_exception = last_error.get("exception") if isinstance(last_error, dict) else None
+                error_type = last_error.get("type", "unknown") if isinstance(last_error, dict) else "unknown"
+                error_message = last_error.get("message", "") if isinstance(last_error, dict) else str(last_error)
+
                 if error_type == "authentication":
                     error_code = "EXCHANGE_AUTHENTICATION_FAILED"
-                    error_msg = (
-                        f"Hyperliquid authentication failed: {last_error['message']}. "
-                        f"Please check HYPERLIQUID_API_KEY and HYPERLIQUID_API_SECRET environment variables. "
-                        f"Hyperliquid 认证失败：{last_error['message']}。"
-                        f"请检查 HYPERLIQUID_API_KEY 和 HYPERLIQUID_API_SECRET 环境变量。"
-                    )
                 elif error_type == "connection":
                     error_code = "EXCHANGE_CONNECTION_FAILED"
-                    error_msg = (
-                        f"Hyperliquid connection failed: {last_error['message']}. "
-                        f"Please check your network connection and Hyperliquid API status. "
-                        f"Hyperliquid 连接失败：{last_error['message']}。"
-                        f"请检查您的网络连接和 Hyperliquid API 状态。"
-                    )
                 else:
                     error_code = "EXCHANGE_INITIALIZATION_FAILED"
-                    error_msg = (
-                        f"Hyperliquid initialization failed: {last_error['message']}. "
-                        f"Hyperliquid 初始化失败：{last_error['message']}。"
-                    )
-                
+
+                # Use the exception directly - ErrorMapper will generate concise messages
+                # 直接使用异常 - ErrorMapper 将生成简洁的消息
+                # Put detailed information in details field, not in message
+                # 将详细信息放在 details 字段中，而不是在 message 中
                 return create_error_response(
-                    actual_exception if actual_exception else ValueError(error_msg),
+                    (
+                        actual_exception
+                        if actual_exception and not isinstance(actual_exception, type)
+                        else ConnectionError(error_message if error_message and not isinstance(error_message, type) else "Hyperliquid exchange not connected")
+                    ),
                     error_code=error_code,
                     details={
                         **request_context,
-                        "initialization_error_type": error_type,
-                        "initialization_error_message": last_error['message'],
+                        "initialization_error_type": error_type if isinstance(error_type, str) else "unknown",
+                        "initialization_error_message": error_message if isinstance(error_message, str) else "",
                         "suggestion": "Check environment variables HYPERLIQUID_API_KEY and HYPERLIQUID_API_SECRET / 检查环境变量 HYPERLIQUID_API_KEY 和 HYPERLIQUID_API_SECRET",
-                    }
+                    },
                 )
             else:
                 # Generic error if no specific error info available
                 # 如果没有特定错误信息，使用通用错误
                 return create_error_response(
-                    ValueError("Hyperliquid exchange not initialized. Please check API credentials and ensure HYPERLIQUID_API_KEY and HYPERLIQUID_API_SECRET are set. / Hyperliquid 交易所未初始化。请检查 API 凭证并确保设置了 HYPERLIQUID_API_KEY 和 HYPERLIQUID_API_SECRET。"),
+                    ValueError(
+                        "Hyperliquid exchange not initialized. Please check API credentials and ensure HYPERLIQUID_API_KEY and HYPERLIQUID_API_SECRET are set. / Hyperliquid 交易所未初始化。请检查 API 凭证并确保设置了 HYPERLIQUID_API_KEY 和 HYPERLIQUID_API_SECRET。"
+                    ),
                     error_code="EXCHANGE_NOT_INITIALIZED",
                     details={
                         **request_context,
                         "suggestion": "Check environment variables HYPERLIQUID_API_KEY and HYPERLIQUID_API_SECRET / 检查环境变量 HYPERLIQUID_API_KEY 和 HYPERLIQUID_API_SECRET",
-                    }
+                    },
+                )
+
+        # Ensure Hyperliquid strategy instance exists in bot_engine
+        # 确保 bot_engine 中存在 Hyperliquid 策略实例
+        from src.trading.hyperliquid_client import HyperliquidClient
+        from src.trading.exchange import BinanceClient
+        
+        hyperliquid_instance = None
+        for instance_id, instance in bot_engine.strategy_instances.items():
+            if isinstance(instance.exchange, HyperliquidClient):
+                hyperliquid_instance = instance
+                break
+        
+        if not hyperliquid_instance and exchange.is_connected:
+            # Create a new instance for Hyperliquid with the exchange client
+            # 为 Hyperliquid 创建新实例，直接传入 exchange 客户端
+            success = bot_engine.add_strategy_instance(
+                "hyperliquid",
+                "fixed_spread",
+                symbol=exchange.symbol if hasattr(exchange, "symbol") else None,
+                exchange=exchange,  # Pass HyperliquidClient directly / 直接传入 HyperliquidClient
+            )
+            if success:
+                hyperliquid_instance = bot_engine.strategy_instances.get("hyperliquid")
+                logger.info(
+                    f"✅ Created Hyperliquid strategy instance on page load / "
+                    f"页面加载时创建了 Hyperliquid 策略实例"
                 )
         
+        # Stop default instance if it uses BinanceClient to prevent orders from going to Binance
+        # 如果 default 实例使用 BinanceClient，则停止它以防止订单发送到 Binance
+        # This logic should run after we've ensured hyperliquid_instance exists
+        # 此逻辑应在确保 hyperliquid_instance 存在后运行
+        if hyperliquid_instance:
+            default_instance = bot_engine.strategy_instances.get("default")
+            if default_instance and default_instance.exchange and isinstance(default_instance.exchange, BinanceClient):
+                if default_instance.running:
+                    default_instance.running = False
+                    logger.info(
+                        f"✅ Stopped default Binance instance to ensure orders go to Hyperliquid / "
+                        f"已停止 default Binance 实例，确保订单发送到 Hyperliquid"
+                    )
+            # Ensure hyperliquid instance is running and has real exchange enabled
+            # 确保 hyperliquid 实例正在运行并启用了真实交易所
+            if not hyperliquid_instance.running:
+                hyperliquid_instance.running = True
+                logger.info(
+                    f"✅ Started Hyperliquid strategy instance / "
+                    f"已启动 Hyperliquid 策略实例"
+                )
+            if not hyperliquid_instance.use_real_exchange:
+                hyperliquid_instance.use_real_exchange = True
+                logger.info(
+                    f"✅ Enabled real exchange for Hyperliquid strategy instance / "
+                    f"已为 Hyperliquid 策略实例启用真实交易所"
+                )
+
         # Get testnet status / 获取测试网状态
         testnet = getattr(exchange, "testnet", False) if exchange else False
-        
-        is_connected, error_response, status_code = _check_exchange_connection("hyperliquid", exchange, "error")
+
+        is_connected, error_response, status_code = _check_exchange_connection(
+            "hyperliquid", exchange, "error"
+        )
         if not is_connected:
             # Return partial status even if not connected / 即使未连接也返回部分状态
             return {
                 "connected": False,
                 "exchange": "hyperliquid",
                 "testnet": testnet,
-                "error": error_response.get("error", "Hyperliquid exchange not connected"),
+                "error": error_response.get(
+                    "error", "Hyperliquid exchange not connected"
+                ),
                 "error_type": "connection_error",
                 "trace_id": trace_id,
                 "ok": False,
             }
-        
+
         # Fetch data with error handling for rate limits / 获取数据，处理速率限制错误
         try:
             account_data = exchange.fetch_account_data()
@@ -1774,10 +2546,10 @@ async def get_hyperliquid_status(request: Request):
                     details={
                         **request_context,
                         "message": "API rate limit exceeded. Please wait before retrying. / API 速率限制已超出。请稍候再试。",
-                    }
+                    },
                 )
             raise
-        
+
         try:
             market_data = exchange.fetch_market_data()
         except Exception as fetch_error:
@@ -1788,10 +2560,10 @@ async def get_hyperliquid_status(request: Request):
                     details={
                         **request_context,
                         "message": "API rate limit exceeded. Please wait before retrying. / API 速率限制已超出。请稍候再试。",
-                    }
+                    },
                 )
             raise
-        
+
         try:
             open_orders = exchange.fetch_open_orders()
         except Exception as fetch_error:
@@ -1802,10 +2574,10 @@ async def get_hyperliquid_status(request: Request):
                     details={
                         **request_context,
                         "message": "API rate limit exceeded. Please wait before retrying. / API 速率限制已超出。请稍候再试。",
-                    }
+                    },
                 )
             raise
-        
+
         try:
             positions = exchange.fetch_positions()
         except Exception as fetch_error:
@@ -1816,10 +2588,10 @@ async def get_hyperliquid_status(request: Request):
                     details={
                         **request_context,
                         "message": "API rate limit exceeded. Please wait before retrying. / API 速率限制已超出。请稍候再试。",
-                    }
+                    },
                 )
             raise
-        
+
         # Get strategy config from Hyperliquid strategy instance / 从 Hyperliquid 策略实例获取策略配置
         spread = None
         quantity = None
@@ -1832,7 +2604,7 @@ async def get_hyperliquid_status(request: Request):
                         spread = getattr(instance.strategy, "spread", None)
                         quantity = getattr(instance.strategy, "quantity", None)
                     break
-        
+
         status = {
             "connected": True,
             "exchange": "hyperliquid",
@@ -1840,9 +2612,13 @@ async def get_hyperliquid_status(request: Request):
             "symbol": exchange.symbol if hasattr(exchange, "symbol") else None,
             "mid_price": market_data.get("mid_price", 0.0) if market_data else 0.0,
             "balance": account_data.get("balance", 0.0) if account_data else 0.0,
-            "available_balance": account_data.get("available_balance", 0.0) if account_data else 0.0,
+            "available_balance": (
+                account_data.get("available_balance", 0.0) if account_data else 0.0
+            ),
             "position": account_data.get("position_amt", 0.0) if account_data else 0.0,
-            "unrealized_pnl": account_data.get("unrealized_pnl", 0.0) if account_data else 0.0,
+            "unrealized_pnl": (
+                account_data.get("unrealized_pnl", 0.0) if account_data else 0.0
+            ),
             "leverage": account_data.get("leverage", 1.0) if account_data else 1.0,
             "spread": spread if spread is not None else None,
             "quantity": quantity if quantity is not None else None,
@@ -1851,7 +2627,7 @@ async def get_hyperliquid_status(request: Request):
             "trace_id": trace_id,
             "ok": True,
         }
-        
+
         return status
     except Exception as e:
         logger.error(
@@ -1861,12 +2637,10 @@ async def get_hyperliquid_status(request: Request):
                 "trace_id": trace_id,
                 **request_context,
                 "error": str(e),
-            }
+            },
         )
         return create_error_response(
-            e,
-            error_code="STATUS_FETCH_ERROR",
-            details=request_context
+            e, error_code="STATUS_FETCH_ERROR", details=request_context
         )
 
 
@@ -1875,41 +2649,45 @@ async def get_hyperliquid_prices(request: Request):
     """
     Get prices for multiple Hyperliquid trading pairs.
     获取多个 Hyperliquid 交易对的价格。
-    
+
     Query params:
         symbols: Comma-separated list of symbols (e.g., "ETH/USDT:USDT,BTC/USDT:USDT")
     """
     trace_id = get_trace_id()
     request_context = create_request_context("/api/hyperliquid/prices", "GET")
-    
+
     try:
         # Get symbols from query params / 从查询参数获取交易对
         symbols_param = request.query_params.get("symbols", "")
         if not symbols_param:
             return create_error_response(
-                ValueError("Missing 'symbols' query parameter / 缺少 'symbols' 查询参数"),
+                ValueError(
+                    "Missing 'symbols' query parameter / 缺少 'symbols' 查询参数"
+                ),
                 error_code="MISSING_SYMBOLS_PARAM",
-                details=request_context
+                details=request_context,
             )
-        
+
         # Parse symbols / 解析交易对
         symbols = [s.strip() for s in symbols_param.split(",") if s.strip()]
         if not symbols:
             return create_error_response(
                 ValueError("No valid symbols provided / 未提供有效交易对"),
                 error_code="INVALID_SYMBOLS",
-                details=request_context
+                details=request_context,
             )
-        
+
         # Get exchange client / 获取交易所客户端
         exchange = get_exchange_by_name("hyperliquid")
         if not exchange:
             return create_error_response(
-                ValueError("Hyperliquid exchange not initialized / Hyperliquid 交易所未初始化"),
+                ValueError(
+                    "Hyperliquid exchange not initialized / Hyperliquid 交易所未初始化"
+                ),
                 error_code="EXCHANGE_NOT_INITIALIZED",
-                details=request_context
+                details=request_context,
             )
-        
+
         # Check if exchange supports fetch_multiple_prices / 检查交易所是否支持 fetch_multiple_prices
         if not hasattr(exchange, "fetch_multiple_prices"):
             # Fallback: fetch prices one by one / 回退：逐个获取价格
@@ -1933,7 +2711,7 @@ async def get_hyperliquid_prices(request: Request):
         else:
             # Use efficient batch method / 使用高效的批量方法
             prices = exchange.fetch_multiple_prices(symbols)
-        
+
         return {
             "prices": prices,
             "trace_id": trace_id,
@@ -1947,12 +2725,10 @@ async def get_hyperliquid_prices(request: Request):
                 "trace_id": trace_id,
                 **request_context,
                 "error": str(e),
-            }
+            },
         )
         return create_error_response(
-            e,
-            error_code="HYPERLIQUID_PRICES_ERROR",
-            details=request_context
+            e, error_code="HYPERLIQUID_PRICES_ERROR", details=request_context
         )
 
 
@@ -1962,20 +2738,22 @@ async def update_hyperliquid_config(request: Request, config: ConfigUpdate):
     Update Hyperliquid strategy configuration / 更新 Hyperliquid 策略配置
     """
     trace_id = get_trace_id()
-    request_context = create_request_context("/api/hyperliquid/config", "POST", hash_payload(config.model_dump()))
-    
+    request_context = create_request_context(
+        "/api/hyperliquid/config", "POST", hash_payload(config.model_dump())
+    )
+
     try:
         exchange = get_exchange_by_name("hyperliquid")
         if not exchange:
             return create_error_response(
                 ValueError("Hyperliquid exchange not initialized"),
                 error_code="EXCHANGE_NOT_INITIALIZED",
-                details=request_context
+                details=request_context,
             )
-        
+
         # Convert spread from percentage to decimal / 将价差从百分比转换为小数
         new_spread = config.spread / 100
-        
+
         # Validate with Risk Agent / 使用风险代理验证
         proposal = {
             "spread": new_spread,
@@ -1984,39 +2762,41 @@ async def update_hyperliquid_config(request: Request, config: ConfigUpdate):
             ),
         }
         approved, reason = bot_engine.risk.validate_proposal(proposal)
-        
+
         if not approved:
             return create_error_response(
                 ValueError(f"Risk Rejection: {reason}"),
                 error_code="RISK_REJECTION",
-                details={**request_context, "reason": reason}
+                details={**request_context, "reason": reason},
             )
-        
+
         # Resolve target strategy instance / 解析目标策略实例
         target_instance = _get_or_create_strategy_instance(
             config.strategy_id, config.strategy_type
         )
-        
+
         if not target_instance:
             return create_error_response(
-                ValueError(f"Failed to get or create strategy instance for {config.strategy_type}"),
+                ValueError(
+                    f"Failed to get or create strategy instance for {config.strategy_type}"
+                ),
                 error_code="STRATEGY_INSTANCE_ERROR",
-                details=request_context
+                details=request_context,
             )
-        
+
         # Update parameters / 更新参数
         target_instance.strategy.spread = new_spread
         target_instance.strategy.quantity = config.quantity
-        
+
         # Update skew factor if applicable / 如果适用，更新倾斜因子
         if hasattr(target_instance.strategy, "skew_factor"):
             target_instance.strategy.skew_factor = config.skew_factor
-        
+
         # Clear alerts / 清除警报
         bot_engine.alert = None
         if hasattr(exchange, "last_order_error"):
             exchange.last_order_error = None
-        
+
         return {
             "status": "updated",
             "config": config.model_dump(),
@@ -2031,12 +2811,10 @@ async def update_hyperliquid_config(request: Request, config: ConfigUpdate):
                 "trace_id": trace_id,
                 **request_context,
                 "error": str(e),
-            }
+            },
         )
         return create_error_response(
-            e,
-            error_code="CONFIG_UPDATE_ERROR",
-            details=request_context
+            e, error_code="CONFIG_UPDATE_ERROR", details=request_context
         )
 
 
@@ -2044,41 +2822,43 @@ async def update_hyperliquid_config(request: Request, config: ConfigUpdate):
 async def update_hyperliquid_leverage(request: Request):
     """
     Update Hyperliquid leverage / 更新 Hyperliquid 杠杆
-    
+
     Accepts leverage as integer in request body (not JSON object)
     接受请求体中的整数杠杆值（不是 JSON 对象）
     """
     trace_id = get_trace_id()
-    
+
     try:
         # Read raw body to handle integer payload / 读取原始请求体以处理整数负载
         body = await request.body()
         try:
-            leverage = int(body.decode('utf-8'))
+            leverage = int(body.decode("utf-8"))
         except (ValueError, UnicodeDecodeError):
             return create_error_response(
                 ValueError("Invalid leverage value. Expected integer."),
                 error_code="INVALID_LEVERAGE_FORMAT",
-                details={"trace_id": trace_id}
+                details={"trace_id": trace_id},
             )
-        
-        request_context = create_request_context("/api/hyperliquid/leverage", "POST", hash_payload(str(leverage)))
-        
+
+        request_context = create_request_context(
+            "/api/hyperliquid/leverage", "POST", hash_payload(str(leverage))
+        )
+
         if leverage < 1 or leverage > 125:
             return create_error_response(
                 ValueError("Leverage must be between 1 and 125"),
                 error_code="INVALID_LEVERAGE",
-                details=request_context
+                details=request_context,
             )
-        
+
         exchange = get_exchange_by_name("hyperliquid")
         if not exchange:
             return create_error_response(
                 ValueError("Hyperliquid exchange not initialized"),
                 error_code="EXCHANGE_NOT_INITIALIZED",
-                details=request_context
+                details=request_context,
             )
-        
+
         success = exchange.set_leverage(leverage)
         if success:
             return {
@@ -2091,7 +2871,7 @@ async def update_hyperliquid_leverage(request: Request):
             return create_error_response(
                 ValueError("Failed to update leverage on exchange"),
                 error_code="LEVERAGE_UPDATE_FAILED",
-                details=request_context
+                details=request_context,
             )
     except Exception as e:
         logger.error(
@@ -2100,12 +2880,10 @@ async def update_hyperliquid_leverage(request: Request):
             extra={
                 "trace_id": trace_id,
                 "error": str(e),
-            }
+            },
         )
         return create_error_response(
-            e,
-            error_code="LEVERAGE_UPDATE_ERROR",
-            details={"trace_id": trace_id}
+            e, error_code="LEVERAGE_UPDATE_ERROR", details={"trace_id": trace_id}
         )
 
 
@@ -2115,20 +2893,22 @@ async def update_hyperliquid_pair(request: Request, pair: PairUpdate):
     Update Hyperliquid trading pair / 更新 Hyperliquid 交易对
     """
     trace_id = get_trace_id()
-    request_context = create_request_context("/api/hyperliquid/pair", "POST", hash_payload(pair.model_dump()))
-    
+    request_context = create_request_context(
+        "/api/hyperliquid/pair", "POST", hash_payload(pair.model_dump())
+    )
+
     try:
         exchange = get_exchange_by_name("hyperliquid")
         if not exchange:
             return create_error_response(
                 ValueError("Hyperliquid exchange not initialized"),
                 error_code="EXCHANGE_NOT_INITIALIZED",
-                details=request_context
+                details=request_context,
             )
-        
+
         target_strategy_id = pair.strategy_id or "default"
         success = bot_engine.set_symbol(pair.symbol, strategy_id=target_strategy_id)
-        
+
         if success:
             # Immediately refresh data / 立即刷新数据
             target_instance = bot_engine.strategy_instances.get(target_strategy_id)
@@ -2136,13 +2916,15 @@ async def update_hyperliquid_pair(request: Request, pair: PairUpdate):
                 # Force refresh to get new market data for the new symbol / 强制刷新以获取新交易对的市场数据
                 target_instance.refresh_data()
                 # Also ensure exchange symbol is updated / 同时确保交易所交易对已更新
-                if target_instance.exchange and hasattr(target_instance.exchange, "symbol"):
+                if target_instance.exchange and hasattr(
+                    target_instance.exchange, "symbol"
+                ):
                     # Double-check symbol is set correctly / 再次确认交易对设置正确
                     if target_instance.exchange.symbol != pair.symbol:
                         target_instance.exchange.set_symbol(pair.symbol)
                         # Refresh again after setting symbol / 设置交易对后再次刷新
                         target_instance.refresh_data()
-            
+
             return {
                 "status": "updated",
                 "symbol": pair.symbol,
@@ -2151,9 +2933,11 @@ async def update_hyperliquid_pair(request: Request, pair: PairUpdate):
             }
         else:
             return create_error_response(
-                ValueError(f"Failed to update to symbol {pair.symbol} for strategy '{target_strategy_id}'"),
+                ValueError(
+                    f"Failed to update to symbol {pair.symbol} for strategy '{target_strategy_id}'"
+                ),
                 error_code="PAIR_UPDATE_FAILED",
-                details=request_context
+                details=request_context,
             )
     except Exception as e:
         logger.error(
@@ -2163,12 +2947,10 @@ async def update_hyperliquid_pair(request: Request, pair: PairUpdate):
                 "trace_id": trace_id,
                 **request_context,
                 "error": str(e),
-            }
+            },
         )
         return create_error_response(
-            e,
-            error_code="PAIR_UPDATE_ERROR",
-            details=request_context
+            e, error_code="PAIR_UPDATE_ERROR", details=request_context
         )
 
 
@@ -2176,26 +2958,30 @@ async def update_hyperliquid_pair(request: Request, pair: PairUpdate):
 async def check_hyperliquid_connection(request: Request):
     """
     Pre-flight connection check / 预检连接检查
-    
+
     Returns market-data freshness, auth status, and warnings.
     Returns / 返回：市场数据新鲜度、认证状态和警告。
     """
     trace_id = get_trace_id()
     request_context = create_request_context("/api/hyperliquid/connection", "GET")
-    
+
     try:
         exchange = get_exchange_by_name("hyperliquid")
         if not exchange:
             return create_error_response(
                 ValueError("Hyperliquid exchange not initialized"),
                 error_code="EXCHANGE_NOT_INITIALIZED",
-                details=request_context
+                details=request_context,
             )
-        
+
         # Check connection status / 检查连接状态
-        connection_status = exchange.get_connection_status() if hasattr(exchange, "get_connection_status") else {"connected": False}
+        connection_status = (
+            exchange.get_connection_status()
+            if hasattr(exchange, "get_connection_status")
+            else {"connected": False}
+        )
         is_connected = connection_status.get("connected", False)
-        
+
         # Get market data freshness / 获取市场数据新鲜度
         market_data = None
         market_data_age_seconds = None
@@ -2203,24 +2989,29 @@ async def check_hyperliquid_connection(request: Request):
             try:
                 market_data = exchange.fetch_market_data()
                 if market_data and "timestamp" in market_data:
-                    market_data_age_seconds = time.time() - (market_data["timestamp"] / 1000)
+                    market_data_age_seconds = time.time() - (
+                        market_data["timestamp"] / 1000
+                    )
             except Exception:
                 pass
-        
+
         # Check authentication status / 检查认证状态
         auth_status = "authenticated" if is_connected else "not_authenticated"
-        
+
         # Collect warnings / 收集警告
         warnings = []
         if not is_connected:
             warnings.append("Exchange not connected / 交易所未连接")
         if market_data_age_seconds and market_data_age_seconds > 60:
-            warnings.append(f"Market data is stale ({int(market_data_age_seconds)}s old) / 市场数据已过期（{int(market_data_age_seconds)} 秒前）")
-        
+            warnings.append(
+                f"Market data is stale ({int(market_data_age_seconds)}s old) / 市场数据已过期（{int(market_data_age_seconds)} 秒前）"
+            )
+
         return {
             "connected": is_connected,
             "auth_status": auth_status,
-            "market_data_fresh": market_data_age_seconds is None or market_data_age_seconds < 60,
+            "market_data_fresh": market_data_age_seconds is None
+            or market_data_age_seconds < 60,
             "market_data_age_seconds": market_data_age_seconds,
             "warnings": warnings,
             "trace_id": trace_id,
@@ -2234,12 +3025,10 @@ async def check_hyperliquid_connection(request: Request):
                 "trace_id": trace_id,
                 **request_context,
                 "error": str(e),
-            }
+            },
         )
         return create_error_response(
-            e,
-            error_code="CONNECTION_CHECK_ERROR",
-            details=request_context
+            e, error_code="CONNECTION_CHECK_ERROR", details=request_context
         )
 
 
@@ -2305,7 +3094,20 @@ async def get_portfolio():
             # Fetch PnL and commission from session start time
             pnl_data = exchange.fetch_pnl_and_fees(start_time=start_time_ms)
             commission = pnl_data.get("commission", 0.0)
+            # Ensure commission is a number / 确保 commission 是数字
+            if not isinstance(commission, (int, float)):
+                try:
+                    commission = float(commission) if commission else 0.0
+                except (ValueError, TypeError):
+                    commission = 0.0
+            
             realized_pnl = pnl_data.get("realized_pnl", 0.0)
+            # Ensure realized_pnl is a number, not a Mock object / 确保 realized_pnl 是数字，而不是 Mock 对象
+            if not isinstance(realized_pnl, (int, float)):
+                try:
+                    realized_pnl = float(realized_pnl) if realized_pnl else 0.0
+                except (ValueError, TypeError):
+                    realized_pnl = 0.0
         except Exception:
             pass
 
@@ -2389,14 +3191,17 @@ async def get_risk_indicators():
         position_amt=position_amt,
         liquidation_price=liquidation_price,
         max_position=max_position,
-        pnl_history=pnl_history
+        pnl_history=pnl_history,
     )
 
     return indicators
 
 
 @app.post("/api/strategy/{strategy_id}/control")
-async def control_strategy_instance(strategy_id: str, action: str = Query(..., description="start 或 stop", alias="action")):
+async def control_strategy_instance(
+    strategy_id: str,
+    action: str = Query(..., description="start 或 stop", alias="action"),
+):
     """
     控制指定策略实例的启动/停止
     
@@ -2426,7 +3231,9 @@ async def control_strategy_instance(strategy_id: str, action: str = Query(..., d
             instance_id = "default"
     elif target_strategy_type:
         # Look for an instance with matching strategy type
-        resolved_instance = _get_or_create_strategy_instance(strategy_id, target_strategy_type)
+        resolved_instance = _get_or_create_strategy_instance(
+            strategy_id, target_strategy_type
+        )
         if resolved_instance:
             instance = resolved_instance
             instance_id = resolved_instance.strategy_id
@@ -2437,7 +3244,9 @@ async def control_strategy_instance(strategy_id: str, action: str = Query(..., d
         return {"error": f"Strategy instance '{strategy_id}' not found"}
     
     if not instance:
-        return {"error": f"Failed to get or create strategy instance for '{strategy_id}'"}
+        return {
+            "error": f"Failed to get or create strategy instance for '{strategy_id}'"
+        }
     
     if action == "start":
         # Validate config before starting
@@ -2447,7 +3256,7 @@ async def control_strategy_instance(strategy_id: str, action: str = Query(..., d
         if not approved:
             return {
                 "error": f"Risk Rejection: {reason}",
-                "suggestion": "Please adjust strategy parameters before starting"
+                "suggestion": "Please adjust strategy parameters before starting",
             }
         
         # Start the strategy instance
@@ -2479,14 +3288,19 @@ async def control_strategy_instance(strategy_id: str, action: str = Query(..., d
                 if instance.tracked_order_ids:
                     current_orders = instance.exchange.fetch_open_orders()
                     orders_to_cancel = [
-                        o for o in current_orders 
+                        o
+                        for o in current_orders
                         if o.get("id") in instance.tracked_order_ids
                     ]
                     for order in orders_to_cancel:
                         try:
-                            instance.exchange.cancel_order(order["id"], order.get("symbol"))
+                            instance.exchange.cancel_order(
+                                order["id"], order.get("symbol")
+                            )
                         except Exception as e:
-                            logger.error(f"Error canceling order {order['id']} for strategy {strategy_id}: {e}")
+                            logger.error(
+                                f"Error canceling order {order['id']} for strategy {strategy_id}: {e}"
+                            )
             except Exception as e:
                 logger.error(f"Error canceling orders for strategy {strategy_id}: {e}")
         
@@ -2555,13 +3369,15 @@ async def get_allocation():
     strategies_data = []
     for strategy_id, strategy in portfolio_manager.strategies.items():
         allocated_capital = portfolio_manager.total_capital * strategy.allocation
-        strategies_data.append({
+        strategies_data.append(
+            {
             "strategy_id": strategy_id,
             "name": strategy.name,
             "allocation": round(strategy.allocation, 4),
             "allocated_capital": round(allocated_capital, 2),
             "status": strategy.status.value,
-        })
+            }
+        )
     
     return {
         "total_capital": round(portfolio_manager.total_capital, 2),
@@ -2646,7 +3462,9 @@ async def update_allocation_limits(request: AllocationLimitsUpdate):
 
 
 @app.put("/api/portfolio/strategy/{strategy_id}/allocation")
-async def update_strategy_allocation(strategy_id: str, request: StrategyAllocationUpdate):
+async def update_strategy_allocation(
+    strategy_id: str, request: StrategyAllocationUpdate
+):
     """
     手动设置单个策略的资金分配
 
@@ -2689,8 +3507,7 @@ async def update_strategy_allocation(strategy_id: str, request: StrategyAllocati
     
     # Get all allocations
     all_allocations = {
-        sid: round(s.allocation, 4)
-        for sid, s in portfolio_manager.strategies.items()
+        sid: round(s.allocation, 4) for sid, s in portfolio_manager.strategies.items()
     }
     
     return {
@@ -2775,7 +3592,10 @@ def _sync_portfolio_with_bot():
             portfolio_strategy_id = strategy_type_to_id.get(instance.strategy_type)
             
             # Skip if this instance type doesn't have a corresponding portfolio strategy
-            if not portfolio_strategy_id or portfolio_strategy_id not in portfolio_manager.strategies:
+            if (
+                not portfolio_strategy_id
+                or portfolio_strategy_id not in portfolio_manager.strategies
+            ):
                 continue
 
             # Update strategy status based on instance running state
@@ -2819,6 +3639,12 @@ def _sync_portfolio_with_bot():
                             start_time=start_time_ms
                         )
                         realized_pnl = pnl_data.get("realized_pnl", 0.0)
+                        # Ensure realized_pnl is a number, not a Mock object / 确保 realized_pnl 是数字，而不是 Mock 对象
+                        if not isinstance(realized_pnl, (int, float)):
+                            try:
+                                realized_pnl = float(realized_pnl) if realized_pnl else 0.0
+                            except (ValueError, TypeError):
+                                realized_pnl = 0.0
                 except Exception as e:
                     logger.debug(f"Error fetching PnL for {instance_id}: {e}")
 
@@ -2826,11 +3652,29 @@ def _sync_portfolio_with_bot():
                 # Calculate basic metrics from order history
                 if instance.order_history:
                     # Count total orders as trades (simplified)
-                    total_trades = len([o for o in instance.order_history if o.get("status") == "filled"])
+                    total_trades = len(
+                        [
+                            o
+                            for o in instance.order_history
+                            if o.get("status") == "filled"
+                        ]
+                    )
                     
                     # Calculate fill rate (orders filled / orders placed)
-                    placed_orders = len([o for o in instance.order_history if o.get("status") in ["placed", "filled"]])
-                    filled_orders = len([o for o in instance.order_history if o.get("status") == "filled"])
+                    placed_orders = len(
+                        [
+                            o
+                            for o in instance.order_history
+                            if o.get("status") in ["placed", "filled"]
+                        ]
+                    )
+                    filled_orders = len(
+                        [
+                            o
+                            for o in instance.order_history
+                            if o.get("status") == "filled"
+                        ]
+                    )
                     if placed_orders > 0:
                         fill_rate = filled_orders / placed_orders
 
@@ -2840,8 +3684,10 @@ def _sync_portfolio_with_bot():
                 try:
                     # Filter trades by strategy_id if available
                     trades = [
-                        t for t in bot_engine.data.trade_history
-                        if t.get("strategy_id") == instance_id or t.get("strategy_type") == instance.strategy_type
+                        t
+                        for t in bot_engine.data.trade_history
+                        if t.get("strategy_id") == instance_id
+                        or t.get("strategy_type") == instance.strategy_type
                     ]
                     if not trades:
                         # If no strategy-specific trades, use all trades (backward compatibility)
@@ -2853,7 +3699,11 @@ def _sync_portfolio_with_bot():
                     # Get metrics from shared data agent
                     if trades:
                         metrics = bot_engine.data.calculate_metrics()
-                        sharpe = metrics.get("sharpe_ratio", 0) if metrics.get("sharpe_ratio") else None
+                        sharpe = (
+                            metrics.get("sharpe_ratio", 0)
+                            if metrics.get("sharpe_ratio")
+                            else None
+                        )
                         fill_rate = metrics.get("fill_rate", 0.85)
                         slippage = metrics.get("slippage_bps", 0.0)
 
@@ -2869,7 +3719,9 @@ def _sync_portfolio_with_bot():
                                 if dd > max_drawdown:
                                     max_drawdown = dd
                 except Exception as e:
-                    logger.debug(f"Error getting metrics from data agent for {instance_id}: {e}")
+                    logger.debug(
+                        f"Error getting metrics from data agent for {instance_id}: {e}"
+                    )
 
             # Update this strategy's metrics in portfolio_manager
             portfolio_manager.update_strategy_metrics(
@@ -2910,7 +3762,9 @@ def _sync_portfolio_with_bot():
         slippage = 0.0
         if hasattr(bot_engine, "data"):
             metrics = bot_engine.data.calculate_metrics()
-            sharpe = metrics.get("sharpe_ratio", 0) if metrics.get("sharpe_ratio") else None
+            sharpe = (
+                metrics.get("sharpe_ratio", 0) if metrics.get("sharpe_ratio") else None
+            )
             fill_rate = metrics.get("fill_rate", 0.85)
             slippage = metrics.get("slippage_bps", 0.0)
 

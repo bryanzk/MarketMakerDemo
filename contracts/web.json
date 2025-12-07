@@ -4,7 +4,7 @@
   "version": "1.0.0",
   "description": "Web/API interface contracts / Web/API 接口契约",
   "owner": "Agent ARCH",
-  "last_updated": "2025-12-01",
+  "last_updated": "2025-12-04",
   "last_updated_by": "Agent ARCH",
   "readonly_for": ["Agent TRADING", "Agent PORTFOLIO", "Agent WEB", "Agent AI", "Agent QA"],
   "api_endpoints": {
@@ -168,6 +168,142 @@
             "503": "Exchange not connected (when exchange='hyperliquid' and HyperliquidClient is not connected)"
           },
           "notes": "When exchange='hyperliquid', the applied configuration will be used for Hyperliquid exchange trading. The exchange parameter ensures configuration is applied to the correct exchange client. / 当 exchange='hyperliquid' 时，应用的配置将用于 Hyperliquid 交易所交易。exchange 参数确保配置应用于正确的交易所客户端。"
+        }
+      }
+    },
+    "StrategyControlAPI": {
+      "description": "Strategy control endpoints for Hyperliquid trading page / Hyperliquid 交易页面的策略控制接口",
+      "endpoints": {
+        "POST /api/strategy/control": {
+          "description": "Start or stop trading strategy for specified exchange",
+          "request": {
+            "action": "string (start|stop)",
+            "exchange": "string (required, options: 'binance'|'hyperliquid')",
+            "symbol": "string (required when action='start')",
+            "spread": "float (optional, required when action='start' for Fixed Spread Strategy)",
+            "quantity": "float (optional, required when action='start')",
+            "leverage": "integer (optional, required when action='start')"
+          },
+          "response": {
+            "status": "string (success|error)",
+            "message": "string (bilingual: English and Chinese)",
+            "running": "boolean"
+          },
+          "errors": {
+            "400": "Invalid action, exchange, or missing required parameters",
+            "503": "Exchange not connected (when exchange='hyperliquid' and HyperliquidClient is not connected)",
+            "500": "Internal error"
+          },
+          "notes": "This endpoint supports both Binance and Hyperliquid exchanges. When exchange='hyperliquid', the strategy will be started/stopped for Hyperliquid exchange. Note: Skew factor is NOT included for Fixed Spread Strategy. / 此端点支持 Binance 和 Hyperliquid 交易所。当 exchange='hyperliquid' 时，策略将在 Hyperliquid 交易所启动/停止。注意：固定价差策略不包含倾斜因子。"
+        }
+      }
+    },
+    "HyperliquidTradePageAPI": {
+      "description": "Hyperliquid trading page API endpoints / Hyperliquid 交易页面 API 接口",
+      "endpoints": {
+        "GET /api/hyperliquid/balance": {
+          "description": "Get Hyperliquid account balance and margin information",
+          "request": {},
+          "response": {
+            "available": "float (available balance in USDT)",
+            "total": "float (total balance in USDT)",
+            "margin": {
+              "used": "float (margin used in USDT)",
+              "available": "float (margin available in USDT)",
+              "ratio": "float (margin ratio as percentage, 0-100)",
+              "liquidation_price": "float (liquidation price if applicable)"
+            }
+          },
+          "errors": {
+            "503": "Hyperliquid not connected",
+            "500": "Internal error"
+          },
+          "notes": "Returns balance and margin information in USDT. Required for AC-1 and AC-6 (Balance Fetching and Margin Information). / 返回 USDT 的余额和保证金信息。AC-1 和 AC-6（余额获取和保证金信息）所需。"
+        },
+        "GET /api/hyperliquid/positions": {
+          "description": "Get all open positions for Hyperliquid exchange",
+          "request": {},
+          "response": {
+            "positions": "array of Position",
+            "unrealized_pnl_total": "float (total unrealized PnL across all positions)",
+            "realized_pnl_total": "float (total realized PnL)"
+          },
+          "errors": {
+            "503": "Hyperliquid not connected",
+            "500": "Internal error"
+          },
+          "notes": "Returns all open positions across all symbols. Each Position object contains symbol, side, size, entry_price, mark_price, unrealized_pnl, etc. Required for AC-2, AC-3, and AC-7 (Position Tracking and Multi-Symbol Support). / 返回所有交易对的所有未平仓仓位。每个 Position 对象包含 symbol, side, size, entry_price, mark_price, unrealized_pnl 等。AC-2、AC-3 和 AC-7（仓位追踪和多交易对支持）所需。"
+        },
+        "POST /api/hyperliquid/orders": {
+          "description": "Place a new order on Hyperliquid exchange",
+          "request": {
+            "symbol": "string (required)",
+            "side": "string (required, options: 'buy'|'sell')",
+            "type": "string (required, options: 'limit'|'market')",
+            "price": "float (required for limit orders, optional for market orders)",
+            "quantity": "float (required)"
+          },
+          "response": {
+            "order_id": "string",
+            "symbol": "string",
+            "side": "string",
+            "type": "string",
+            "quantity": "float",
+            "price": "float",
+            "status": "string (open|filled|cancelled)",
+            "timestamp": "integer (milliseconds)"
+          },
+          "errors": {
+            "400": "Invalid order parameters (invalid symbol, side, type, price, or quantity)",
+            "503": "Hyperliquid not connected",
+            "503": "Insufficient balance",
+            "500": "Internal error"
+          },
+          "notes": "Places an order on Hyperliquid exchange. Uses order management functionality provided by US-CORE-004-B. Required for AC-5 (Order Management). / 在 Hyperliquid 交易所下单。使用 US-CORE-004-B 提供的订单管理功能。AC-5（订单管理）所需。"
+        },
+        "DELETE /api/hyperliquid/orders/{order_id}": {
+          "description": "Cancel an order on Hyperliquid exchange",
+          "request": {
+            "order_id": "string (path parameter, required)"
+          },
+          "response": {
+            "status": "string (success|error)",
+            "message": "string (bilingual: English and Chinese)",
+            "order_id": "string"
+          },
+          "errors": {
+            "404": "Order not found",
+            "503": "Hyperliquid not connected",
+            "500": "Internal error"
+          },
+          "notes": "Cancels an order by order ID. Uses order management functionality provided by US-CORE-004-B. Required for AC-5 (Order Management). / 通过订单 ID 取消订单。使用 US-CORE-004-B 提供的订单管理功能。AC-5（订单管理）所需。"
+        },
+        "GET /api/hyperliquid/orders": {
+          "description": "Get all open orders for Hyperliquid exchange",
+          "request": {},
+          "response": {
+            "orders": "array of Order"
+          },
+          "errors": {
+            "503": "Hyperliquid not connected",
+            "500": "Internal error"
+          },
+          "notes": "Returns all open orders for Hyperliquid exchange. Uses order management functionality provided by US-CORE-004-B. Required for AC-5 (Order Management). / 返回 Hyperliquid 交易所的所有未平仓订单。使用 US-CORE-004-B 提供的订单管理功能。AC-5（订单管理）所需。"
+        },
+        "GET /api/hyperliquid/orders/history": {
+          "description": "Get order history for Hyperliquid exchange",
+          "request": {
+            "limit": "integer (optional, default: 100)",
+            "start_time": "integer (optional, timestamp in milliseconds)"
+          },
+          "response": {
+            "orders": "array of Order"
+          },
+          "errors": {
+            "503": "Hyperliquid not connected",
+            "500": "Internal error"
+          },
+          "notes": "Returns order history (filled, cancelled, or open orders) for Hyperliquid exchange. Uses order management functionality provided by US-CORE-004-B. Required for AC-5 (Order Management). / 返回 Hyperliquid 交易所的订单历史（已成交、已取消或未平仓订单）。使用 US-CORE-004-B 提供的订单管理功能。AC-5（订单管理）所需。"
         }
       }
     }

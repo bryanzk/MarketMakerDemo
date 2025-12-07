@@ -35,20 +35,22 @@ class LLMProvider(ABC):
 class GeminiProvider(LLMProvider):
     """Google Gemini implementation of LLMProvider"""
 
-    def __init__(self, api_key: Optional[str] = None, model: str = "gemini-3-pro"):
+    def __init__(self, api_key: Optional[str] = None, model: Optional[str] = None):
         """
         Initialize Gemini Provider
 
         Args:
             api_key: Gemini API key (optional, will use GEMINI_API_KEY env var if not provided)
-            model: Model name. Default: "gemini-3-pro" (latest)
+            model: Model name. Default: "gemini-3-pro"
         """
         self.api_key = api_key or os.getenv("GEMINI_API_KEY")
         if not self.api_key:
             raise ValueError("GEMINI_API_KEY is not set")
         genai.configure(api_key=self.api_key)
-        self.model = genai.GenerativeModel(model)
-        self._model_name = model
+
+        env_preferred = os.getenv("GEMINI_MODEL")
+        self._model_name = model or env_preferred or "gemini-3-pro"
+        self.model = genai.GenerativeModel(self._model_name)
 
     @property
     def name(self) -> str:
@@ -59,15 +61,10 @@ class GeminiProvider(LLMProvider):
             response = self.model.generate_content(prompt)
             return response.text
         except Exception as e:
-            if self._model_name == "gemini-3-pro" and "not found" in str(e).lower():
-                logger.warning(
-                    f"Gemini 3 Pro not available, falling back to gemini-1.5-pro: {e}"
-                )
-                self._model_name = "gemini-1.5-pro"
-                self.model = genai.GenerativeModel(self._model_name)
-                response = self.model.generate_content(prompt)
-                return response.text
-            raise RuntimeError(f"Gemini API error: {e}")
+            raise RuntimeError(
+                f"Gemini API error ({self._model_name}): {e}. "
+                "Please ensure the requested model is available."
+            )
 
 
 class OpenAIProvider(LLMProvider):
@@ -195,21 +192,39 @@ def create_all_providers() -> List[LLMProvider]:
 
     try:
         providers.append(GeminiProvider())
+        logger.info("✅ Gemini provider initialized successfully")
     except (ValueError, ImportError) as e:
-        errors.append(f"Gemini: {e}")
+        error_msg = f"Gemini: {e}"
+        errors.append(error_msg)
+        logger.warning(f"⚠️ Failed to initialize Gemini provider: {e}")
 
     try:
         providers.append(OpenAIProvider())
+        logger.info("✅ OpenAI provider initialized successfully")
     except (ValueError, ImportError) as e:
-        errors.append(f"OpenAI: {e}")
+        error_msg = f"OpenAI: {e}"
+        errors.append(error_msg)
+        logger.warning(f"⚠️ Failed to initialize OpenAI provider: {e}")
 
     try:
         providers.append(ClaudeProvider())
+        logger.info("✅ Claude provider initialized successfully")
     except (ValueError, ImportError) as e:
-        errors.append(f"Claude: {e}")
+        error_msg = f"Claude: {e}"
+        errors.append(error_msg)
+        logger.warning(f"⚠️ Failed to initialize Claude provider: {e}")
 
     if not providers:
-        raise ValueError(f"No LLM providers available. Errors: {'; '.join(errors)}")
+        error_summary = "; ".join(errors)
+        raise ValueError(f"No LLM providers available. Errors: {error_summary}")
+
+    if errors:
+        logger.warning(
+            f"⚠️ Some LLM providers failed to initialize: {'; '.join(errors)}"
+        )
+        logger.info(
+            f"✅ Successfully initialized {len(providers)} provider(s): {[p.name for p in providers]}"
+        )
 
     return providers
 

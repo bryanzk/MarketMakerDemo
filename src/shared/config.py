@@ -36,6 +36,11 @@ LEVERAGE = 5  # Leverage multiplier
 SKEW_FACTOR = 100  # Factor to skew quotes based on funding rate (skew = rate * factor)
 STRATEGY_TYPE = "fixed_spread"  # Options: "fixed_spread", "funding_rate"
 
+# Exchange selection / 交易所选择
+# Set to true to disable default Binance instance and run Hyperliquid only
+# 设为 true 禁用默认 Binance 实例，只运行 Hyperliquid
+HYPERLIQUID_ONLY = os.getenv("HYPERLIQUID_ONLY", "false").lower() == "true"
+
 # System Parameters
 REFRESH_INTERVAL = 2  # Seconds between loops
 LOG_LEVEL = "INFO"

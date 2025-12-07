@@ -745,13 +745,27 @@ async def get_status(request: Request, exchange: Optional[str] = Query(None)):
                         ):
                             # Convert to list, but limit to avoid recursion / 转换为列表，但限制以避免递归
                             try:
-                                error_history_list = [
-                                    {
-                                        k: v for k, v in (item.items() if isinstance(item, dict) else {"error": str(item)}).items()
-                                        if not isinstance(v, (type, object)) or v is None
-                                    }
-                                    for item in list(error_history)[-20:]
-                                ]
+                                # Safely convert error_history items to simple dicts / 安全地将 error_history 项转换为简单字典
+                                error_history_list = []
+                                for item in list(error_history)[-20:]:
+                                    if isinstance(item, dict):
+                                        # Only include simple types to avoid recursion / 只包含简单类型以避免递归
+                                        safe_item = {}
+                                        for k, v in item.items():
+                                            if isinstance(v, (str, int, float, bool, type(None))):
+                                                safe_item[k] = v
+                                            elif isinstance(v, dict):
+                                                # Recursively convert nested dicts, but limit depth / 递归转换嵌套字典，但限制深度
+                                                try:
+                                                    safe_item[k] = {k2: v2 for k2, v2 in v.items() 
+                                                                   if isinstance(v2, (str, int, float, bool, type(None)))}
+                                                except (TypeError, RecursionError):
+                                                    safe_item[k] = str(v)
+                                            else:
+                                                safe_item[k] = str(v) if v is not None else None
+                                        error_history_list.append(safe_item)
+                                    else:
+                                        error_history_list.append({"error": str(item)})
                             except (TypeError, RecursionError, AttributeError):
                                 error_history_list = []
                         else:

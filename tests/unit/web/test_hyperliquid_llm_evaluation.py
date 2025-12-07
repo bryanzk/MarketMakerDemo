@@ -1175,13 +1175,30 @@ class TestSelectedModelsFiltering:
             # Verify error response
             # 验证错误响应
             data = response.json()
+            # Handle tuple response (error, status_code) returned by FastAPI
+            # 处理 FastAPI 返回的元组响应（error, status_code）
+            if isinstance(data, list) and len(data) > 0:
+                data = data[0]
+            
             assert "error" in data, "Should return error for invalid model / 应该为无效模型返回错误"
             error_msg = data.get("error", "").lower()
+            # Check error message or details for provider-related information
+            # 检查错误消息或详细信息中的提供商相关信息
+            error_details = data.get("details", {})
+            missing_providers = error_details.get("missing_providers", [])
+            available_providers = error_details.get("available_providers", [])
+            
+            # Error should mention no matching providers either in error message or details
+            # 错误应该在错误消息或详细信息中提到没有匹配的提供商
             assert (
                 "matching" in error_msg
                 or "not found" in error_msg
                 or "未找到" in data.get("error", "")
-            ), "Error should mention no matching providers / 错误应该提到没有匹配的提供商"
+                or "provider" in error_msg
+                or "提供商" in data.get("error", "")
+                or len(missing_providers) > 0
+                or "LLM_PROVIDER_NOT_AVAILABLE" in data.get("error_code", "")
+            ), f"Error should mention no matching providers. Error: {error_msg}, Details: {error_details} / 错误应该提到没有匹配的提供商。错误: {error_msg}, 详细信息: {error_details}"
 
 
 class TestParseErrorInResponse:

@@ -527,14 +527,18 @@ class TestErrorHistory:
         ]
         mock_strategy_cls.return_value = mock_strategy
 
-        engine = AlphaLoop()
-        engine.run_cycle()
+        with patch("src.trading.engine.HYPERLIQUID_ONLY", False):
+            engine = AlphaLoop(hyperliquid_only=False)
+            engine.run_cycle()
 
-        # Verify cycle_error was recorded (now in instance error_history)
-        default_instance = engine.strategy_instances["default"]
-        # Error should be in instance error_history
-        # The error occurs during _run_strategy_instance_cycle, which catches and records it
-        assert len(default_instance.error_history) >= 1, f"Expected at least 1 error, got {len(default_instance.error_history)}"
+            # Verify cycle_error was recorded (now in instance error_history)
+            # 验证 cycle_error 已记录（现在在实例 error_history 中）
+            default_instance = engine.strategy_instances.get("default") or next(iter(engine.strategy_instances.values()))
+            # Error should be in instance error_history
+            # The error occurs during _run_strategy_instance_cycle, which catches and records it
+            # 错误应该出现在实例 error_history 中
+            # 错误发生在 _run_strategy_instance_cycle 期间，会被捕获并记录
+            assert len(default_instance.error_history) >= 1, f"Expected at least 1 error, got {len(default_instance.error_history)}"
         # Find the cycle_error
         cycle_errors = [e for e in default_instance.error_history if e.get("type") == "cycle_error"]
         assert len(cycle_errors) >= 1, f"Expected at least 1 cycle_error, found: {[e.get('type') for e in default_instance.error_history]}"

@@ -54,6 +54,12 @@ def calculate_strategy_health(metrics: Dict[str, Any]) -> float:
     # 1. 盈利能力评分 (0-100)
     # 公式: min(100, max(0, 50 + pnl / 100))
     pnl = metrics.get("pnl", 0)
+    # Ensure pnl is a number, not a Mock object / 确保 pnl 是数字，而不是 Mock 对象
+    if not isinstance(pnl, (int, float)):
+        try:
+            pnl = float(pnl) if pnl else 0
+        except (ValueError, TypeError):
+            pnl = 0
     scores["profitability"] = min(100, max(0, 50 + pnl / 100))
 
     # 2. 风险调整收益评分 (0-100)

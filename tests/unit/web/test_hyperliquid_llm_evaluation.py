@@ -857,7 +857,7 @@ class TestHyperliquidApplyAPI:
             AggregatedResult,
             StrategyConsensus,
             StrategyProposal,
-        )
+            )
 
         consensus_proposal = StrategyProposal(
             recommended_strategy="FixedSpread",

@@ -507,6 +507,20 @@ class TestErrorHistory:
         }
         mock_client.fetch_open_orders.return_value = []
         # Simulate exception during place_orders
+        # 模拟 place_orders 期间的异常
+        # For non-Hyperliquid exchanges, order cycle is skipped, so we need to use HyperliquidClient
+        # 对于非 Hyperliquid 交易所，订单周期被跳过，所以我们需要使用 HyperliquidClient
+        from src.trading.hyperliquid_client import HyperliquidClient
+        
+        # Make mock_client appear as HyperliquidClient so order cycle is not skipped
+        # 使 mock_client 看起来像 HyperliquidClient，这样订单周期不会被跳过
+        class MockHyperliquidClient(HyperliquidClient):
+            def __init__(self):
+                # Skip parent __init__ to avoid real initialization
+                # 跳过父类 __init__ 以避免真实初始化
+                pass
+        
+        mock_client.__class__ = MockHyperliquidClient
         mock_client.place_orders.side_effect = Exception("Network timeout")
         mock_client_cls.return_value = mock_client
 
@@ -527,14 +541,24 @@ class TestErrorHistory:
         ]
         mock_strategy_cls.return_value = mock_strategy
 
-        engine = AlphaLoop()
-        engine.run_cycle()
+        with patch("src.trading.engine.HYPERLIQUID_ONLY", False):
+            engine = AlphaLoop(hyperliquid_only=False)
+            default_instance = engine.strategy_instances.get("default") or next(iter(engine.strategy_instances.values()))
+            # Set exchange to mock_client and ensure it's used
+            # 将 exchange 设置为 mock_client 并确保它被使用
+            default_instance.exchange = mock_client
+            default_instance.use_real_exchange = True
+            default_instance.running = True
+            
+            engine.run_cycle()
 
-        # Verify cycle_error was recorded (now in instance error_history)
-        default_instance = engine.strategy_instances["default"]
-        # Error should be in instance error_history
-        # The error occurs during _run_strategy_instance_cycle, which catches and records it
-        assert len(default_instance.error_history) >= 1, f"Expected at least 1 error, got {len(default_instance.error_history)}"
+            # Verify cycle_error was recorded (now in instance error_history)
+            # 验证 cycle_error 已记录（现在在实例 error_history 中）
+            # Error should be in instance error_history
+            # The error occurs during _run_strategy_instance_cycle, which catches and records it
+            # 错误应该出现在实例 error_history 中
+            # 错误发生在 _run_strategy_instance_cycle 期间，会被捕获并记录
+            assert len(default_instance.error_history) >= 1, f"Expected at least 1 error, got {len(default_instance.error_history)}"
         # Find the cycle_error
         cycle_errors = [e for e in default_instance.error_history if e.get("type") == "cycle_error"]
         assert len(cycle_errors) >= 1, f"Expected at least 1 cycle_error, found: {[e.get('type') for e in default_instance.error_history]}"

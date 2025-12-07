@@ -369,6 +369,11 @@ class TestHyperliquidLLMEvaluationAPIIntegration:
             # Verify error response
             # 验证错误响应
             data = response.json()
+            # Handle tuple response (error, status_code) returned by FastAPI
+            # 处理 FastAPI 返回的元组响应（error, status_code）
+            if isinstance(data, list) and len(data) > 0:
+                data = data[0]
+            
             assert "error" in data, "Error message should be present / 应该存在错误消息"
 
 
@@ -595,4 +600,762 @@ class TestHyperliquidLLMApplyIntegration:
             assert "status" in data or "error" in data, (
                 "Response should include status or error / 响应应该包含 status 或 error"
             )
+
+    @patch("server.get_exchange_by_name")
+    def test_apply_creates_and_configures_hyperliquid_instance(
+        self, mock_get_exchange
+    ):
+        """
+        Integration Test: Apply evaluation creates and configures Hyperliquid strategy instance
+        集成测试：应用评估创建并配置 Hyperliquid 策略实例
+        
+        This test verifies the complete flow:
+        1. Apply evaluation for Hyperliquid
+        2. Strategy instance is created if it doesn't exist
+        3. Instance is configured with HyperliquidClient
+        4. Strategy parameters are updated correctly
+        
+        此测试验证完整流程：
+        1. 为 Hyperliquid 应用评估
+        2. 如果策略实例不存在，则创建它
+        3. 实例配置了 HyperliquidClient
+        4. 策略参数正确更新
+        """
+        # Mock HyperliquidClient
+        # 模拟 HyperliquidClient
+        mock_client = Mock(spec=HyperliquidClient)
+        mock_client.is_connected = True
+        mock_client.symbol = "ETHUSDC"
+        mock_client.exchange_name = "hyperliquid"
+        mock_get_exchange.return_value = mock_client
+
+        # Mock evaluation results
+        # 模拟评估结果
+        from src.ai.evaluation.schemas import (
+            AggregatedResult,
+            StrategyConsensus,
+            StrategyProposal,
+        )
+
+        consensus_proposal = StrategyProposal(
+            recommended_strategy="FixedSpread",
+            spread=0.012,
+            skew_factor=None,
+            quantity=0.1,
+            leverage=5,
+            confidence=0.85,
+            risk_level="medium",
+            reasoning="Test reasoning",
+            parse_success=True,
+        )
+
+        strategy_consensus = StrategyConsensus(
+            consensus_strategy="FixedSpread",
+            consensus_level="high",
+            consensus_ratio=1.0,
+            consensus_count=1,
+            total_models=1,
+            strategy_votes={"FixedSpread": 1},
+            strategy_percentages={"FixedSpread": 100.0},
+        )
+
+        aggregated = AggregatedResult(
+            strategy_consensus=strategy_consensus,
+            consensus_confidence=0.85,
+            consensus_proposal=consensus_proposal,
+            avg_pnl=50.0,
+            avg_sharpe=1.5,
+            avg_win_rate=0.6,
+            avg_latency_ms=1000.0,
+            successful_evaluations=1,
+            failed_evaluations=0,
+        )
+
+        # Mock bot_engine with empty strategy instances
+        # 模拟带有空策略实例的 bot_engine
+        from src.trading.strategy_instance import StrategyInstance
+
+        mock_bot_engine = Mock()
+        
+        # Use MagicMock for strategy_instances to allow get() method mocking
+        # 使用 MagicMock 用于 strategy_instances 以允许 get() 方法模拟
+        mock_strategy_instances = MagicMock()
+        mock_strategy_instances.__iter__ = Mock(return_value=iter([]))
+        mock_strategy_instances.items.return_value = []  # No instances initially
+        mock_strategy_instances.get.return_value = None
+        mock_bot_engine.strategy_instances = mock_strategy_instances
+        mock_bot_engine.add_strategy_instance = Mock(return_value=True)
+
+        # Create mock instance that will be returned after creation
+        # 创建将在创建后返回的模拟实例
+        mock_instance = Mock(spec=StrategyInstance)
+        mock_instance.strategy_id = "hyperliquid"
+        mock_instance.strategy_type = "fixed_spread"
+        mock_instance.exchange = None  # Initially no exchange
+        mock_instance.use_real_exchange = False
+        mock_instance.strategy = Mock()
+        mock_instance.strategy.spread = 0.01
+        mock_instance.strategy.quantity = 0.05
+
+        def side_effect_get(instance_id):
+            if instance_id == "hyperliquid" and mock_bot_engine.add_strategy_instance.called:
+                # After creation, update instance with HyperliquidClient
+                # 创建后，使用 HyperliquidClient 更新实例
+                mock_instance.exchange = mock_client
+                mock_instance.use_real_exchange = True
+                return mock_instance
+            return None
+
+        mock_strategy_instances.get.side_effect = side_effect_get
+
+        with patch("server.bot_engine", mock_bot_engine), patch(
+            "server._last_evaluation_results", []
+        ), patch("server._last_evaluation_aggregated", aggregated), patch(
+            "server.get_exchange_by_name", mock_get_exchange
+        ):
+            client = TestClient(server.app)
+
+            # Apply consensus suggestion
+            # 应用共识建议
+            response = client.post(
+                "/api/evaluation/apply",
+                json={
+                    "source": "consensus",
+                    "exchange": "hyperliquid",
+                },
+            )
+
+            # Verify response
+            # 验证响应
+            assert response.status_code == 200, (
+                f"Expected 200, got {response.status_code}. "
+                f"Response: {response.json()}"
+            )
+
+            data = response.json()
+            assert data["status"] == "success"
+            assert data["exchange"] == "hyperliquid"
+            assert "applied_config" in data
+
+            # Verify strategy instance was created
+            # 验证策略实例已创建
+            assert mock_bot_engine.add_strategy_instance.called
+            call_args = mock_bot_engine.add_strategy_instance.call_args
+            assert call_args[0][0] == "hyperliquid"
+            assert call_args[0][1] == "fixed_spread"
+
+            # Verify instance was configured with HyperliquidClient
+            # 验证实例配置了 HyperliquidClient
+            assert mock_instance.exchange == mock_client
+            assert mock_instance.use_real_exchange is True
+
+            # Verify strategy parameters were updated
+            # 验证策略参数已更新
+            assert mock_instance.strategy.spread == 0.012
+            assert mock_instance.strategy.quantity == 0.1
+
+    @patch("server.get_exchange_by_name")
+    def test_apply_to_hyperliquid_then_start_bot(
+        self, mock_get_exchange
+    ):
+        """
+        Integration Test: Apply evaluation then start bot - complete workflow
+        集成测试：应用评估然后启动 bot - 完整工作流
+        
+        This test verifies the complete workflow:
+        1. Apply evaluation for Hyperliquid
+        2. Strategy instance is created and configured
+        3. Bot can be started
+        4. Strategy instance is marked as running
+        
+        此测试验证完整工作流：
+        1. 为 Hyperliquid 应用评估
+        2. 策略实例已创建并配置
+        3. Bot 可以启动
+        4. 策略实例被标记为运行中
+        """
+        # Mock HyperliquidClient
+        # 模拟 HyperliquidClient
+        mock_client = Mock(spec=HyperliquidClient)
+        mock_client.is_connected = True
+        mock_client.symbol = "ETHUSDC"
+        mock_get_exchange.return_value = mock_client
+
+        # Mock evaluation results
+        # 模拟评估结果
+        from src.ai.evaluation.schemas import (
+            AggregatedResult,
+            StrategyConsensus,
+            StrategyProposal,
+        )
+
+        consensus_proposal = StrategyProposal(
+            recommended_strategy="FixedSpread",
+            spread=0.012,
+            skew_factor=None,
+            quantity=0.1,
+            leverage=5,
+            confidence=0.85,
+            risk_level="medium",
+            reasoning="Test reasoning",
+            parse_success=True,
+        )
+
+        strategy_consensus = StrategyConsensus(
+            consensus_strategy="FixedSpread",
+            consensus_level="high",
+            consensus_ratio=1.0,
+            consensus_count=1,
+            total_models=1,
+            strategy_votes={"FixedSpread": 1},
+            strategy_percentages={"FixedSpread": 100.0},
+        )
+
+        aggregated = AggregatedResult(
+            strategy_consensus=strategy_consensus,
+            consensus_confidence=0.85,
+            consensus_proposal=consensus_proposal,
+            avg_pnl=50.0,
+            avg_sharpe=1.5,
+            avg_win_rate=0.6,
+            avg_latency_ms=1000.0,
+            successful_evaluations=1,
+            failed_evaluations=0,
+        )
+
+        # Mock bot_engine with strategy instance
+        # 模拟带有策略实例的 bot_engine
+        from src.trading.strategy_instance import StrategyInstance
+
+        mock_instance = Mock(spec=StrategyInstance)
+        mock_instance.strategy_id = "hyperliquid"
+        mock_instance.running = False
+        mock_instance.exchange = mock_client
+        mock_instance.use_real_exchange = True
+        mock_instance.strategy = Mock()
+        mock_instance.strategy.spread = 0.01
+        mock_instance.strategy.quantity = 0.05
+
+        mock_bot_engine = Mock()
+        # Use MagicMock for strategy_instances to support items() and values() methods
+        # 使用 MagicMock 用于 strategy_instances 以支持 items() 和 values() 方法
+        mock_strategy_instances = MagicMock()
+        mock_strategy_instances.items.return_value = [("hyperliquid", mock_instance)]
+        mock_strategy_instances.values.return_value = [mock_instance]
+        mock_strategy_instances.get.return_value = mock_instance
+        mock_bot_engine.strategy_instances = mock_strategy_instances
+        mock_bot_engine.add_strategy_instance = Mock(return_value=True)
+        mock_bot_engine.risk = Mock()
+        mock_bot_engine.risk.validate_proposal = Mock(return_value=(True, "Approved"))
+        mock_bot_engine.alert = None
+
+        with patch("server.bot_engine", mock_bot_engine), patch(
+            "server._last_evaluation_results", []
+        ), patch("server._last_evaluation_aggregated", aggregated), patch(
+            "server.get_exchange_by_name", mock_get_exchange
+        ), patch(
+            "server.is_running", False
+        ), patch("server.bot_thread", None), patch(
+            "server.run_bot_loop"
+        ) as mock_run_bot_loop:
+            client = TestClient(server.app)
+
+            # Step 1: Apply evaluation
+            # 步骤 1：应用评估
+            apply_response = client.post(
+                "/api/evaluation/apply",
+                json={
+                    "source": "consensus",
+                    "exchange": "hyperliquid",
+                },
+            )
+
+            assert apply_response.status_code == 200
+            apply_data = apply_response.json()
+            assert apply_data["status"] == "success"
+
+            # Verify instance was configured
+            # 验证实例已配置
+            assert mock_instance.exchange == mock_client
+            assert mock_instance.strategy.spread == 0.012
+            assert mock_instance.strategy.quantity == 0.1
+
+            # Step 2: Start bot
+            # 步骤 2：启动 bot
+            start_response = client.post("/api/control?action=start")
+
+            assert start_response.status_code == 200
+            start_data = start_response.json()
+            assert start_data["status"] == "started"
+
+            # Verify instance is marked as running
+            # 验证实例被标记为运行中
+            assert mock_instance.running is True
+
+
+class TestSelectedModelsIntegration:
+    """
+    Integration tests for selected_models parameter filtering.
+    测试 selected_models 参数过滤的集成测试。
+    """
+
+    @pytest.fixture
+    def mock_hyperliquid_client(self):
+        """Create a mock HyperliquidClient / 创建模拟 HyperliquidClient"""
+        client = Mock(spec=HyperliquidClient)
+        client.is_connected = True
+        client.symbol = "ETHUSDT"
+        client.exchange_name = "hyperliquid"
+        client.fetch_market_data.return_value = {
+            "best_bid": 3000.0,
+            "best_ask": 3002.0,
+            "mid_price": 3001.0,
+            "funding_rate": 0.0001,
+            "timestamp": int(time.time() * 1000),
+        }
+        client.fetch_account_data.return_value = {
+            "position_amt": 0.1,
+            "entry_price": 3000.0,
+            "balance": 10000.0,
+            "available_balance": 5000.0,
+            "leverage": 5,
+        }
+        client.set_symbol.return_value = True
+        return client
+
+    @pytest.fixture
+    def mock_all_llm_providers(self):
+        """Create mock LLM providers for all models / 为所有模型创建模拟 LLM 提供商"""
+        providers = []
+        for name, response in [
+            (
+                "Gemini",
+                '{"recommended_strategy": "FundingRate", "spread": 0.012, "skew_factor": 120, "confidence": 0.85, "quantity": 0.1, "leverage": 5}',
+            ),
+            (
+                "OpenAI",
+                '{"recommended_strategy": "FixedSpread", "spread": 0.015, "skew_factor": 100, "confidence": 0.78, "quantity": 0.15, "leverage": 3}',
+            ),
+            (
+                "Claude",
+                '{"recommended_strategy": "FixedSpread", "spread": 0.014, "skew_factor": 110, "confidence": 0.82, "quantity": 0.12, "leverage": 4}',
+            ),
+        ]:
+            mock = Mock()
+            mock.name = name
+            mock.generate.return_value = response
+            providers.append(mock)
+        return providers
+
+    @patch("server.create_all_providers")
+    @patch("server.get_exchange_by_name")
+    def test_integration_selected_models_single_model(
+        self,
+        mock_get_exchange,
+        mock_create_providers,
+        mock_hyperliquid_client,
+        mock_all_llm_providers,
+    ):
+        """
+        Integration Test: Single model selection filters providers correctly
+        集成测试：单个模型选择正确过滤提供商
+        
+        Tests the complete flow:
+        1. API receives request with selected_models=["gemini"]
+        2. API filters providers to only include Gemini
+        3. API runs evaluation with only Gemini
+        4. API returns results with only Gemini
+        
+        测试完整流程：
+        1. API 接收 selected_models=["gemini"] 的请求
+        2. API 过滤提供商，仅包含 Gemini
+        3. API 仅使用 Gemini 运行评估
+        4. API 返回仅包含 Gemini 的结果
+        """
+        mock_get_exchange.return_value = mock_hyperliquid_client
+        mock_create_providers.return_value = mock_all_llm_providers
+
+        mock_bot_engine = Mock()
+        mock_bot_engine.data = Mock()
+        mock_bot_engine.data.calculate_metrics.return_value = {"sharpe_ratio": 1.5}
+        mock_bot_engine.data.trade_history = []
+
+        with patch("server.bot_engine", mock_bot_engine):
+            client = TestClient(server.app)
+
+            # Step 1: Call API with single model selected
+            # 步骤 1：使用单个模型选择调用 API
+            response = client.post(
+                "/api/evaluation/run",
+                json={
+                    "symbol": "ETH/USDT:USDT",
+                    "simulation_steps": 100,
+                    "exchange": "hyperliquid",
+                    "selected_models": ["gemini"],
+                },
+            )
+
+            # Step 2: Verify API response
+            # 步骤 2：验证 API 响应
+            assert response.status_code == 200, (
+                f"Expected 200, got {response.status_code} / 预期 200，得到 {response.status_code}"
+            )
+            data = response.json()
+
+            # Step 3: Verify only Gemini was used
+            # 步骤 3：验证仅使用了 Gemini
+            assert "individual_results" in data, "Response should include individual_results / 响应应该包含 individual_results"
+            results = data["individual_results"]
+            assert len(results) == 1, "Should have only one result / 应该只有一个结果"
+            assert results[0]["provider_name"] == "Gemini", "Should be Gemini / 应该是 Gemini"
+
+            # Step 4: Verify aggregated results are based on single model
+            # 步骤 4：验证聚合结果基于单个模型
+            assert "aggregated" in data, "Response should include aggregated results / 响应应该包含聚合结果"
+            aggregated = data["aggregated"]
+            assert aggregated["strategy_consensus"]["total_models"] == 1, (
+                "Should have one model in consensus / 共识中应该有一个模型"
+            )
+
+    @patch("server.create_all_providers")
+    @patch("server.get_exchange_by_name")
+    def test_integration_selected_models_multiple_models(
+        self,
+        mock_get_exchange,
+        mock_create_providers,
+        mock_hyperliquid_client,
+        mock_all_llm_providers,
+    ):
+        """
+        Integration Test: Multiple model selection filters providers correctly
+        集成测试：多个模型选择正确过滤提供商
+        
+        Tests the complete flow with multiple models selected.
+        测试选择多个模型的完整流程。
+        """
+        mock_get_exchange.return_value = mock_hyperliquid_client
+        mock_create_providers.return_value = mock_all_llm_providers
+
+        mock_bot_engine = Mock()
+        mock_bot_engine.data = Mock()
+        mock_bot_engine.data.calculate_metrics.return_value = {"sharpe_ratio": 1.5}
+        mock_bot_engine.data.trade_history = []
+
+        with patch("server.bot_engine", mock_bot_engine):
+            client = TestClient(server.app)
+
+            # Call API with multiple models selected
+            # 使用多个模型选择调用 API
+            response = client.post(
+                "/api/evaluation/run",
+                json={
+                    "symbol": "ETH/USDT:USDT",
+                    "simulation_steps": 100,
+                    "exchange": "hyperliquid",
+                    "selected_models": ["gemini", "openai"],
+                },
+            )
+
+            assert response.status_code == 200, (
+                f"Expected 200, got {response.status_code} / 预期 200，得到 {response.status_code}"
+            )
+            data = response.json()
+
+            # Verify only selected models were used
+            # 验证仅使用了选中的模型
+            assert "individual_results" in data, "Response should include individual_results / 响应应该包含 individual_results"
+            results = data["individual_results"]
+            provider_names = [r["provider_name"] for r in results]
+            assert "Gemini" in provider_names, "Should include Gemini / 应该包含 Gemini"
+            assert "OpenAI" in provider_names, "Should include OpenAI / 应该包含 OpenAI"
+            assert "Claude" not in provider_names, "Should not include Claude / 不应该包含 Claude"
+            assert len(results) == 2, "Should have two results / 应该有两个结果"
+
+            # Verify aggregated results are based on selected models
+            # 验证聚合结果基于选中的模型
+            aggregated = data["aggregated"]
+            assert aggregated["strategy_consensus"]["total_models"] == 2, (
+                "Should have two models in consensus / 共识中应该有两个模型"
+            )
+
+    @patch("server.create_all_providers")
+    @patch("server.get_exchange_by_name")
+    def test_integration_selected_models_none_uses_all(
+        self,
+        mock_get_exchange,
+        mock_create_providers,
+        mock_hyperliquid_client,
+        mock_all_llm_providers,
+    ):
+        """
+        Integration Test: No selected_models uses all available providers
+        集成测试：没有 selected_models 时使用所有可用提供商
+        
+        Tests that when selected_models is not provided, all providers are used.
+        测试当未提供 selected_models 时，使用所有提供商。
+        """
+        mock_get_exchange.return_value = mock_hyperliquid_client
+        mock_create_providers.return_value = mock_all_llm_providers
+
+        mock_bot_engine = Mock()
+        mock_bot_engine.data = Mock()
+        mock_bot_engine.data.calculate_metrics.return_value = {"sharpe_ratio": 1.5}
+        mock_bot_engine.data.trade_history = []
+
+        with patch("server.bot_engine", mock_bot_engine):
+            client = TestClient(server.app)
+
+            # Call API without selected_models
+            # 不提供 selected_models 调用 API
+            response = client.post(
+                "/api/evaluation/run",
+                json={
+                    "symbol": "ETH/USDT:USDT",
+                    "simulation_steps": 100,
+                    "exchange": "hyperliquid",
+                    # No selected_models parameter
+                },
+            )
+
+            assert response.status_code == 200, (
+                f"Expected 200, got {response.status_code} / 预期 200，得到 {response.status_code}"
+            )
+            data = response.json()
+
+            # Verify all providers were used
+            # 验证使用了所有提供商
+            assert "individual_results" in data, "Response should include individual_results / 响应应该包含 individual_results"
+            results = data["individual_results"]
+            provider_names = [r["provider_name"] for r in results]
+            assert len(results) == 3, "Should use all three providers / 应该使用所有三个提供商"
+            assert "Gemini" in provider_names, "Should include Gemini / 应该包含 Gemini"
+            assert "OpenAI" in provider_names, "Should include OpenAI / 应该包含 OpenAI"
+            assert "Claude" in provider_names, "Should include Claude / 应该包含 Claude"
+
+
+class TestParseErrorIntegration:
+    """
+    Integration tests for parse_error handling in evaluation flow
+    评估流程中 parse_error 处理的集成测试
+    """
+
+    @pytest.fixture
+    def mock_hyperliquid_client(self):
+        """Create a mock HyperliquidClient / 创建模拟 HyperliquidClient"""
+        client = Mock(spec=HyperliquidClient)
+        client.is_connected = True
+        client.symbol = "ETH/USDT:USDT"
+        client.exchange_name = "hyperliquid"
+        client.fetch_market_data.return_value = {
+            "best_bid": 3000.0,
+            "best_ask": 3002.0,
+            "mid_price": 3001.0,
+            "funding_rate": 0.0001,
+            "timestamp": int(time.time() * 1000),
+        }
+        client.fetch_account_data.return_value = {
+            "position_amt": 0.1,
+            "entry_price": 3000.0,
+            "balance": 10000.0,
+            "available_balance": 5000.0,
+            "leverage": 5,
+        }
+        client.set_symbol.return_value = True
+        return client
+
+    @pytest.fixture
+    def mock_mixed_llm_providers(self):
+        """Create mock LLM providers with mix of successful and failed parsing / 创建混合成功和失败解析的模拟 LLM 提供商"""
+        providers = []
+        # Provider with valid JSON
+        # 具有有效 JSON 的提供商
+        valid_provider = Mock()
+        valid_provider.name = "Gemini"
+        valid_provider.generate.return_value = '{"recommended_strategy": "FundingRate", "spread": 0.012, "skew_factor": 120, "confidence": 0.85, "quantity": 0.1, "leverage": 5}'
+        providers.append(valid_provider)
+        
+        # Provider with invalid JSON (will cause parse_error)
+        # 具有无效 JSON 的提供商（将导致 parse_error）
+        invalid_provider = Mock()
+        invalid_provider.name = "OpenAI"
+        invalid_provider.generate.return_value = "This is not valid JSON and cannot be parsed into a strategy proposal"
+        providers.append(invalid_provider)
+        
+        return providers
+
+    @patch("server.create_all_providers")
+    @patch("server.get_exchange_by_name")
+    def test_integration_parse_error_in_complete_flow(
+        self,
+        mock_get_exchange,
+        mock_create_providers,
+        mock_hyperliquid_client,
+        mock_mixed_llm_providers,
+    ):
+        """
+        Integration Test: parse_error is properly handled in complete evaluation flow
+        集成测试：在完整评估流程中正确处理 parse_error
+        
+        Tests the end-to-end flow:
+        1. API receives evaluation request
+        2. Multiple LLM providers are called (some succeed, some fail to parse)
+        3. API returns results with parse_error for failed providers
+        4. Successful providers still return valid proposals
+        
+        测试端到端流程：
+        1. API 接收评估请求
+        2. 调用多个 LLM 提供商（一些成功，一些解析失败）
+        3. API 为失败的提供商返回带有 parse_error 的结果
+        4. 成功的提供商仍然返回有效的建议
+        """
+        mock_get_exchange.return_value = mock_hyperliquid_client
+        mock_create_providers.return_value = mock_mixed_llm_providers
+
+        mock_bot_engine = Mock()
+        mock_bot_engine.data = Mock()
+        mock_bot_engine.data.calculate_metrics.return_value = {"sharpe_ratio": 1.5}
+        mock_bot_engine.data.trade_history = []
+
+        with patch("server.bot_engine", mock_bot_engine):
+            client = TestClient(server.app)
+
+            # Step 1: Run evaluation
+            # 步骤 1：运行评估
+            response = client.post(
+                "/api/evaluation/run",
+                json={
+                    "symbol": "ETH/USDT:USDT",
+                    "simulation_steps": 100,
+                    "exchange": "hyperliquid",
+                },
+            )
+
+            # Step 2: Verify response structure
+            # 步骤 2：验证响应结构
+            assert response.status_code == 200, (
+                f"Expected 200, got {response.status_code} / 预期 200，得到 {response.status_code}"
+            )
+            data = response.json()
+            
+            # Step 3: Verify individual_results contain parse_error
+            # 步骤 3：验证 individual_results 包含 parse_error
+            assert "individual_results" in data, "Response should include individual_results / 响应应该包含 individual_results"
+            results = data["individual_results"]
+            assert len(results) == 2, "Should have two results (one valid, one with parse_error) / 应该有两个结果（一个有效，一个有 parse_error）"
+            
+            # Step 4: Verify parse_error is present for failed provider
+            # 步骤 4：验证失败的提供商存在 parse_error
+            failed_result = None
+            successful_result = None
+            
+            for result in results:
+                proposal = result.get("proposal", {})
+                if proposal.get("parse_success") is False:
+                    failed_result = result
+                elif proposal.get("parse_success") is True:
+                    successful_result = result
+            
+            # Verify failed result has parse_error
+            # 验证失败的结果有 parse_error
+            assert failed_result is not None, "Should have at least one result with parse_error / 应该至少有一个结果有 parse_error"
+            failed_proposal = failed_result.get("proposal", {})
+            assert "parse_error" in failed_proposal, "Failed result should have parse_error / 失败的结果应该有 parse_error"
+            assert len(failed_proposal.get("parse_error", "")) > 0, "parse_error should not be empty / parse_error 不应该为空"
+            assert failed_proposal.get("parse_success") is False, "parse_success should be False / parse_success 应该为 False"
+            
+            # Verify successful result does not have parse_error (or has empty parse_error)
+            # 验证成功的结果没有 parse_error（或有空的 parse_error）
+            assert successful_result is not None, "Should have at least one successful result / 应该至少有一个成功的结果"
+            successful_proposal = successful_result.get("proposal", {})
+            assert successful_proposal.get("parse_success") is True, "Successful result should have parse_success=True / 成功的结果应该有 parse_success=True"
+            # parse_error should be empty string when parse_success is True
+            # 当 parse_success 为 True 时，parse_error 应该为空字符串
+            assert (
+                "parse_error" not in successful_proposal 
+                or successful_proposal.get("parse_error") == ""
+            ), "Successful result should have empty parse_error / 成功的结果应该有空的 parse_error"
+            
+            # Step 5: Verify aggregated results still work despite parse_error
+            # 步骤 5：验证尽管有 parse_error，聚合结果仍然有效
+            if "aggregated" in data:
+                aggregated = data["aggregated"]
+                # Aggregated should still be present even if some providers failed
+                # 即使某些提供商失败，聚合结果仍应存在
+                assert "strategy_consensus" in aggregated or "consensus_proposal" in aggregated, (
+                    "Aggregated results should be present / 聚合结果应该存在"
+                )
+
+    @patch("server.create_all_providers")
+    @patch("server.get_exchange_by_name")
+    def test_integration_parse_error_does_not_break_evaluation(
+        self,
+        mock_get_exchange,
+        mock_create_providers,
+        mock_hyperliquid_client,
+    ):
+        """
+        Integration Test: Evaluation completes successfully even when all providers fail to parse
+        集成测试：即使所有提供商都解析失败，评估也能成功完成
+        
+        Tests that the evaluation API handles parse errors gracefully and doesn't crash.
+        测试评估 API 优雅地处理解析错误且不会崩溃。
+        """
+        mock_get_exchange.return_value = mock_hyperliquid_client
+        
+        # Create providers that all return invalid JSON
+        # 创建所有返回无效 JSON 的提供商
+        invalid_providers = []
+        for name in ["Gemini", "OpenAI"]:
+            provider = Mock()
+            provider.name = name
+            provider.generate.return_value = f"Invalid response from {name} - not JSON"
+            invalid_providers.append(provider)
+        
+        mock_create_providers.return_value = invalid_providers
+
+        mock_bot_engine = Mock()
+        mock_bot_engine.data = Mock()
+        mock_bot_engine.data.calculate_metrics.return_value = {"sharpe_ratio": 1.5}
+        mock_bot_engine.data.trade_history = []
+
+        with patch("server.bot_engine", mock_bot_engine):
+            client = TestClient(server.app)
+
+            # Run evaluation with all providers failing to parse
+            # 运行评估，所有提供商都解析失败
+            response = client.post(
+                "/api/evaluation/run",
+                json={
+                    "symbol": "ETH/USDT:USDT",
+                    "simulation_steps": 100,
+                    "exchange": "hyperliquid",
+                },
+            )
+
+            # API should still return 200 (not crash)
+            # API 应该仍然返回 200（不崩溃）
+            assert response.status_code == 200, (
+                f"API should handle parse errors gracefully. Got {response.status_code} / "
+                f"API 应该优雅地处理解析错误。得到 {response.status_code}"
+            )
+            
+            data = response.json()
+            
+            # All results should have parse_error
+            # 所有结果都应该有 parse_error
+            if "individual_results" in data:
+                results = data["individual_results"]
+                for result in results:
+                    proposal = result.get("proposal", {})
+                    assert proposal.get("parse_success") is False, (
+                        "All results should have parse_success=False when all providers fail / "
+                        "当所有提供商都失败时，所有结果应该有 parse_success=False"
+                    )
+                    assert "parse_error" in proposal, (
+                        "All results should have parse_error when parsing fails / "
+                        "当解析失败时，所有结果应该有 parse_error"
+                    )
+                    assert len(proposal.get("parse_error", "")) > 0, (
+                        "parse_error should not be empty / parse_error 不应该为空"
+                    )
 

@@ -732,6 +732,7 @@ Fetch total realized PnL from closed positions.
 
 ## Related Documentation / 相关文档
 
+- [Hyperliquid Trading Page Guide](./hyperliquid_trading_page.md) - Dedicated Hyperliquid trading interface
 - [Hyperliquid Connection Guide](./hyperliquid_connection.md) - Setting up Hyperliquid connection
 - [Hyperliquid Orders Guide](./hyperliquid_orders.md) - Order management on Hyperliquid
 - [Hyperliquid LLM Evaluation Guide](./hyperliquid_llm_evaluation.md) - LLM evaluation with Hyperliquid

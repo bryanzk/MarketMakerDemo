@@ -155,12 +155,95 @@
             color: #991b1b;
         }
 
+        .network-badge {
+            display: inline-block;
+            padding: 6px 14px;
+            border-radius: 8px;
+            font-size: 13px;
+            font-weight: 600;
+            border: 2px solid;
+        }
+
+        .network-mainnet {
+            background: #f0fdf4;
+            color: #166534;
+            border-color: #22c55e;
+        }
+
+        .network-testnet {
+            background: #fef3c7;
+            color: #92400e;
+            border-color: #f59e0b;
+        }
+
         .info-card {
             background: #f0f9ff;
             border: 1px solid #bae6fd;
             padding: 12px;
             border-radius: 8px;
             margin-top: 12px;
+        }
+
+        .provider-status-item {
+            padding: 12px;
+            border-radius: 8px;
+            border: 2px solid #e5e7eb;
+            background: #ffffff;
+            transition: all 0.3s;
+        }
+
+        .provider-status-item.active {
+            border-color: #3b82f6;
+            background: #eff6ff;
+        }
+
+        .provider-status-item.completed {
+            border-color: #22c55e;
+            background: #f0fdf4;
+        }
+
+        .provider-status-item.failed {
+            border-color: #ef4444;
+            background: #fef2f2;
+        }
+
+        .step-indicator {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 500;
+            background: #e5e7eb;
+            color: #374151;
+        }
+
+        .step-indicator.active {
+            background: #3b82f6;
+            color: #ffffff;
+        }
+
+        .step-indicator.completed {
+            background: #22c55e;
+            color: #ffffff;
+        }
+
+        .step-indicator.failed {
+            background: #ef4444;
+            color: #ffffff;
+        }
+
+        .individual-progress-bar {
+            height: 6px;
+            background: #e5e7eb;
+            border-radius: 3px;
+            overflow: hidden;
+            margin-top: 4px;
+        }
+
+        .individual-progress-bar-fill {
+            height: 100%;
+            background: #3b82f6;
+            transition: width 0.3s;
         }
     </style>
     <!-- Error handling styles / 错误处理样式 -->
@@ -184,6 +267,9 @@
                 <div style="font-size:13px; color:#6b7280;">Dedicated interface for Hyperliquid exchange trading / 专用 Hyperliquid 交易所交易界面</div>
             </div>
             <div style="display:flex; gap:12px; align-items:center;">
+                <span id="networkStatus" class="network-badge" style="display:none;">
+                    <span id="networkText">Mainnet / 主网</span>
+                </span>
                 <span id="connectionStatus" class="status-badge status-disconnected">Checking...</span>
                 <a class="nav-link" href="/">← Back to Dashboard</a>
             </div>
@@ -191,10 +277,42 @@
 
         <!-- Connection Status Panel / 连接状态面板 -->
         <section class="panel">
-            <h2>Connection Status / 连接状态</h2>
-            <div id="connectionInfo" class="info-card">
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+                <h2 style="margin:0;">Connection Status / 连接状态</h2>
+                <div style="display:flex; gap:8px;">
+                    <a href="https://hyperliquid-testnet.xyz" target="_blank" class="btn btn-secondary" style="font-size:12px; padding:6px 12px;">
+                        🔗 Testnet Website / 测试网网站
+                    </a>
+                    <a href="https://hyperliquid.xyz" target="_blank" class="btn btn-secondary" style="font-size:12px; padding:6px 12px;">
+                        🔗 Mainnet Website / 主网网站
+                    </a>
+                </div>
+            </div>
+            <div id="connectionInfo" class="info-card" style="margin-top:16px;">
                 <div>Exchange: <strong>Hyperliquid</strong></div>
-                <div id="connectionDetails" style="margin-top:8px; font-size:13px; color:#6b7280; display:none;"></div>
+                <div id="connectionDetails" style="margin-top:8px; font-size:13px; color:#6b7280;">Loading connection status...</div>
+                <div id="testnetConnectionHint" style="margin-top:12px; padding:12px; background:#fef3c7; border-radius:8px; border-left:3px solid #f59e0b; display:none;">
+                    <div style="font-size:12px; font-weight:600; margin-bottom:6px; color:#92400e;">
+                        🔗 Connect to Testnet / 连接到测试网
+                    </div>
+                    <div style="font-size:11px; color:#78350f; line-height:1.6; margin-bottom:8px;">
+                        To connect to Hyperliquid Testnet, set the environment variable and restart the server:
+                        要连接到 Hyperliquid 测试网，请设置环境变量并重启服务器：
+                    </div>
+                    <div style="background:#1f2937; color:#f9fafb; padding:8px; border-radius:6px; font-family:monospace; font-size:11px; margin-bottom:8px;">
+                        export HYPERLIQUID_TESTNET="true"<br>
+                        export HYPERLIQUID_API_KEY="your_testnet_key"<br>
+                        export HYPERLIQUID_API_SECRET="your_testnet_secret"
+                    </div>
+                    <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                        <a href="https://hyperliquid-testnet.xyz" target="_blank" style="font-size:11px; color:#3b82f6; text-decoration:underline;">
+                            📖 Testnet Documentation / 测试网文档
+                        </a>
+                        <a href="https://hyperliquid.xyz" target="_blank" style="font-size:11px; color:#3b82f6; text-decoration:underline;">
+                            📖 Mainnet Documentation / 主网文档
+                        </a>
+                    </div>
+                </div>
             </div>
         </section>
 
@@ -254,9 +372,9 @@
                 <div>
                     <label>Trading Pair / 交易对</label>
                     <select id="pairSelect" onchange="switchPair()">
-                        <option value="ETH/USDT:USDT" data-price="">ETH/USDT:USDT</option>
-                        <option value="BTC/USDT:USDT" data-price="">BTC/USDT:USDT</option>
-                        <option value="SOL/USDT:USDT" data-price="">SOL/USDT:USDT</option>
+                        <option value="ETH/USDC:USDC" data-price="">ETH/USDC:USDC (--)</option>
+                        <option value="BTC/USDC:USDC" data-price="">BTC/USDC:USDC (--)</option>
+                        <option value="SOL/USDC:USDC" data-price="">SOL/USDC:USDC (--)</option>
                     </select>
                 </div>
             </div>
@@ -274,6 +392,9 @@
                     <input type="number" id="leverageInput" min="1" max="125" value="5">
                 </div>
             </div>
+            <div style="margin-top: 8px; font-size: 12px; color: #6b7280;">
+                Note: Fixed Spread Strategy does not use Skew Factor / 注意：固定价差策略不使用倾斜因子
+            </div>
             <div style="display:flex; gap:12px; margin-top:16px;">
                 <button class="btn btn-primary" onclick="updateConfig()">💾 Save Strategy Config</button>
                 <button class="btn btn-secondary" onclick="updateLeverage()">⚡ Update Leverage</button>
@@ -286,18 +407,69 @@
             <div style="display:flex; justify-content:space-between; align-items:center;">
                 <div>
                     <h2 style="margin:0;">Multi-LLM Evaluation / 多模型评估</h2>
-                    <div style="font-size:13px; color:#6b7280;">Gemini · OpenAI · Claude (Hyperliquid Context)</div>
+                    <div style="font-size:13px; color:#6b7280;">Select LLM models to use for evaluation / 选择用于评估的 LLM 模型</div>
                 </div>
                 <button id="runEvaluationBtn" class="btn btn-primary" onclick="runEvaluation()">🚀 Run Evaluation</button>
             </div>
+            
+            <!-- LLM Model Selection / LLM 模型选择 -->
+            <div style="margin-top:16px; padding:16px; background:#f9fafb; border-radius:8px; border:1px solid #e5e7eb;">
+                <div style="font-size:13px; font-weight:600; margin-bottom:12px; color:#374151;">Select LLM Models / 选择 LLM 模型:</div>
+                <div style="display:flex; gap:20px; flex-wrap:wrap;">
+                    <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-size:14px;">
+                        <input type="checkbox" id="modelGemini" class="llm-model-checkbox" value="gemini" checked style="width:18px; height:18px; cursor:pointer;">
+                        <span>Gemini</span>
+                    </label>
+                    <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-size:14px;">
+                        <input type="checkbox" id="modelOpenAI" class="llm-model-checkbox" value="openai" checked style="width:18px; height:18px; cursor:pointer;">
+                        <span>OpenAI</span>
+                    </label>
+                    <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-size:14px;">
+                        <input type="checkbox" id="modelClaude" class="llm-model-checkbox" value="claude" checked style="width:18px; height:18px; cursor:pointer;">
+                        <span>Claude</span>
+                    </label>
+                </div>
+                <div style="margin-top:8px; font-size:12px; color:#6b7280;" id="selectedModelsHint">
+                    All models selected / 已选择所有模型
+                </div>
+            </div>
+            
             <div id="evaluationStatusText" class="message" style="color:#6b7280; margin-top:12px;">Ready.</div>
             <div id="evaluationErrorBox" class="message error" style="display:none;"></div>
+
+            <!-- Evaluation Progress Display / 评估进度显示 (AC-11) -->
+            <div id="evaluationProgressPanel" style="display:none; margin-top:16px; padding:16px; background:#f9fafb; border-radius:8px; border:1px solid #e5e7eb;">
+                <!-- Overall Status / 总体状态 -->
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+                    <div>
+                        <div style="font-weight:bold; font-size:14px;" id="overallStatusText">Evaluation in Progress / 评估进行中</div>
+                        <div style="font-size:12px; color:#6b7280; margin-top:4px;" id="elapsedTimeText">Elapsed: 0m 0s / 已用时间: 0分 0秒</div>
+                    </div>
+                    <div id="overallStatusIcon" style="font-size:20px;">⏳</div>
+                </div>
+                
+                <!-- Overall Progress Bar / 总体进度条 -->
+                <div style="margin-bottom:16px;">
+                    <div style="display:flex; justify-content:space-between; margin-bottom:4px;">
+                        <span style="font-size:12px; color:#6b7280;" id="overallProgressText">0 / 0 providers completed / 0 / 0 个提供商已完成</span>
+                        <span style="font-size:12px; color:#6b7280;" id="overallProgressPercent">0%</span>
+                    </div>
+                    <div style="height:8px; background:#e5e7eb; border-radius:4px; overflow:hidden;">
+                        <div id="overallProgressBar" style="height:100%; background:#3b82f6; width:0%; transition:width 0.3s;"></div>
+                    </div>
+                </div>
+
+                <!-- Provider Status List / 提供商状态列表 -->
+                <div id="providerStatusList" style="display:flex; flex-direction:column; gap:12px;">
+                    <!-- Provider status items will be dynamically inserted here -->
+                </div>
+            </div>
 
             <div id="evaluationConsensusCard" class="consensus-card" style="display:none;">
                 <div style="font-size:14px; font-weight:bold; color:#6d28d9;">🤝 Consensus Recommendation / 共识建议</div>
                 <div style="margin-top:8px; font-size:13px;">
-                    <div>Strategy: <span id="evaluationConsensusStrategy" style="font-weight:bold;">--</span></div>
-                    <div>Spread / Skew / Qty / Lev:
+                    <div>Strategy / 策略: <span id="evaluationConsensusStrategy" style="font-weight:bold;">--</span></div>
+                    <div>Spread / Qty / Lev / 价差 / 数量 / 杠杆:
                         <span id="evaluationConsensusParams" style="font-weight:bold;">--</span>
                     </div>
                 </div>
@@ -305,9 +477,11 @@
                 <div id="evaluationConsensusReasoning" style="margin-top:8px; font-size:12px; color:#6b7280;">--</div>
                 <div style="display:flex; gap:8px; margin-top:12px;">
                     <button class="btn btn-success" style="flex:1;"
-                        onclick="applyEvaluation('consensus')">Apply Consensus</button>
-                    <button class="btn btn-primary" style="flex:1;"
-                        onclick="startBotWithLLMSuggestion()">🚀 Start Bot</button>
+                        onclick="applyEvaluation('consensus')">Apply Consensus / 应用共识</button>
+                    <button id="startBotBtn" class="btn btn-primary" style="flex:1; display:none;"
+                        onclick="startBotWithLLMSuggestion()">🚀 Start Bot / 启动机器人</button>
+                    <button id="stopBotBtn" class="btn btn-danger" style="flex:1; display:none;"
+                        onclick="stopBot()">⏹ Stop Bot / 停止机器人</button>
                 </div>
             </div>
 
@@ -324,7 +498,6 @@
                                 <th>Provider</th>
                                 <th>Strategy</th>
                                 <th>Spread</th>
-                                <th>Skew</th>
                                 <th>Qty</th>
                                 <th>Lev</th>
                                 <th>Confidence</th>
@@ -376,14 +549,22 @@
 
         <!-- Error History Panel / 错误历史面板 -->
         <section class="panel">
+            <div style="display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:12px;">
+                <div>
+                    <div style="font-weight:600;">Diagnostics / 调试工具</div>
+                    <div style="font-size:12px; color:#6b7280;">Recent API calls + errors</div>
+                </div>
+                <button class="btn btn-secondary" onclick="downloadDebugBundle()" title="Export recent diagnostics / 导出最近诊断">
+                    ⬇️ Export Debug Bundle
+                </button>
+            </div>
             <div id="errorHistoryPanel"></div>
         </section>
     </div>
 
     <script>
         const controlMessage = document.getElementById('controlMessage');
-        let currentEvalSymbol = 'ETHUSDT';
-        let userManuallySwitchedPair = false; // Track if user manually switched pair / 跟踪用户是否手动切换交易对
+        let currentEvalSymbol = 'ETHUSDC';
         let evaluationState = {
             loading: false,
             results: [],
@@ -391,6 +572,10 @@
             lastError: null,
             lastRunSymbol: null,
             lastRunAt: null,
+            startTime: null,
+            elapsedInterval: null,
+            providers: ['Gemini', 'OpenAI', 'Claude'], // Expected providers
+            providerStatus: {}, // Track status for each provider
         };
 
         function showMessage(el, text, isError = false) {
@@ -401,183 +586,357 @@
         }
 
         function normalizeSymbol(symbol) {
-            if (!symbol) return 'ETHUSDT';
+            if (!symbol) return 'ETHUSDC';
             return symbol.toUpperCase().replace(/[:\/-]/g, '');
         }
 
+        async function downloadDebugBundle() {
+            const now = new Date();
+            const filename = `hyperliquid-debug-${now.toISOString().replace(/[:.]/g, '-')}.json`;
+            const fetchFn = window.diagnosticFetch || window.fetch;
+            const bundle = {
+                collected_at: now.toISOString(),
+                trace_id: null,
+                selected_symbol: (document.getElementById('pairSelect') || {}).value || null,
+                api_calls: [],
+                error_history: null,
+            };
+
+            try {
+                bundle.api_calls = (window.apiDiagnostics && window.apiDiagnostics.getRecentCalls)
+                    ? window.apiDiagnostics.getRecentCalls({ limit: 50 })
+                    : [];
+            } catch (e) {
+                console.error('Failed to collect apiDiagnostics', e);
+            }
+
+            try {
+                const res = await fetchFn('/api/status');
+                bundle.error_history = await res.json();
+                bundle.trace_id = res.headers.get('X-Trace-ID') || null;
+            } catch (e) {
+                bundle.error_history = { error: `Failed to fetch /api/status: ${e.message}` };
+            }
+
+            const blob = new Blob([JSON.stringify(bundle, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = filename;
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            URL.revokeObjectURL(url);
+        }
+
         // Connection Status / 连接状态
+        let lastConnectionCheckTime = 0;
+        const CONNECTION_CHECK_INTERVAL = 15000; // Check connection every 15 seconds / 每 15 秒检查一次连接
+        
         async function checkConnection() {
-            // Request deduplication / 请求去重
-            if (isCheckingConnection) {
+            // Prevent duplicate requests / 防止重复请求
+            if (isCheckingConnection) return;
+            
+            // Throttle connection checks to avoid excessive API calls / 限制连接检查以避免过多 API 调用
+            const now = Date.now();
+            if (now - lastConnectionCheckTime < CONNECTION_CHECK_INTERVAL) {
                 return;
             }
-            isCheckingConnection = true;
             
-            const errorBox = document.getElementById('evaluationErrorBox');
-            clearError(errorBox);
+            isCheckingConnection = true;
+            lastConnectionCheckTime = now;
             
             try {
-                // Get Hyperliquid status directly (faster than evaluation API)
-                // 直接获取 Hyperliquid 状态（比评估 API 更快）
+                // Get currently selected pair / 获取当前选中的交易对
+                const pairSelect = document.getElementById('pairSelect');
+                const selectedSymbol = pairSelect ? pairSelect.value : null;
+                
+                // Use Hyperliquid status API to check connection (faster than evaluation API)
+                // 使用 Hyperliquid 状态 API 检查连接（比评估 API 更快）
+                // If a specific symbol is selected, we'll update the status with that symbol's price
+                // 如果选择了特定交易对，我们将使用该交易对的价格更新状态
                 const res = await diagnosticFetch('/api/hyperliquid/status');
                 const data = await res.json();
                 
                 const statusEl = document.getElementById('connectionStatus');
                 const detailsEl = document.getElementById('connectionDetails');
-                const networkEl = document.getElementById('networkBadge');
+                const networkEl = document.getElementById('networkStatus');
                 const networkTextEl = document.getElementById('networkText');
                 
-                // Ensure elements exist before updating
-                // 确保元素存在后再更新
                 if (!statusEl || !detailsEl) {
-                    console.error('Connection status elements not found');
+                    return; // Elements not found, page might not be fully loaded
+                }
+                
+                // Handle rate limit error / 处理速率限制错误
+                if (data.error && (data.error.includes('429') || data.error.includes('Too Many Requests') || data.error.includes('速率限制'))) {
+                    statusEl.className = 'status-badge status-disconnected';
+                    statusEl.innerText = 'Rate Limited / 速率限制';
+                    detailsEl.innerHTML = '<span style="color:#f59e0b;">Too many requests. Please wait... / 请求过多，请稍候...</span>';
+                    // Extend refresh interval on rate limit / 速率限制时延长刷新间隔
+                    if (connectionRefreshInterval) {
+                        clearInterval(connectionRefreshInterval);
+                        connectionRefreshInterval = setInterval(checkConnection, 60000); // 1 minute
+                    }
                     return;
                 }
                 
-                // Check for rate limit error / 检查速率限制错误
-                const isRateLimit = data.error_type === 'rate_limit' || 
-                                   data.error_code === 'RATE_LIMIT_EXCEEDED' ||
-                                   (data.error && (data.error.includes('429') || data.error.includes('Rate limit') || data.error.includes('速率限制')));
+                // Update network status (testnet/mainnet)
+                // 更新网络状态（测试网/主网）
+                const isTestnet = data.testnet === true;
+                const testnetHintEl = document.getElementById('testnetConnectionHint');
                 
-                if (isRateLimit) {
-                    // Display rate limit error in status badge / 在状态徽章中显示速率限制错误
-                    statusEl.className = 'status-badge status-disconnected';
-                    statusEl.innerText = 'API调用超出速率限制';
-                    detailsEl.style.display = 'none';
-                    if (networkEl) {
-                        networkEl.style.display = 'none';
+                if (networkEl && networkTextEl) {
+                    networkEl.style.display = 'inline-block';
+                    if (isTestnet) {
+                        networkEl.className = 'network-badge network-testnet';
+                        networkTextEl.innerText = '⚠️ TESTNET / 测试网';
+                    } else {
+                        networkEl.className = 'network-badge network-mainnet';
+                        networkTextEl.innerText = '✓ MAINNET / 主网';
                     }
-                    // Don't show error in error box for rate limits / 不在错误框中显示速率限制错误
-                } else if (data.error || !data.ok || !data.connected) {
-                    handleApiError(data, errorBox);
+                }
+                
+                // Show/hide testnet connection hint based on connection status
+                // 根据连接状态显示/隐藏测试网连接提示
+                if (testnetHintEl) {
+                    // Only show hint if not connected or if connected to mainnet (to suggest switching to testnet)
+                    // 仅在未连接或连接到主网时显示提示（建议切换到测试网）
+                    if (!data.connected || !isTestnet) {
+                        testnetHintEl.style.display = 'block';
+                    } else {
+                        // Already connected to testnet, hide the hint
+                        // 已连接到测试网，隐藏提示
+                        testnetHintEl.style.display = 'none';
+                    }
+                }
+                
+                if (data.error || !data.connected) {
+                    // Not connected
                     statusEl.className = 'status-badge status-disconnected';
                     statusEl.innerText = 'Disconnected / 未连接';
-                    detailsEl.style.display = 'none';
-                    if (networkEl) {
-                        networkEl.style.display = 'none';
-                    }
+                    const errorMsg = data.error || 'Hyperliquid exchange not connected / Hyperliquid 交易所未连接';
+                    detailsEl.innerHTML = `<span style="color:#991b1b;">${errorMsg}</span>`;
                 } else {
+                    // Connected - show price for currently selected pair / 已连接 - 显示当前选中交易对的价格
                     statusEl.className = 'status-badge status-connected';
                     statusEl.innerText = 'Connected / 已连接';
                     
-                    // Update network badge (Mainnet/Testnet)
-                    // 更新网络徽章（主网/测试网）
-                    if (networkEl && networkTextEl) {
-                        networkEl.style.display = 'inline-block';
-                        if (data.testnet) {
-                            networkEl.className = 'network-badge testnet';
-                            networkTextEl.innerText = '⚠️ TESTNET';
-                        } else {
-                            networkEl.className = 'network-badge mainnet';
-                            networkTextEl.innerText = '✓ MAINNET';
-                        }
+                    // Get currently selected symbol / 获取当前选中的交易对
+                    const pairSelect = document.getElementById('pairSelect');
+                    const selectedSymbol = pairSelect ? pairSelect.value : null;
+                    
+                    // Use selected symbol price if available, otherwise use status API price / 如果可用则使用选中交易对价格，否则使用状态 API 价格
+                    let displaySymbol = selectedSymbol || data.symbol || 'N/A';
+                    let displayPrice = null;
+                    
+                    // Try to get price from cache first / 先尝试从缓存获取价格
+                    if (selectedSymbol && pairPrices[selectedSymbol] !== null && pairPrices[selectedSymbol] !== undefined) {
+                        displayPrice = pairPrices[selectedSymbol];
+                    } else if (data.mid_price && data.mid_price > 0) {
+                        // Fallback to status API price / 回退到状态 API 价格
+                        displayPrice = data.mid_price;
+                    } else if (selectedSymbol) {
+                        // Try to fetch price for selected symbol / 尝试获取选中交易对的价格
+                        displayPrice = await getPairPrice(selectedSymbol);
                     }
                     
-                    // Hide connection details / 隐藏连接详情
-                    detailsEl.style.display = 'none';
+                    // Convert USDT to USDC for Hyperliquid display / 将 USDT 转换为 USDC 用于 Hyperliquid 显示
+                    if (displaySymbol.includes('USDT')) {
+                        displaySymbol = displaySymbol.replace(/USDT/g, 'USDC');
+                    }
+                    
+                    const balance = data.balance || 0;
+                    const priceText = displayPrice !== null && displayPrice > 0 
+                        ? `$${displayPrice.toFixed(2)}` 
+                        : '--';
+                    
+                    detailsEl.innerHTML = `
+                        <div>Symbol: <strong>${displaySymbol}</strong> | Price: <strong>${priceText}</strong></div>
+                        <div style="margin-top:4px;">Balance: <strong>${balance.toFixed(2)} USDC</strong></div>
+                    `;
+                }
+                
+                // Reset refresh interval on success / 成功时重置刷新间隔
+                if (connectionRefreshInterval) {
+                    clearInterval(connectionRefreshInterval);
+                    connectionRefreshInterval = setInterval(checkConnection, 30000); // 30 seconds
                 }
             } catch (err) {
-                console.error('checkConnection error:', err);
-                
-                // Check if error is rate limit related / 检查错误是否与速率限制相关
-                const isRateLimit = err.message && (
-                    err.message.includes('429') || 
-                    err.message.includes('Rate limit') || 
-                    err.message.includes('速率限制')
-                );
-                
-                if (!isRateLimit) {
-                    displayError(err, errorBox);
-                }
-                
                 const statusEl = document.getElementById('connectionStatus');
                 const detailsEl = document.getElementById('connectionDetails');
-                if (statusEl) {
-                    if (isRateLimit) {
-                        statusEl.className = 'status-badge status-disconnected';
-                        statusEl.innerText = 'API调用超出速率限制';
-                    } else {
-                        statusEl.className = 'status-badge status-disconnected';
-                        statusEl.innerText = 'Error / 错误';
+                if (statusEl && detailsEl) {
+                    statusEl.className = 'status-badge status-disconnected';
+                    statusEl.innerText = 'Error / 错误';
+                    
+                    // Provide user-friendly error message / 提供用户友好的错误消息
+                    let errorMsg = err.message || 'Unknown error / 未知错误';
+                    
+                    // Handle AbortError / 处理 AbortError
+                    if (err.name === 'AbortError' || errorMsg.includes('aborted') || errorMsg.includes('signal is aborted')) {
+                        errorMsg = 'Request timeout. The server may be slow or rate-limited. / 请求超时。服务器可能较慢或受到速率限制。';
+                    } else if (errorMsg.includes('timeout')) {
+                        errorMsg = 'Request timeout. Please try again. / 请求超时。请重试。';
                     }
-                }
-                if (detailsEl) {
-                    detailsEl.style.display = 'none';
+                    
+                    detailsEl.innerHTML = `<span style="color:#991b1b;">Failed to check connection: ${errorMsg} / 检查连接失败：${errorMsg}</span>`;
                 }
             } finally {
                 isCheckingConnection = false;
             }
         }
 
+        // Track if refresh is in progress to avoid duplicate requests
+        // 跟踪刷新是否正在进行，避免重复请求
+        let isRefreshingPosition = false;
+        let isRefreshingOrders = false;
+        let isCheckingConnection = false;
+
         // Position and Balance / 仓位与余额
         async function refreshPosition() {
-            // Request deduplication / 请求去重
-            if (isRefreshingPosition) {
-                return;
-            }
+            // Prevent duplicate requests / 防止重复请求
+            if (isRefreshingPosition) return;
             isRefreshingPosition = true;
-            
-            const errorBox = document.getElementById('evaluationErrorBox');
-            clearError(errorBox);
             
             try {
                 const statusEl = document.getElementById('positionStatus');
-                statusEl.innerText = 'Loading position data...';
+                if (statusEl) {
+                    statusEl.innerText = 'Loading position data... / 正在加载仓位数据...';
+                    statusEl.classList.remove('error');
+                }
                 
-                // Get status which should include position info
+                // Get Hyperliquid-specific status / 获取 Hyperliquid 特定状态
                 const res = await diagnosticFetch('/api/hyperliquid/status');
+                if (!res.ok) {
+                    throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+                }
                 const data = await res.json();
+                
+                if (data.error) {
+                    const positionData = document.getElementById('positionData');
+                    if (positionData) positionData.style.display = 'none';
+                    
+                    // Check for rate limit error / 检查速率限制错误
+                    if (data.error.includes('429') || data.error.includes('Too Many Requests') || data.error.includes('速率限制')) {
+                        if (statusEl) {
+                            statusEl.innerText = 'Rate limit exceeded. Please wait... / 速率限制已超出，请稍候...';
+                            statusEl.classList.add('error');
+                        }
+                        // Extend refresh interval on rate limit / 速率限制时延长刷新间隔
+                        if (positionRefreshInterval) {
+                            clearInterval(positionRefreshInterval);
+                            positionRefreshInterval = setInterval(refreshPosition, 60000); // 1 minute
+                        }
+                    } else {
+                        if (statusEl) {
+                            statusEl.innerText = data.error;
+                            statusEl.classList.add('error');
+                        }
+                    }
+                    return;
+                }
                 
                 const positionData = document.getElementById('positionData');
                 const totalBalanceEl = document.getElementById('totalBalance');
                 const availableBalanceEl = document.getElementById('availableBalance');
                 const positionAmountEl = document.getElementById('positionAmount');
                 const unrealizedPnLEl = document.getElementById('unrealizedPnL');
+                const positionsTableBody = document.getElementById('positionsTableBody');
                 
-                if (data.balance !== undefined) {
-                    positionData.style.display = 'block';
-                    totalBalanceEl.innerText = `$${data.balance.toFixed(2)}`;
-                    availableBalanceEl.innerText = `$${(data.balance - (data.position || 0) * (data.mid_price || 0)).toFixed(2)}`;
-                    positionAmountEl.innerText = `${(data.position || 0).toFixed(4)}`;
-                    unrealizedPnLEl.innerText = `$${((data.unrealized_pnl || 0)).toFixed(2)}`;
-                    statusEl.innerText = 'Position data loaded / 仓位数据已加载';
+                // Always show data if connected, even if balance is 0
+                // 如果已连接，即使余额为 0 也显示数据
+                if (data.connected && data.balance !== undefined) {
+                    if (positionData) positionData.style.display = 'block';
+                    if (totalBalanceEl) totalBalanceEl.innerText = `$${(data.balance || 0).toFixed(2)}`;
+                    if (availableBalanceEl) availableBalanceEl.innerText = `$${(data.available_balance || 0).toFixed(2)}`;
+                    if (positionAmountEl) positionAmountEl.innerText = `${(data.position || 0).toFixed(4)}`;
+                    if (unrealizedPnLEl) unrealizedPnLEl.innerText = `$${((data.unrealized_pnl || 0)).toFixed(2)}`;
+                    if (statusEl) {
+                        statusEl.innerText = 'Position data loaded / 仓位数据已加载';
+                        statusEl.classList.remove('error');
+                    }
+                    
+                    // Populate positions table / 填充仓位表格
+                    if (positionsTableBody) {
+                        if (data.positions && Array.isArray(data.positions) && data.positions.length > 0) {
+                            const rows = data.positions.map(pos => {
+                                const symbol = pos.symbol || pos.coin || '--';
+                                const side = pos.side || (pos.szi > 0 ? 'LONG' : 'SHORT') || '--';
+                                const size = Math.abs(pos.szi || pos.size || 0);
+                                const entryPrice = pos.entryPx || pos.entry_price || 0;
+                                const markPrice = pos.markPx || pos.mark_price || data.mid_price || 0;
+                                const pnl = pos.unrealizedPnl || pos.unrealized_pnl || 0;
+                                
+                                return `
+                                    <tr>
+                                        <td>${symbol}</td>
+                                        <td><span style="color:${side === 'LONG' || side === 'BUY' ? '#22c55e' : '#ef4444'}; font-weight:bold;">${side}</span></td>
+                                        <td>${size.toFixed(4)}</td>
+                                        <td>$${entryPrice.toFixed(2)}</td>
+                                        <td>$${markPrice.toFixed(2)}</td>
+                                        <td style="color:${pnl >= 0 ? '#22c55e' : '#ef4444'};">$${pnl.toFixed(2)}</td>
+                                    </tr>
+                                `;
+                            }).join('');
+                            positionsTableBody.innerHTML = rows;
+                        } else {
+                            positionsTableBody.innerHTML = '<tr><td colspan="6" style="text-align:center; color:#6b7280;">No open positions / 无未平仓</td></tr>';
+                        }
+                    }
                 } else {
-                    positionData.style.display = 'none';
-                    statusEl.innerText = 'Position data not available / 仓位数据不可用';
+                    if (positionData) positionData.style.display = 'none';
+                    if (statusEl) {
+                        statusEl.innerText = 'Position data not available / 仓位数据不可用';
+                        statusEl.classList.add('error');
+                    }
                 }
             } catch (err) {
-                displayError(err, errorBox);
                 const statusEl = document.getElementById('positionStatus');
-                statusEl.innerText = `Error: ${err.message}`;
-                statusEl.classList.add('error');
+                if (statusEl) {
+                    statusEl.innerText = `Error: ${err.message} / 错误: ${err.message}`;
+                    statusEl.classList.add('error');
+                }
+                const positionData = document.getElementById('positionData');
+                if (positionData) positionData.style.display = 'none';
             } finally {
                 isRefreshingPosition = false;
             }
         }
 
         async function loadStatus() {
-            const errorBox = document.getElementById('evaluationErrorBox');
-            clearError(errorBox);
-            
             try {
-                // Use Hyperliquid-specific status endpoint / 使用 Hyperliquid 特定状态端点
+                // Get Hyperliquid-specific status / 获取 Hyperliquid 特定状态
                 const res = await diagnosticFetch('/api/hyperliquid/status');
                 const data = await res.json();
                 
-                if (data.error || !data.ok) {
-                    handleApiError(data, errorBox);
+                if (data.error) {
+                    showMessage(controlMessage, data.error, true);
                     return;
                 }
-                if (data.spread !== undefined) {
-                    document.getElementById('spreadInput').value = (data.spread * 100).toFixed(3);
+                
+                // Update input fields from status / 从状态更新输入框
+                // Update spread input (convert from decimal to percentage) / 更新价差输入（从小数转换为百分比）
+                if (data.spread !== undefined && data.spread !== null) {
+                    const spreadInput = document.getElementById('spreadInput');
+                    if (spreadInput) {
+                        spreadInput.value = (data.spread * 100).toFixed(2);
+                    }
                 }
-                document.getElementById('quantityInput').value = data.quantity ?? 0.1;
-                document.getElementById('leverageInput').value = data.leverage ?? 5;
+                // Update quantity input / 更新数量输入
+                if (data.quantity !== undefined && data.quantity !== null) {
+                    document.getElementById('quantityInput').value = data.quantity;
+                } else {
+                    document.getElementById('quantityInput').value = 0.1;
+                }
+                // Update leverage input / 更新杠杆输入
+                if (data.leverage !== undefined && data.leverage !== null) {
+                    document.getElementById('leverageInput').value = data.leverage;
+                } else {
+                    document.getElementById('leverageInput').value = 5;
+                }
                 currentEvalSymbol = normalizeSymbol(data.symbol);
 
-                // Only update pairSelect if user hasn't manually switched / 仅在用户未手动切换时更新 pairSelect
                 const pairSelect = document.getElementById('pairSelect');
-                if (pairSelect && data.symbol && !userManuallySwitchedPair) {
+                if (pairSelect && data.symbol) {
                     for (const option of pairSelect.options) {
                         if (option.value.toUpperCase() === data.symbol.toUpperCase()) {
                             pairSelect.value = option.value;
@@ -585,149 +944,217 @@
                         }
                     }
                 }
+
+                // Check bot running status from /api/status and update buttons / 从 /api/status 检查 bot 运行状态并更新按钮
+                try {
+                    const statusRes = await diagnosticFetch('/api/status');
+                    const statusData = await statusRes.json();
+                    if (statusData && typeof statusData.active === 'boolean') {
+                        updateBotControlButtons(statusData.active);
+                    } else {
+                        // If status is not available, default to stopped state / 如果状态不可用，默认为停止状态
+                        updateBotControlButtons(false);
+                    }
+                } catch (statusErr) {
+                    console.warn('Failed to fetch bot status for button update / 获取 bot 状态以更新按钮失败:', statusErr);
+                    // Default to stopped state on error / 出错时默认为停止状态
+                    updateBotControlButtons(false);
+                }
             } catch (err) {
-                displayError(err, errorBox);
                 showMessage(controlMessage, `Failed to load status: ${err.message}`, true);
             }
         }
 
         async function updateConfig() {
-            const errorBox = document.getElementById('evaluationErrorBox');
-            clearError(errorBox);
-            clearValidationErrors(errorBox);
-            
-            // Validate inputs / 验证输入
-            const spread = parseFloat(document.getElementById('spreadInput').value || '0');
-            const quantity = parseFloat(document.getElementById('quantityInput').value || '0');
-            
-            const validation = validateOrder({
-                spread: spread,
-                quantity: quantity
-            });
-            
-            if (!validation.valid) {
-                displayValidationErrors(validation, errorBox);
-                return;
-            }
-            
             try {
                 const payload = {
-                    spread: spread,
-                    quantity: quantity,
+                    spread: parseFloat(document.getElementById('spreadInput').value || '0'),
+                    quantity: parseFloat(document.getElementById('quantityInput').value || '0'),
                     strategy_type: 'fixed_spread',
                     strategy_id: 'default',
                 };
+                // Use Hyperliquid-specific config endpoint / 使用 Hyperliquid 特定配置端点
                 const res = await diagnosticFetch('/api/hyperliquid/config', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(payload),
                 });
                 const data = await res.json();
-                if (data.error || !data.ok) {
-                    handleApiError(data, errorBox);
-                    return;
-                }
+                if (data.error) throw new Error(data.error);
                 showMessage(controlMessage, 'Strategy config updated. / 策略配置已更新。');
             } catch (err) {
-                displayError(err, errorBox);
                 showMessage(controlMessage, err.message || 'Failed to update config / 更新配置失败', true);
             }
         }
 
         async function updateLeverage() {
-            const errorBox = document.getElementById('evaluationErrorBox');
-            clearError(errorBox);
-            clearValidationErrors(errorBox);
-            
-            // Validate leverage / 验证杠杆
-            const leverage = parseInt(document.getElementById('leverageInput').value || '1', 10);
-            const validation = validateLeverage(leverage);
-            
-            if (!validation.valid) {
-                displayValidationErrors(validation, errorBox);
-                return;
-            }
-            
             try {
+                const leverage = parseInt(document.getElementById('leverageInput').value || '1', 10);
+                if (isNaN(leverage) || leverage < 1 || leverage > 125) {
+                    showMessage(controlMessage, 'Invalid leverage value. Must be between 1 and 125. / 无效的杠杆值。必须在 1 到 125 之间。', true);
+                    return;
+                }
+                
+                // Use Hyperliquid-specific leverage endpoint / 使用 Hyperliquid 特定杠杆端点
                 const res = await diagnosticFetch('/api/hyperliquid/leverage', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(leverage),
                 });
                 const data = await res.json();
-                if (data.error || !data.ok) {
-                    handleApiError(data, errorBox);
-                    return;
-                }
-                showMessage(controlMessage, `Leverage updated to ${data.leverage}x / 杠杆已更新至 ${data.leverage}x`);
+                if (data.error) throw new Error(data.error);
+                
+                // Use message from response if available, otherwise construct it
+                // 如果响应中有消息则使用，否则构造消息
+                const message = data.message || `Leverage updated to ${data.leverage || leverage}x / 杠杆已更新至 ${data.leverage || leverage}x`;
+                showMessage(controlMessage, message);
             } catch (err) {
-                displayError(err, errorBox);
                 showMessage(controlMessage, err.message || 'Failed to update leverage / 更新杠杆失败', true);
             }
         }
 
-        async function switchPair() {
-            const errorBox = document.getElementById('evaluationErrorBox');
-            clearError(errorBox);
-            clearValidationErrors(errorBox);
-            
-            // Validate symbol / 验证交易对
-            const symbol = document.getElementById('pairSelect').value;
-            const validation = validateSymbol(symbol);
-            
-            if (!validation.valid) {
-                displayValidationErrors(validation, errorBox);
-                return;
+        // Price update interval (30 seconds) - balanced to avoid excessive API calls while keeping prices fresh
+        // 价格更新间隔（30秒）- 平衡避免过多 API 调用，同时保持价格最新
+        const PRICE_UPDATE_INTERVAL = 30000; // 30 seconds / 30 秒
+        let pairPrices = {}; // Cache for pair prices / 交易对价格缓存
+        
+        // Update prices for all trading pairs in the dropdown / 更新下拉列表中所有交易对的价格
+        async function updateAllPairPrices() {
+            try {
+                const pairSelect = document.getElementById('pairSelect');
+                if (!pairSelect) return;
+                
+                // Get all symbols from options / 从选项中获取所有交易对
+                const symbols = Array.from(pairSelect.options).map(opt => opt.value);
+                if (symbols.length === 0) return;
+                
+                // Fetch prices for all symbols at once / 一次性获取所有交易对的价格
+                const symbolsParam = symbols.map(s => encodeURIComponent(s)).join(',');
+                const res = await diagnosticFetch(`/api/hyperliquid/prices?symbols=${symbolsParam}`);
+                const data = await res.json();
+                
+                if (data.ok && data.prices) {
+                    // Update cache / 更新缓存
+                    pairPrices = { ...pairPrices, ...data.prices };
+                    
+                    // Update option text with prices / 使用价格更新选项文本
+                    Array.from(pairSelect.options).forEach(option => {
+                        const symbol = option.value;
+                        const baseSymbol = symbol.split('/')[0]; // Extract base symbol (e.g., "ETH" from "ETH/USDC:USDC")
+                        // Update data-price attribute / 更新 data-price 属性
+                        const price = data.prices[symbol];
+                        
+                        if (price !== null && price !== undefined && !isNaN(price)) {
+                            option.textContent = `${symbol} ($${price.toFixed(2)})`;
+                            // Update data-price attribute / 更新 data-price 属性
+                            option.setAttribute('data-price', price.toFixed(2));
+                            // Store price in cache / 将价格存储在缓存中
+                            pairPrices[symbol] = price;
+                        } else {
+                            // If price not available, show cached price or "--" / 如果价格不可用，显示缓存价格或 "--"
+                            const cachedPrice = pairPrices[symbol];
+                            if (cachedPrice !== null && cachedPrice !== undefined) {
+                                option.textContent = `${symbol} ($${cachedPrice.toFixed(2)})`;
+                                // Update data-price attribute with cached price / 使用缓存价格更新 data-price 属性
+                                option.setAttribute('data-price', cachedPrice.toFixed(2));
+                            } else {
+                                option.textContent = `${symbol} (--)`;
+                                // Clear data-price if no price available / 如果没有价格则清除 data-price
+                                option.setAttribute('data-price', '');
+                            }
+                        }
+                    });
+                }
+            } catch (err) {
+                console.warn('Failed to update pair prices / 更新交易对价格失败:', err);
+                // On error, keep existing prices in options / 出错时，保持选项中的现有价格
+            }
+        }
+        
+        // Get price for a specific symbol (from cache or fetch) / 获取特定交易对的价格（从缓存或获取）
+        async function getPairPrice(symbol) {
+            // Check cache first / 先检查缓存
+            if (pairPrices[symbol] !== null && pairPrices[symbol] !== undefined) {
+                return pairPrices[symbol];
             }
             
+            // If not in cache, fetch it / 如果不在缓存中，获取它
             try {
-                // Mark that user manually switched pair / 标记用户手动切换了交易对
-                userManuallySwitchedPair = true;
+                const symbolsParam = encodeURIComponent(symbol);
+                const res = await diagnosticFetch(`/api/hyperliquid/prices?symbols=${symbolsParam}`);
+                const data = await res.json();
                 
+                if (data.ok && data.prices && data.prices[symbol] !== null && data.prices[symbol] !== undefined) {
+                    pairPrices[symbol] = data.prices[symbol];
+                    return data.prices[symbol];
+                }
+            } catch (err) {
+                console.warn(`Failed to fetch price for ${symbol} / 获取 ${symbol} 价格失败:`, err);
+            }
+            
+            return null;
+        }
+
+        async function switchPair() {
+            // Reset connection flag to allow checkConnection to run / 重置连接标志以允许 checkConnection 运行
+            isCheckingConnection = false;
+            // Mark that user manually switched pair / 标记用户手动切换了交易对
+            userManuallySwitchedPair = true;
+            try {
+                const symbol = document.getElementById('pairSelect').value;
+                
+                // Immediately update price for the selected pair / 立即更新选中交易对的价格
+                await getPairPrice(symbol);
+                
+                // Use Hyperliquid-specific pair endpoint / 使用 Hyperliquid 特定交易对端点
                 const res = await diagnosticFetch('/api/hyperliquid/pair', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ symbol }),
                 });
                 const data = await res.json();
-                if (data.error || !data.ok) {
-                    handleApiError(data, errorBox);
-                    userManuallySwitchedPair = false; // Reset on error / 错误时重置
-                    return;
+                
+                // Check for error
+                if (data.error) {
+                    throw new Error(data.error);
                 }
+                
+                // Update symbol
                 currentEvalSymbol = normalizeSymbol(symbol);
-                showMessage(controlMessage, `Switched to ${symbol} / 已切换到 ${symbol}`);
                 
-                // Wait longer for backend to update symbol and fetch new market data / 等待更长时间让后端更新交易对并获取新的市场数据
-                await new Promise(resolve => setTimeout(resolve, 500));
+                // Show success message, with warning if connection is needed
+                if (data.warning) {
+                    showMessage(controlMessage, `Switched to ${symbol} / 已切换到 ${symbol}. ${data.warning}`, false);
+                } else {
+                    showMessage(controlMessage, `Switched to ${symbol} / 已切换到 ${symbol}`);
+                }
                 
-                // Force refresh connection status to get updated price / 强制刷新连接状态以获取更新的价格
-                // Clear the checking flag to ensure checkConnection runs / 清除检查标志以确保 checkConnection 运行
-                isCheckingConnection = false;
-                await checkConnection();
+                // Refresh connection status to show new pair price / 刷新连接状态以显示新交易对价格
+                checkConnection();
                 
-                // Wait a bit more to ensure market data is fetched / 再等待一下确保市场数据已获取
-                await new Promise(resolve => setTimeout(resolve, 300));
-                
-                // Refresh connection status again to ensure we have the latest data / 再次刷新连接状态以确保有最新数据
-                isCheckingConnection = false;
-                await checkConnection();
-                
-                // Auto-refresh all data after switching pair / 切换交易对后自动刷新所有数据
-                await loadStatus();
-                refreshPosition();
-                refreshOrders();
+                // Only refresh if connected
+                if (data.status === 'updated' && !data.warning) {
+                    loadStatus();
+                    refreshPosition();
+                    refreshOrders();
+                }
             } catch (err) {
-                displayError(err, errorBox);
                 showMessage(controlMessage, err.message || 'Failed to switch pair / 切换交易对失败', true);
-                userManuallySwitchedPair = false; // Reset on error / 错误时重置
             }
         }
 
         function getEvaluationSymbol() {
             const select = document.getElementById('pairSelect');
-            const raw = select && select.value ? select.value : currentEvalSymbol;
-            return normalizeSymbol(raw);
+            // Return raw symbol format (e.g., "ETH/USDC:USDC") for evaluation API
+            // The backend will handle symbol conversion for Hyperliquid
+            // 返回原始 symbol 格式（例如，"ETH/USDC:USDC"）用于评估 API
+            // 后端会处理 Hyperliquid 的 symbol 转换
+            if (select && select.value) {
+                return select.value;  // Return original format / 返回原始格式
+            }
+            // Fallback: return default symbol in original format
+            // 回退：返回默认 symbol 的原始格式
+            return 'ETH/USDC:USDC';
         }
 
         function formatPercent(value, decimals = 1) {
@@ -743,6 +1170,196 @@
         function formatCurrency(value) {
             if (value === null || value === undefined || isNaN(value)) return '--';
             return `$${Number(value).toFixed(2)}`;
+        }
+
+        // Progress display functions / 进度显示函数 (AC-11)
+        const STEP_NAMES = [
+            { en: 'Collecting Data', zh: '收集数据', icon: '📊' },
+            { en: 'Building Prompt', zh: '整理 Prompt', icon: '📝' },
+            { en: 'Inferring', zh: '推理中', icon: '🧠' },
+            { en: 'Parsing & Validating', zh: '解析并验证', icon: '🔍' },
+            { en: 'Simulating', zh: '模拟中', icon: '🎲' },
+            { en: 'Scoring', zh: '打分中', icon: '📈' },
+        ];
+
+        function updateProgressDisplay() {
+            const progressPanel = document.getElementById('evaluationProgressPanel');
+            if (!progressPanel) return;
+
+            if (!evaluationState.loading) {
+                progressPanel.style.display = 'none';
+                if (evaluationState.elapsedInterval) {
+                    clearInterval(evaluationState.elapsedInterval);
+                    evaluationState.elapsedInterval = null;
+                }
+                return;
+            }
+
+            progressPanel.style.display = 'block';
+
+            // Update elapsed time / 更新已用时间
+            if (evaluationState.startTime) {
+                const elapsed = Math.floor((Date.now() - evaluationState.startTime) / 1000);
+                const minutes = Math.floor(elapsed / 60);
+                const seconds = elapsed % 60;
+                const elapsedText = document.getElementById('elapsedTimeText');
+                if (elapsedText) {
+                    elapsedText.innerText = `Elapsed: ${minutes}m ${seconds}s / 已用时间: ${minutes}分 ${seconds}秒`;
+                }
+            }
+
+            // Update overall progress / 更新总体进度
+            const completedCount = Object.values(evaluationState.providerStatus).filter(s => s.status === 'completed' || s.status === 'failed').length;
+            const totalCount = evaluationState.providers.length;
+            const progressPercent = totalCount > 0 ? (completedCount / totalCount) * 100 : 0;
+
+            const overallProgressText = document.getElementById('overallProgressText');
+            const overallProgressPercent = document.getElementById('overallProgressPercent');
+            const overallProgressBar = document.getElementById('overallProgressBar');
+            const overallStatusText = document.getElementById('overallStatusText');
+            const overallStatusIcon = document.getElementById('overallStatusIcon');
+
+            if (overallProgressText) {
+                overallProgressText.innerText = `${completedCount} / ${totalCount} providers completed / ${completedCount} / ${totalCount} 个提供商已完成`;
+            }
+            if (overallProgressPercent) {
+                overallProgressPercent.innerText = `${Math.round(progressPercent)}%`;
+            }
+            if (overallProgressBar) {
+                overallProgressBar.style.width = `${progressPercent}%`;
+            }
+
+            if (completedCount === totalCount && totalCount > 0) {
+                const hasFailed = Object.values(evaluationState.providerStatus).some(s => s.status === 'failed');
+                if (hasFailed && completedCount === totalCount) {
+                    if (overallStatusText) overallStatusText.innerText = 'Evaluation Failed / 评估失败';
+                    if (overallStatusIcon) overallStatusIcon.innerText = '✗';
+                } else {
+                    if (overallStatusText) overallStatusText.innerText = 'Evaluation Completed / 评估已完成';
+                    if (overallStatusIcon) overallStatusIcon.innerText = '✓';
+                }
+            } else {
+                if (overallStatusText) overallStatusText.innerText = 'Evaluation in Progress / 评估进行中';
+                if (overallStatusIcon) overallStatusIcon.innerText = '⏳';
+            }
+
+            // Update provider status list / 更新提供商状态列表
+            const providerList = document.getElementById('providerStatusList');
+            if (providerList) {
+                providerList.innerHTML = evaluationState.providers.map(providerName => {
+                    const status = evaluationState.providerStatus[providerName] || { status: 'pending', step: 0, stepProgress: 0 };
+                    const isActive = status.status === 'in_progress';
+                    const isCompleted = status.status === 'completed';
+                    const isFailed = status.status === 'failed';
+
+                    let statusClass = 'provider-status-item';
+                    if (isActive) statusClass += ' active';
+                    else if (isCompleted) statusClass += ' completed';
+                    else if (isFailed) statusClass += ' failed';
+
+                    let stepIndicator = '';
+                    let statusText = '';
+                    let progressBar = '';
+                    let elapsedTime = '';
+
+                    if (status.status === 'completed') {
+                        stepIndicator = `<span class="step-indicator completed">✓ Completed / 已完成</span>`;
+                        statusText = 'Completed / 已完成';
+                        if (status.completedAt) {
+                            const elapsed = Math.floor((status.completedAt - evaluationState.startTime) / 1000);
+                            elapsedTime = `<div style="font-size:11px; color:#6b7280; margin-top:4px;">Completed in ${elapsed}s / 完成于 ${elapsed}秒</div>`;
+                        }
+                    } else if (status.status === 'failed') {
+                        stepIndicator = `<span class="step-indicator failed">✗ Failed / 失败</span>`;
+                        statusText = status.error || 'Failed / 失败';
+                        if (status.failedAt) {
+                            const elapsed = Math.floor((status.failedAt - evaluationState.startTime) / 1000);
+                            elapsedTime = `<div style="font-size:11px; color:#6b7280; margin-top:4px;">Failed in ${elapsed}s / 失败于 ${elapsed}秒</div>`;
+                        }
+                    } else if (status.status === 'in_progress') {
+                        const stepInfo = STEP_NAMES[status.step] || STEP_NAMES[0];
+                        stepIndicator = `<span class="step-indicator active">Step ${status.step + 1}/6: ${stepInfo.en} / 步骤 ${status.step + 1}/6: ${stepInfo.zh}</span>`;
+                        statusText = `${stepInfo.icon} ${stepInfo.en}... / ${stepInfo.zh}...`;
+
+                        // Show progress bar for simulating step / 为模拟步骤显示进度条
+                        if (status.step === 4) { // Simulating step
+                            const simProgress = status.stepProgress || 0;
+                            progressBar = `
+                                <div style="margin-top:8px;">
+                                    <div style="font-size:11px; color:#6b7280; margin-bottom:2px;">
+                                        Simulating: ${simProgress}/500 steps (${Math.round(simProgress / 5)}%) / 模拟中: ${simProgress}/500 步 (${Math.round(simProgress / 5)}%)
+                                    </div>
+                                    <div class="individual-progress-bar">
+                                        <div class="individual-progress-bar-fill" style="width:${(simProgress / 500) * 100}%;"></div>
+                                    </div>
+                                </div>
+                            `;
+                        }
+                    } else {
+                        stepIndicator = `<span class="step-indicator">⏸ Pending / 等待中</span>`;
+                        statusText = 'Waiting... / 等待中...';
+                    }
+
+                    return `
+                        <div class="${statusClass}">
+                            <div style="display:flex; justify-content:space-between; align-items:center;">
+                                <div style="font-weight:bold; font-size:13px;">${providerName}</div>
+                                ${stepIndicator}
+                            </div>
+                            <div style="font-size:12px; color:#6b7280; margin-top:4px;">${statusText}</div>
+                            ${progressBar}
+                            ${elapsedTime}
+                        </div>
+                    `;
+                }).join('');
+            }
+        }
+
+        function simulateProgress() {
+            // Simulate progress for each provider / 为每个提供商模拟进度
+            evaluationState.providers.forEach((providerName, index) => {
+                if (!evaluationState.providerStatus[providerName]) {
+                    evaluationState.providerStatus[providerName] = { status: 'pending', step: 0, stepProgress: 0 };
+                }
+
+                const status = evaluationState.providerStatus[providerName];
+                if (status.status === 'pending' || status.status === 'in_progress') {
+                    // Simulate step progression / 模拟步骤进展
+                    const delay = index * 2000; // Stagger providers / 错开提供商
+                    setTimeout(() => {
+                        status.status = 'in_progress';
+                        updateProgressDisplay();
+
+                        // Simulate each step / 模拟每个步骤
+                        STEP_NAMES.forEach((_, stepIndex) => {
+                            setTimeout(() => {
+                                status.step = stepIndex;
+                                if (stepIndex === 4) { // Simulating step
+                                    // Simulate simulation progress / 模拟模拟进度
+                                    let simProgress = 0;
+                                    const simInterval = setInterval(() => {
+                                        simProgress += 50;
+                                        status.stepProgress = Math.min(simProgress, 500);
+                                        updateProgressDisplay();
+                                        if (simProgress >= 500) {
+                                            clearInterval(simInterval);
+                                        }
+                                    }, 200);
+                                    setTimeout(() => clearInterval(simInterval), 10000);
+                                }
+                                updateProgressDisplay();
+                            }, stepIndex * 1500 + delay);
+                        });
+
+                        // Mark as completed after all steps / 所有步骤后标记为完成
+                        setTimeout(() => {
+                            status.status = 'completed';
+                            status.completedAt = Date.now();
+                            updateProgressDisplay();
+                        }, STEP_NAMES.length * 1500 + delay + 1000);
+                    }, delay);
+                }
+            });
         }
 
         function updateEvaluationUI() {
@@ -770,18 +1387,44 @@
                 errorBox.style.display = 'none';
             }
 
+            // Update progress display / 更新进度显示
+            updateProgressDisplay();
+
+            // Map strategy names to bilingual display / 将策略名称映射到双语显示
+            function getBilingualStrategyName(strategy) {
+                const strategyMap = {
+                    'FixedSpread': 'Fixed Spread / 固定价差',
+                    'FundingRate': 'Funding Rate / 资金费率',
+                    'fixed_spread': 'Fixed Spread / 固定价差',
+                    'funding_rate': 'Funding Rate / 资金费率',
+                };
+                return strategyMap[strategy] || strategy || '--';
+            }
+
             if (consensusCard) {
                 const aggregated = evaluationState.aggregated;
                 if (aggregated && aggregated.consensus_proposal && aggregated.strategy_consensus) {
                     const proposal = aggregated.consensus_proposal;
                     consensusCard.style.display = 'block';
-                    document.getElementById('evaluationConsensusStrategy').innerText = proposal.recommended_strategy || '--';
+                    
+                    // Display strategy name in bilingual format / 以双语格式显示策略名称
+                    const strategyName = getBilingualStrategyName(proposal.recommended_strategy);
+                    document.getElementById('evaluationConsensusStrategy').innerText = strategyName;
+                    
+                    // Display parameters in bilingual format / 以双语格式显示参数
                     document.getElementById('evaluationConsensusParams').innerText =
-                        `${formatPercent(proposal.spread || 0, 2)} · Skew ${formatNumber(proposal.skew_factor || 0, 0)} · Qty ${formatNumber(proposal.quantity || 0, 3)} · Lev ${formatNumber(proposal.leverage || 0, 1)}x`;
-                    document.getElementById('evaluationConsensusReasoning').innerText =
-                        proposal.reasoning || 'Consensus reasoning unavailable. / 共识推理不可用。';
+                        `${formatPercent(proposal.spread || 0, 2)} · Qty ${formatNumber(proposal.quantity || 0, 3)} · Lev ${formatNumber(proposal.leverage || 0, 1)}x`;
+                    
+                    // Display reasoning, or show default message if empty
+                    // 显示推理，如果为空则显示默认消息
+                    const reasoning = proposal.reasoning && proposal.reasoning.trim() 
+                        ? proposal.reasoning 
+                        : 'Consensus reasoning unavailable. / 共识推理不可用。';
+                    document.getElementById('evaluationConsensusReasoning').innerText = reasoning;
+                    
+                    // Display stats in bilingual format / 以双语格式显示统计信息
                     document.getElementById('evaluationConsensusStats').innerText =
-                        `Avg PnL ${formatCurrency(aggregated.avg_pnl || 0)} · Avg Sharpe ${formatNumber(aggregated.avg_sharpe || 0, 2)} · Avg Win ${formatPercent(aggregated.avg_win_rate || 0, 1)}`;
+                        `Avg PnL / 平均盈亏 ${formatCurrency(aggregated.avg_pnl || 0)} · Avg Sharpe / 平均夏普 ${formatNumber(aggregated.avg_sharpe || 0, 2)} · Avg Win / 平均胜率 ${formatPercent(aggregated.avg_win_rate || 0, 1)}`;
                 } else {
                     consensusCard.style.display = 'none';
                 }
@@ -803,9 +1446,8 @@
                             <tr ${highlight}>
                                 <td>${result.rank ?? '--'}</td>
                                 <td>${result.provider_name || '--'}</td>
-                                <td>${proposal.recommended_strategy || '--'}</td>
+                                <td>${getBilingualStrategyName(proposal.recommended_strategy)}</td>
                                 <td>${formatPercent(proposal.spread || 0, 2)}</td>
-                                <td>${formatNumber(proposal.skew_factor || 0, 0)}</td>
                                 <td>${formatNumber(proposal.quantity || 0, 3)}</td>
                                 <td>${formatNumber(proposal.leverage || 0, 1)}x</td>
                                 <td>${formatPercent(proposal.confidence || 0, 1)}</td>
@@ -825,14 +1467,75 @@
             }
         }
 
+        // Get selected LLM models / 获取选中的 LLM 模型
+        function getSelectedModels() {
+            const checkboxes = document.querySelectorAll('.llm-model-checkbox:checked');
+            const selectedModels = Array.from(checkboxes).map(cb => cb.value);
+            return selectedModels;
+        }
+
+        // Update selected models hint / 更新选中模型提示
+        function updateSelectedModelsHint() {
+            const selectedModels = getSelectedModels();
+            const hintEl = document.getElementById('selectedModelsHint');
+            if (!hintEl) return;
+            
+            if (selectedModels.length === 0) {
+                hintEl.innerText = '⚠️ Please select at least one model / 请至少选择一个模型';
+                hintEl.style.color = '#dc2626';
+            } else {
+                const modelNames = selectedModels.map(m => {
+                    if (m === 'gemini') return 'Gemini';
+                    if (m === 'openai') return 'OpenAI';
+                    if (m === 'claude') return 'Claude';
+                    return m;
+                }).join(', ');
+                hintEl.innerText = `Selected: ${modelNames} / 已选择: ${modelNames}`;
+                hintEl.style.color = '#6b7280';
+            }
+        }
+
         async function runEvaluation() {
             if (evaluationState.loading) return;
-            const errorBox = document.getElementById('evaluationErrorBox');
-            clearError(errorBox);
+            
+            // Get selected models / 获取选中的模型
+            const selectedModels = getSelectedModels();
+            if (selectedModels.length === 0) {
+                const errorBox = document.getElementById('evaluationErrorBox');
+                if (errorBox) {
+                    errorBox.style.display = 'block';
+                    errorBox.innerText = 'Please select at least one LLM model / 请至少选择一个 LLM 模型';
+                }
+                return;
+            }
             
             evaluationState.loading = true;
             evaluationState.lastError = null;
+            evaluationState.startTime = Date.now();
+            evaluationState.providerStatus = {};
+            
+            // Map selected models to provider names / 将选中的模型映射到提供商名称
+            const modelToProviderName = {
+                'gemini': 'Gemini',
+                'openai': 'OpenAI',
+                'claude': 'Claude'
+            };
+            evaluationState.providers = selectedModels.map(m => modelToProviderName[m] || m);
+            
+            // Initialize provider status / 初始化提供商状态
+            evaluationState.providers.forEach(name => {
+                evaluationState.providerStatus[name] = { status: 'pending', step: 0, stepProgress: 0 };
+            });
+
+            // Start elapsed time counter / 启动已用时间计数器
+            if (evaluationState.elapsedInterval) clearInterval(evaluationState.elapsedInterval);
+            evaluationState.elapsedInterval = setInterval(() => {
+                updateProgressDisplay();
+            }, 1000);
+
             updateEvaluationUI();
+            simulateProgress(); // Start progress simulation / 启动进度模拟
+
             try {
                 const res = await diagnosticFetch('/api/evaluation/run', {
                     method: 'POST',
@@ -840,32 +1543,96 @@
                     body: JSON.stringify({ 
                         symbol: getEvaluationSymbol(),
                         exchange: 'hyperliquid',  // Always use hyperliquid exchange
-                        simulation_steps: 500
+                        simulation_steps: 500,
+                        selected_models: selectedModels  // Send selected models to backend / 发送选中的模型到后端
                     }),
                 });
                 const data = await res.json();
-                if (data.error || !data.ok) {
-                    handleApiError(data, errorBox);
-                    evaluationState.lastError = data.message || data.error || 'Failed to run evaluation / 运行评估失败';
+                if (data.error) throw new Error(data.error);
+                
+                // Mark all providers as completed / 标记所有提供商为已完成
+                evaluationState.providers.forEach(name => {
+                    if (evaluationState.providerStatus[name].status !== 'failed') {
+                        evaluationState.providerStatus[name].status = 'completed';
+                        evaluationState.providerStatus[name].completedAt = Date.now();
+                    }
+                });
+
+                evaluationState.results = data.individual_results || [];
+                evaluationState.aggregated = data.aggregated || null;
+                evaluationState.lastRunSymbol = data.symbol || getEvaluationSymbol();
+                evaluationState.lastRunAt = new Date().toISOString();
+                
+                // Check for parse errors in individual results / 检查单个结果中的解析错误
+                const errorBox = document.getElementById('evaluationErrorBox');
+                const parseErrors = [];
+                if (evaluationState.results && evaluationState.results.length > 0) {
+                    evaluationState.results.forEach(result => {
+                        if (result.proposal && result.proposal.parse_error && result.proposal.parse_error.trim()) {
+                            parseErrors.push({
+                                provider: result.provider_name || 'Unknown',
+                                error: result.proposal.parse_error
+                            });
+                        }
+                    });
+                }
+                
+                // Display parse errors if any / 如果有解析错误则显示
+                if (parseErrors.length > 0) {
+                    const errorMessages = parseErrors.map(err => 
+                        `${err.provider}: ${err.error}`
+                    ).join('\n');
+                    const errorMessage = `LLM Parse Errors / LLM 解析错误:\n${errorMessages}`;
+                    evaluationState.lastError = errorMessage;
+                    
+                    // Use error handler to display formatted error / 使用错误处理器显示格式化的错误
+                    if (errorBox && typeof handleApiError === 'function') {
+                        handleApiError({
+                            error_type: 'llm_parse_error',
+                            message: `LLM parsing failed for ${parseErrors.length} model(s) / ${parseErrors.length} 个模型解析失败`,
+                            message_zh: `${parseErrors.length} 个模型解析失败`,
+                            severity: 'warning',
+                            suggestion: 'The evaluation completed but some models failed to parse their responses. You can still use the successfully parsed results. / 评估已完成，但某些模型未能解析其响应。您仍可以使用成功解析的结果。',
+                            suggestion_zh: '评估已完成，但某些模型未能解析其响应。您仍可以使用成功解析的结果。',
+                            details: {
+                                parse_errors: parseErrors,
+                                total_errors: parseErrors.length,
+                                total_results: evaluationState.results.length
+                            }
+                        }, errorBox, { showDetails: true });
+                    } else if (errorBox) {
+                        // Fallback to simple display / 回退到简单显示
+                        errorBox.innerText = errorMessage;
+                        errorBox.style.display = 'block';
+                    }
                 } else {
-                    evaluationState.results = data.individual_results || [];
-                    evaluationState.aggregated = data.aggregated || null;
-                    evaluationState.lastRunSymbol = data.symbol || getEvaluationSymbol();
-                    evaluationState.lastRunAt = new Date().toISOString();
+                    // Clear error if no parse errors / 如果没有解析错误则清除错误
+                    evaluationState.lastError = null;
+                    if (errorBox && typeof clearError === 'function') {
+                        clearError(errorBox);
+                    } else if (errorBox) {
+                        errorBox.style.display = 'none';
+                    }
                 }
             } catch (err) {
-                displayError(err, errorBox);
+                // Mark all providers as failed / 标记所有提供商为失败
+                evaluationState.providers.forEach(name => {
+                    evaluationState.providerStatus[name].status = 'failed';
+                    evaluationState.providerStatus[name].failedAt = Date.now();
+                    evaluationState.providerStatus[name].error = err.message;
+                });
                 evaluationState.lastError = err.message || 'Failed to run evaluation / 运行评估失败';
             } finally {
                 evaluationState.loading = false;
                 updateEvaluationUI();
+                if (evaluationState.elapsedInterval) {
+                    clearInterval(evaluationState.elapsedInterval);
+                    evaluationState.elapsedInterval = null;
+                }
             }
         }
 
         async function applyEvaluation(source, providerName = null) {
-            const errorBox = document.getElementById('evaluationErrorBox');
-            clearError(errorBox);
-            
             try {
                 const payload = { 
                     source,
@@ -878,49 +1645,101 @@
                     body: JSON.stringify(payload),
                 });
                 const data = await res.json();
-                if (data.error || !data.ok) {
-                    handleApiError(data, errorBox);
-                    return;
+                if (data.error) throw new Error(data.error);
+                
+                // Update input fields with applied config / 使用应用的配置更新输入框
+                if (data.applied_config) {
+                    const config = data.applied_config;
+                    // Update spread input (convert from decimal to percentage) / 更新价差输入（从小数转换为百分比）
+                    if (config.spread !== undefined) {
+                        const spreadInput = document.getElementById('spreadInput');
+                        if (spreadInput) {
+                            spreadInput.value = (config.spread * 100).toFixed(2);
+                        }
+                    }
+                    // Update quantity input / 更新数量输入
+                    if (config.quantity !== undefined) {
+                        const quantityInput = document.getElementById('quantityInput');
+                        if (quantityInput) {
+                            quantityInput.value = config.quantity;
+                        }
+                    }
+                    // Update leverage input / 更新杠杆输入
+                    if (config.leverage !== undefined) {
+                        const leverageInput = document.getElementById('leverageInput');
+                        if (leverageInput) {
+                            leverageInput.value = config.leverage;
+                        }
+                    }
                 }
-                showMessage(controlMessage, 'Applied evaluation proposal. / 已应用评估建议。');
-                loadStatus();
+                
+                showMessage(controlMessage, data.message || 'Applied evaluation proposal. / 已应用评估建议。');
+                loadStatus(); // Also refresh status to ensure consistency / 同时刷新状态以确保一致性
             } catch (err) {
-                displayError(err, errorBox);
                 showMessage(controlMessage, err.message || 'Failed to apply proposal / 应用建议失败', true);
             }
         }
 
         async function startBotWithLLMSuggestion() {
-            const errorBox = document.getElementById('evaluationErrorBox');
-            clearError(errorBox);
-            
             try {
                 await applyEvaluation('consensus');
                 const res = await diagnosticFetch('/api/control?action=start', {
                     method: 'POST',
                 });
                 const data = await res.json();
-                if (data.error || !data.ok) {
-                    handleApiError(data, errorBox);
-                    return;
-                }
+                if (data.error) throw new Error(data.error);
                 showMessage(controlMessage, '✅ Bot started with LLM suggestion! / Bot 已使用 LLM 建议启动！');
+                updateBotControlButtons(true); // Update button states / 更新按钮状态
                 setTimeout(refreshOrders, 1000);
             } catch (err) {
-                displayError(err, errorBox);
                 showMessage(controlMessage, err.message || 'Failed to start bot / 启动 Bot 失败', true);
             }
         }
 
-        async function refreshOrders() {
-            // Request deduplication / 请求去重
-            if (isRefreshingOrders) {
-                return;
+        async function stopBot() {
+            try {
+                const res = await diagnosticFetch('/api/control?action=stop', {
+                    method: 'POST',
+                });
+                const data = await res.json();
+                if (data.error) throw new Error(data.error);
+                showMessage(controlMessage, '✅ Bot stopped. / Bot 已停止。');
+                updateBotControlButtons(false); // Update button states / 更新按钮状态
+                setTimeout(refreshOrders, 1000);
+            } catch (err) {
+                showMessage(controlMessage, err.message || 'Failed to stop bot / 停止 Bot 失败', true);
             }
-            isRefreshingOrders = true;
+        }
+
+        // Update bot control buttons based on bot status / 根据 bot 状态更新控制按钮
+        function updateBotControlButtons(isRunning) {
+            const startBtn = document.getElementById('startBotBtn');
+            const stopBtn = document.getElementById('stopBotBtn');
             
-            const errorBox = document.getElementById('evaluationErrorBox');
-            clearError(errorBox);
+            if (isRunning) {
+                // Bot is running: show stop button, hide start button / Bot 正在运行：显示停止按钮，隐藏启动按钮
+                if (startBtn) startBtn.style.display = 'none';
+                if (stopBtn) stopBtn.style.display = 'flex';
+            } else {
+                // Bot is stopped: show start button, hide stop button / Bot 已停止：显示启动按钮，隐藏停止按钮
+                if (startBtn) startBtn.style.display = 'flex';
+                if (stopBtn) stopBtn.style.display = 'none';
+            }
+        }
+
+        // Initialize button state on page load (default to stopped) / 页面加载时初始化按钮状态（默认为停止）
+        function initializeBotButtons() {
+            // Default to showing start button if status check fails / 如果状态检查失败，默认显示启动按钮
+            const startBtn = document.getElementById('startBotBtn');
+            if (startBtn && startBtn.style.display === 'none' && !document.getElementById('stopBotBtn')?.style.display) {
+                startBtn.style.display = 'flex';
+            }
+        }
+
+        async function refreshOrders() {
+            // Prevent duplicate requests / 防止重复请求
+            if (isRefreshingOrders) return;
+            isRefreshingOrders = true;
             
             try {
                 const statusEl = document.getElementById('ordersStatusText');
@@ -928,90 +1747,117 @@
                 const tableBody = document.getElementById('ordersTableBody');
                 const emptyMessage = document.getElementById('ordersEmptyMessage');
                 
-                statusEl.innerText = 'Loading orders... / 正在加载订单...';
+                if (statusEl) {
+                    statusEl.innerText = 'Loading orders... / 正在加载订单...';
+                    statusEl.classList.remove('error');
+                }
                 
+                // Get Hyperliquid-specific status / 获取 Hyperliquid 特定状态
                 const res = await diagnosticFetch('/api/hyperliquid/status');
+                if (!res.ok) {
+                    throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+                }
                 const data = await res.json();
                 
-                if (data.error || !data.ok) {
-                    handleApiError(data, errorBox);
+                if (data.error) {
+                    if (tableWrapper) tableWrapper.style.display = 'none';
+                    if (emptyMessage) emptyMessage.style.display = 'block';
+                    if (statusEl) {
+                        statusEl.innerText = data.error;
+                        statusEl.classList.add('error');
+                    }
                     return;
                 }
                 
                 const orders = data.orders || [];
                 
                 if (orders.length === 0) {
-                    tableWrapper.style.display = 'none';
-                    emptyMessage.style.display = 'block';
-                    statusEl.innerText = 'No active orders / 无活跃订单';
+                    if (tableWrapper) tableWrapper.style.display = 'none';
+                    if (emptyMessage) emptyMessage.style.display = 'block';
+                    if (statusEl) {
+                        statusEl.innerText = 'No active orders / 无活跃订单';
+                        statusEl.classList.remove('error');
+                    }
                 } else {
-                    tableWrapper.style.display = 'block';
-                    emptyMessage.style.display = 'none';
-                    statusEl.innerText = `Found ${orders.length} active order(s) / 找到 ${orders.length} 个活跃订单`;
+                    if (tableWrapper) tableWrapper.style.display = 'block';
+                    if (emptyMessage) emptyMessage.style.display = 'none';
+                    if (statusEl) {
+                        statusEl.innerText = `Found ${orders.length} active order(s) / 找到 ${orders.length} 个活跃订单`;
+                        statusEl.classList.remove('error');
+                    }
                     
-                    const rows = orders.map(order => {
-                        const orderId = order.id || order.orderId || '--';
-                        const side = order.side || '--';
-                        const price = formatNumber(order.price || 0, 4);
-                        const quantity = formatNumber(order.amount || order.quantity || 0, 4);
-                        const status = order.status || 'open';
-                        const timestamp = order.timestamp ? new Date(order.timestamp).toLocaleTimeString() : '--';
+                    if (tableBody) {
+                        const rows = orders.map(order => {
+                            const orderId = order.id || order.orderId || order.oid || '--';
+                            const side = order.side || (order.sz > 0 ? 'BUY' : 'SELL') || '--';
+                            const price = formatNumber(order.price || order.limitPx || 0, 4);
+                            const quantity = formatNumber(Math.abs(order.amount || order.sz || order.quantity || 0), 4);
+                            const status = order.status || order.status || 'open';
+                            const timestamp = order.timestamp ? new Date(order.timestamp).toLocaleTimeString() : '--';
+                            
+                            const sideColor = side.toLowerCase() === 'buy' ? '#22c55e' : '#ef4444';
+                            const safeOrderId = String(orderId).replace(/'/g, "\\'");
+                            
+                            return `
+                                <tr>
+                                    <td style="font-family:monospace; font-size:11px;">${String(orderId).substring(0, 20)}${String(orderId).length > 20 ? '...' : ''}</td>
+                                    <td><span style="color:${sideColor}; font-weight:bold;">${side.toUpperCase()}</span></td>
+                                    <td>${price}</td>
+                                    <td>${quantity}</td>
+                                    <td><span style="padding:2px 6px; border-radius:4px; background:#e5e7eb; font-size:11px;">${status}</span></td>
+                                    <td style="font-size:11px; color:#6b7280;">${timestamp}</td>
+                                    <td><button class="btn btn-danger" style="font-size:11px; padding:4px 8px;" onclick="cancelOrder('${safeOrderId}')">Cancel</button></td>
+                                </tr>`;
+                        }).join('');
                         
-                        const sideColor = side.toLowerCase() === 'buy' ? '#22c55e' : '#ef4444';
-                        
-                        return `
-                            <tr>
-                                <td style="font-family:monospace; font-size:11px;">${orderId.substring(0, 20)}${orderId.length > 20 ? '...' : ''}</td>
-                                <td><span style="color:${sideColor}; font-weight:bold;">${side.toUpperCase()}</span></td>
-                                <td>${price}</td>
-                                <td>${quantity}</td>
-                                <td><span style="padding:2px 6px; border-radius:4px; background:#e5e7eb; font-size:11px;">${status}</span></td>
-                                <td style="font-size:11px; color:#6b7280;">${timestamp}</td>
-                                <td><button class="btn btn-danger" style="font-size:11px; padding:4px 8px;" onclick="cancelOrder('${orderId}')">Cancel</button></td>
-                            </tr>`;
-                    }).join('');
-                    
-                    tableBody.innerHTML = rows;
+                        tableBody.innerHTML = rows;
+                    }
                 }
             } catch (err) {
-                displayError(err, errorBox);
                 const statusEl = document.getElementById('ordersStatusText');
-                statusEl.innerText = `Error loading orders: ${err.message} / 加载订单错误: ${err.message}`;
-                statusEl.classList.add('error');
+                if (statusEl) {
+                    statusEl.innerText = `Error loading orders: ${err.message} / 加载订单错误: ${err.message}`;
+                    statusEl.classList.add('error');
+                }
+                const tableWrapper = document.getElementById('ordersTableWrapper');
+                const emptyMessage = document.getElementById('ordersEmptyMessage');
+                if (tableWrapper) tableWrapper.style.display = 'none';
+                if (emptyMessage) emptyMessage.style.display = 'block';
             } finally {
                 isRefreshingOrders = false;
             }
         }
 
         async function cancelOrder(orderId) {
-            const errorBox = document.getElementById('evaluationErrorBox');
-            clearError(errorBox);
-            
             try {
+                if (!orderId || orderId === '--') {
+                    showMessage(controlMessage, 'Invalid order ID / 无效的订单 ID', true);
+                    return;
+                }
+                
+                // Use Hyperliquid-specific cancel order endpoint / 使用 Hyperliquid 特定取消订单端点
                 const res = await diagnosticFetch('/api/hyperliquid/cancel-order', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ order_id: orderId }),
+                    body: JSON.stringify(orderId),
                 });
                 const data = await res.json();
-                if (data.error || !data.ok) {
-                    handleApiError(data, errorBox);
-                    return;
+                
+                if (data.error) {
+                    throw new Error(data.error);
                 }
-                showMessage(controlMessage, 'Order cancelled successfully. / 订单已成功取消。');
+                
+                showMessage(controlMessage, data.message || `Order ${orderId} canceled / 订单 ${orderId} 已取消`);
+                
+                // Refresh orders after cancellation / 取消后刷新订单
                 setTimeout(refreshOrders, 500);
             } catch (err) {
-                displayError(err, errorBox);
                 showMessage(controlMessage, err.message || 'Failed to cancel order / 取消订单失败', true);
             }
         }
 
-        // Request deduplication flags / 请求去重标志
-        let isRefreshingOrders = false;
-        let isRefreshingPosition = false;
-        let isCheckingConnection = false;
-        
-        // Auto-refresh
+        // Auto-refresh - Track intervals for cleanup
+        // 自动刷新 - 跟踪间隔以便清理
         let ordersRefreshInterval = null;
         let positionRefreshInterval = null;
         let connectionRefreshInterval = null;
@@ -1021,84 +1867,75 @@
             if (positionRefreshInterval) clearInterval(positionRefreshInterval);
             if (connectionRefreshInterval) clearInterval(connectionRefreshInterval);
             
+            // Initial load
             refreshOrders();
             refreshPosition();
             checkConnection();
             
-            // Increased intervals to reduce API calls and avoid rate limiting
-            // 增加间隔以减少 API 调用并避免速率限制
-            ordersRefreshInterval = setInterval(refreshOrders, 10000);  // 10 seconds instead of 3
-            positionRefreshInterval = setInterval(refreshPosition, 15000);  // 15 seconds instead of 5
-            connectionRefreshInterval = setInterval(checkConnection, 30000);  // 30 seconds instead of 10
-            
-            // Update pair prices periodically / 定期更新交易对价格
-            setInterval(updatePairPrices, 15000);  // Update every 15 seconds / 每 15 秒更新一次
+            // Reduced refresh intervals to avoid rate limiting (429 errors)
+            // 减少刷新间隔以避免速率限制（429 错误）
+            ordersRefreshInterval = setInterval(refreshOrders, 15000);  // 15 seconds (was 3)
+            positionRefreshInterval = setInterval(refreshPosition, 20000);  // 20 seconds (was 5)
+            connectionRefreshInterval = setInterval(checkConnection, 30000);  // 30 seconds (was 10)
         }
 
-        // Update pair prices in dropdown / 更新下拉列表中的交易对价格
-        async function updatePairPrices() {
-            const pairSelect = document.getElementById('pairSelect');
-            if (!pairSelect) return;
-            
-            // Get all symbols from options / 从选项获取所有交易对
-            const symbols = Array.from(pairSelect.options).map(opt => opt.value);
-            
-            try {
-                const symbolsParam = symbols.join(',');
-                const res = await diagnosticFetch(`/api/hyperliquid/prices?symbols=${encodeURIComponent(symbolsParam)}`);
-                const data = await res.json();
-                
-                if (data.error || !data.ok || !data.prices) {
-                    console.warn('Failed to fetch pair prices / 获取交易对价格失败');
-                    return;
-                }
-                
-                // Update prices cache / 更新价格缓存
-                pairPrices = data.prices;
-                
-                // Update option text with prices / 使用价格更新选项文本
-                Array.from(pairSelect.options).forEach(option => {
-                    const symbol = option.value;
-                    const price = pairPrices[symbol];
-                    if (price !== null && price !== undefined) {
-                        const priceStr = `$${price.toFixed(2)}`;
-                        option.textContent = `${symbol} (${priceStr})`;
-                        option.setAttribute('data-price', priceStr);
-                    } else {
-                        // Keep original text if price not available / 如果价格不可用，保持原始文本
-                        if (!option.getAttribute('data-price')) {
-                            option.textContent = symbol;
-                        }
-                    }
-                });
-            } catch (err) {
-                console.error('Error updating pair prices:', err);
+        // Suppress Chrome extension runtime.lastError messages
+        // These errors are caused by browser extensions trying to communicate
+        // and don't affect page functionality
+        // 抑制 Chrome 扩展 runtime.lastError 消息
+        // 这些错误是由浏览器扩展尝试通信引起的，不影响页面功能
+        const originalError = console.error;
+        console.error = function(...args) {
+            // Filter out Chrome extension runtime.lastError messages
+            // 过滤掉 Chrome 扩展 runtime.lastError 消息
+            if (args.length > 0 && typeof args[0] === 'string' && 
+                (args[0].includes('runtime.lastError') || 
+                 args[0].includes('Could not establish connection') ||
+                 args[0].includes('Receiving end does not exist'))) {
+                return; // Suppress this error
             }
+            originalError.apply(console, args);
+        };
+
+        // Initialize checkbox event listeners / 初始化 checkbox 事件监听器
+        function initModelCheckboxes() {
+            const checkboxes = document.querySelectorAll('.llm-model-checkbox');
+            checkboxes.forEach(cb => {
+                cb.addEventListener('change', updateSelectedModelsHint);
+            });
+            updateSelectedModelsHint();
         }
 
         document.addEventListener('DOMContentLoaded', () => {
-            loadStatus();
+            initModelCheckboxes();  // Initialize model selection checkboxes / 初始化模型选择复选框
+            initializeBotButtons(); // Initialize button states / 初始化按钮状态
+            loadStatus(); // This will update button states based on actual bot status / 这将根据实际 bot 状态更新按钮状态
             updateEvaluationUI();
             checkConnection();
             refreshPosition();
             refreshOrders();
-            updatePairPrices(); // Load initial prices / 加载初始价格
             startAutoRefresh();
             
-            // Initialize error history panel / 初始化错误历史面板
+            // Initialize Error History Panel / 初始化错误历史面板
             if (window.ErrorHistoryPanel) {
                 new ErrorHistoryPanel('errorHistoryPanel', {
-                    autoRefresh: true,
-                    refreshInterval: 5000,
-                    showTraceId: true
+                    refreshInterval: 30000, // 30 seconds / 30 秒
+                    autoRefresh: true
                 });
             }
+            
+            // Load initial pair prices in dropdown / 在下拉列表中加载初始交易对价格
+            updateAllPairPrices();
+            
+            // Set up periodic price updates (balanced frequency to avoid excessive API calls) / 设置定期价格更新（平衡频率以避免过多 API 调用）
+            setInterval(updateAllPairPrices, PRICE_UPDATE_INTERVAL);
+            
+            // Also update connection status periodically to refresh selected pair price / 定期更新连接状态以刷新选中交易对价格
+            // This is already handled by checkConnection interval, but we ensure it uses the selected pair / 这已经由 checkConnection 间隔处理，但我们确保它使用选中的交易对
         });
     </script>
 </body>
 
 </html>
-
-
 
 

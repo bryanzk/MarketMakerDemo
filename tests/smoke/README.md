@@ -79,6 +79,27 @@ US-CORE-004-C 冒烟测试：Hyperliquid 仓位与余额追踪
 pytest tests/smoke/test_hyperliquid_positions.py -v
 ```
 
+### `test_hyperliquid_trade_page.py`
+Smoke tests for US-UI-004: Dedicated Hyperliquid Trading Page  
+US-UI-004 冒烟测试：专用 Hyperliquid 交易页面
+
+**Coverage / 覆盖范围:**
+- AC-1: Page route exists and contains Hyperliquid branding / 页面路由存在且包含 Hyperliquid 品牌
+- AC-2: Strategy control panel exists / 策略控制面板存在
+- AC-3: Position and balance panel exists / 仓位与余额面板存在
+- AC-4: LLM evaluation section exists / LLM 评估部分存在
+- AC-5: Order management section exists / 订单管理部分存在
+- AC-7: Navigation links exist / 导航链接存在
+- AC-8: Bilingual text support / 双语文本支持
+- AC-9: Connection status display / 连接状态显示
+- Page structure validation / 页面结构验证
+- Page loads without errors / 页面加载无错误
+
+**Run specific test / 运行特定测试:**
+```bash
+pytest tests/smoke/test_hyperliquid_trade_page.py -v
+```
+
 ### `test_hyperliquid_llm_evaluation.py`
 Smoke tests for US-API-004: Hyperliquid LLM Evaluation Support  
 US-API-004 冒烟测试：Hyperliquid LLM 评估支持

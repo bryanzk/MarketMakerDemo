@@ -13,6 +13,9 @@ import json
 import logging
 import os
 import time
+import uuid
+from collections import deque
+from threading import Lock
 from typing import Dict, List, Optional
 
 import certifi
@@ -27,6 +30,7 @@ from src.shared.config import (
     LEVERAGE,
     SYMBOL,
 )
+from src.shared.tracing import get_trace_id, hash_payload
 
 logger = logging.getLogger(__name__)
 
@@ -69,6 +73,141 @@ class InvalidOrderError(Exception):
     def __init__(self, message: str):
         self.message = message
         super().__init__(message)
+
+
+class RateLimiter:
+    """
+    Rate limiter for Hyperliquid API requests / Hyperliquid API 请求速率限制器
+
+    Implements weight-based rate limiting per Hyperliquid's restrictions:
+    - REST: ~1200 weight per minute per IP
+    实现基于权重的速率限制，符合 Hyperliquid 的限制：
+    - REST：每个 IP 每分钟约 1200 权重
+    """
+
+    def __init__(self, max_weight_per_minute: int = 1200):
+        """
+        Initialize rate limiter / 初始化速率限制器
+
+        Args:
+            max_weight_per_minute: Maximum weight allowed per minute (default: 1200)
+                                  每分钟允许的最大权重（默认：1200）
+        """
+        self.max_weight_per_minute = max_weight_per_minute
+        self.weight_history = (
+            deque()
+        )  # Store (timestamp, weight) tuples / 存储 (时间戳, 权重) 元组
+        self.lock = Lock()
+
+        # Default weights for common endpoints / 常见端点的默认权重
+        # Note: Hyperliquid doesn't publish exact weights, so we use conservative estimates
+        # 注意：Hyperliquid 未发布确切权重，因此我们使用保守估计
+        self.endpoint_weights = {
+            "/info": 1,  # Public info endpoint / 公共信息端点
+            "/exchange": 5,  # Exchange operations (orders, positions) / 交易所操作（订单、仓位）
+            "/l2_snapshot": 2,  # Market data snapshot / 市场数据快照
+            "/candle_snapshot": 3,  # Candle data / K线数据
+        }
+
+    def get_endpoint_weight(self, endpoint: str) -> int:
+        """
+        Get weight for an endpoint / 获取端点的权重
+
+        Args:
+            endpoint: API endpoint path / API 端点路径
+
+        Returns:
+            Weight value (default: 5 for unknown endpoints) / 权重值（未知端点默认：5）
+        """
+        # Check exact match first / 首先检查精确匹配
+        if endpoint in self.endpoint_weights:
+            return self.endpoint_weights[endpoint]
+
+        # Check if endpoint starts with known patterns / 检查端点是否以已知模式开头
+        for pattern, weight in self.endpoint_weights.items():
+            if endpoint.startswith(pattern):
+                return weight
+
+        # Default weight for unknown endpoints (conservative) / 未知端点的默认权重（保守）
+        return 5
+
+    def _cleanup_old_weights(self, current_time: float):
+        """
+        Remove weights older than 1 minute / 删除超过 1 分钟的权重
+
+        Args:
+            current_time: Current timestamp / 当前时间戳
+        """
+        cutoff_time = current_time - 60.0  # 1 minute ago / 1 分钟前
+        while self.weight_history and self.weight_history[0][0] < cutoff_time:
+            self.weight_history.popleft()
+
+    def get_current_weight(self) -> int:
+        """
+        Get total weight used in the last minute / 获取过去 1 分钟内使用的总权重
+
+        Returns:
+            Total weight used / 使用的总权重
+        """
+        with self.lock:
+            current_time = time.time()
+            self._cleanup_old_weights(current_time)
+            return sum(weight for _, weight in self.weight_history)
+
+    def can_make_request(
+        self, endpoint: str, max_wait_time: float = 10.0
+    ) -> tuple[bool, float]:
+        """
+        Check if request can be made without exceeding rate limit / 检查是否可以在不超过速率限制的情况下发出请求
+
+        Args:
+            endpoint: API endpoint path / API 端点路径
+            max_wait_time: Maximum wait time in seconds before returning error (default: 10s)
+                           返回错误前的最大等待时间（秒）（默认：10秒）
+
+        Returns:
+            Tuple of (can_make_request, wait_time_seconds) / （可以发出请求，等待时间（秒））元组
+            If wait_time exceeds max_wait_time, returns (False, -1) to indicate immediate error
+            如果 wait_time 超过 max_wait_time，返回 (False, -1) 表示立即错误
+        """
+        with self.lock:
+            current_time = time.time()
+            self._cleanup_old_weights(current_time)
+
+            weight = self.get_endpoint_weight(endpoint)
+            current_weight = sum(w for _, w in self.weight_history)
+
+            # Check if adding this weight would exceed limit / 检查添加此权重是否会超过限制
+            if current_weight + weight <= self.max_weight_per_minute:
+                return True, 0.0
+
+            # Calculate wait time based on oldest weight / 根据最旧的权重计算等待时间
+            if self.weight_history:
+                oldest_time = self.weight_history[0][0]
+                wait_time = 60.0 - (current_time - oldest_time)
+                wait_time = max(0.0, wait_time)
+
+                # If wait time exceeds max_wait_time, return error immediately
+                # 如果等待时间超过最大等待时间，立即返回错误
+                if wait_time > max_wait_time:
+                    return False, -1.0
+
+                return False, wait_time
+
+            return True, 0.0
+
+    def record_request(self, endpoint: str):
+        """
+        Record a request and its weight / 记录请求及其权重
+
+        Args:
+            endpoint: API endpoint path / API 端点路径
+        """
+        with self.lock:
+            current_time = time.time()
+            weight = self.get_endpoint_weight(endpoint)
+            self.weight_history.append((current_time, weight))
+            self._cleanup_old_weights(current_time)
 
 
 class HyperliquidClient:
@@ -160,9 +299,18 @@ class HyperliquidClient:
         self.session = requests.Session()
         self.session.verify = ca_bundle
 
-        # Retry configuration
-        self.max_retries = 3
-        self.retry_delays = [1, 2, 4]  # Exponential backoff: 1s, 2s, 4s
+        # Network timeouts and retry config tuned to return quickly for UI health checks
+        # 网络超时和重试配置，避免阻塞前端健康检查
+        self.request_timeout = (
+            15  # seconds - increased for order placement / 秒 - 增加超时时间以支持下单
+        )
+        self.max_retries = 2
+        self.retry_delays = [1, 2, 3]  # Backoff between attempts / 尝试间的退避时间
+
+        # Rate limiter for API requests / API 请求速率限制器
+        # Hyperliquid REST API limit: ~1200 weight per minute per IP
+        # Hyperliquid REST API 限制：每个 IP 每分钟约 1200 权重
+        self.rate_limiter = RateLimiter(max_weight_per_minute=1200)
 
         # Connect and authenticate
         # Note: Use requests module directly for test compatibility
@@ -204,7 +352,7 @@ class HyperliquidClient:
                     url,
                     headers=headers,
                     json={"type": "meta"},
-                    timeout=10,
+                    timeout=self.request_timeout,
                     verify=self.session.verify,
                 )
 
@@ -224,7 +372,7 @@ class HyperliquidClient:
                     auth_url,
                     headers=headers,
                     json={},
-                    timeout=10,
+                    timeout=self.request_timeout,
                     verify=self.session.verify,
                 )
 
@@ -281,14 +429,13 @@ class HyperliquidClient:
                     logger.info(f"Retrying in {delay}s...")
                     time.sleep(delay)
                 else:
+                    # Keep error message concise - details will be in error response details field
+                    # 保持错误消息简洁 - 详细信息将在错误响应的 details 字段中
                     error_msg = (
                         f"Failed to connect to Hyperliquid API after {max_retries} attempts. "
-                        f"Network error: {str(e)}. "
-                        f"Base URL: {self.base_url}. "
-                        f"连接 Hyperliquid API 失败，已重试 {max_retries} 次。网络错误: {str(e)}。"
-                        f"基础 URL: {self.base_url}。"
+                        f"Base URL: {self.base_url}."
                     )
-                    logger.error(error_msg)
+                    logger.error(f"{error_msg} Network error: {str(e)}")
                     raise ConnectionError(error_msg) from e
             except RequestException as e:
                 # Check if it's an HTTP error with 401 status
@@ -331,18 +478,18 @@ class HyperliquidClient:
                     logger.info(f"Retrying in {delay}s...")
                     time.sleep(delay)
                 else:
+                    # Keep error message concise - details will be in error response details field
+                    # 保持错误消息简洁 - 详细信息将在错误响应的 details 字段中
+                    error_msg = (
+                        f"Failed to connect to Hyperliquid API after {max_retries} attempts. "
+                        f"Base URL: {self.base_url}."
+                    )
                     error_details = f"Base URL: {self.base_url}"
                     if status_code:
                         error_details += f", Status Code: {status_code}"
                     if response_text:
                         error_details += f", Response: {response_text[:200]}"
-
-                    error_msg = (
-                        f"Failed to connect to Hyperliquid API after {max_retries} attempts. "
-                        f"Error: {str(e)}. {error_details}. "
-                        f"连接 Hyperliquid API 失败，已重试 {max_retries} 次。错误: {str(e)}。{error_details}。"
-                    )
-                    logger.error(error_msg)
+                    logger.error(f"{error_msg} Error: {str(e)}. {error_details}")
                     raise ConnectionError(error_msg) from e
             except Exception as e:
                 # Check if it's an HTTP error with 401 status
@@ -376,21 +523,20 @@ class HyperliquidClient:
                     logger.info(f"Retrying in {delay}s...")
                     time.sleep(delay)
                 else:
+                    # Keep error message concise - details will be in error response details field
+                    # 保持错误消息简洁 - 详细信息将在错误响应的 details 字段中
                     error_msg = (
-                        f"Unexpected error connecting to Hyperliquid API: {type(e).__name__}: {str(e)}. "
-                        f"Base URL: {self.base_url}. "
-                        f"连接 Hyperliquid API 时发生意外错误: {type(e).__name__}: {str(e)}。"
-                        f"基础 URL: {self.base_url}。"
+                        f"Unexpected error connecting to Hyperliquid API: {type(e).__name__}. "
+                        f"Base URL: {self.base_url}."
                     )
-                    logger.error(error_msg, exc_info=True)
+                    logger.error(f"{error_msg} Error: {str(e)}", exc_info=True)
                     raise ConnectionError(error_msg) from e
 
         # If we get here, all retries failed (should not reach here due to raises above)
         # 如果到达这里，所有重试都失败了（由于上面的 raise，不应该到达这里）
         error_msg = (
             f"Failed to connect to Hyperliquid API after {max_retries} attempts. "
-            f"Base URL: {self.base_url}. "
-            f"连接 Hyperliquid API 失败，已重试 {max_retries} 次。基础 URL: {self.base_url}。"
+            f"Base URL: {self.base_url}."
         )
         logger.error(error_msg)
         raise ConnectionError(error_msg)
@@ -401,7 +547,7 @@ class HyperliquidClient:
         endpoint: str,
         data: Optional[Dict] = None,
         public: bool = False,
-        max_retries: int = 2,
+        max_retries: int = 1,
     ) -> Optional[Dict]:
         """
         Make HTTP request to Hyperliquid API with retry logic for rate limits.
@@ -412,12 +558,24 @@ class HyperliquidClient:
             endpoint: API endpoint path
             data: Request data (for POST requests)
             public: Whether this is a public endpoint (no auth required)
-            max_retries: Maximum number of retries for rate limit errors (default: 2)
+            max_retries: Maximum number of retries for rate limit errors (default: 1)
 
         Returns:
             Response data as dictionary, or None on error
         """
         url = f"{self.base_url}{endpoint}"
+        req_id = f"hl-{uuid.uuid4().hex[:8]}"
+        payload_hash = hash_payload(data) if data is not None else None
+
+        request_meta = {
+            "trace_id": get_trace_id(),
+            "req_id": req_id,
+            "endpoint": endpoint,
+            "method": method.upper(),
+            "symbol": getattr(self, "symbol", None),
+            "payload_hash": payload_hash,
+            "base_url": self.base_url,
+        }
 
         headers = {"Content-Type": "application/json"}
 
@@ -444,23 +602,59 @@ class HyperliquidClient:
         except (ImportError, AttributeError):
             is_mocked = False
 
+        # Check rate limit before making request / 在发出请求前检查速率限制
+        # Use max_wait_time of 10 seconds to avoid long blocking / 使用最大等待时间 10 秒以避免长时间阻塞
+        can_request, wait_time = self.rate_limiter.can_make_request(
+            endpoint, max_wait_time=10.0
+        )
+        if not can_request:
+            if wait_time < 0:
+                # Wait time exceeds threshold, return error immediately / 等待时间超过阈值，立即返回错误
+                current_weight = self.rate_limiter.get_current_weight()
+                error_msg = (
+                    f"Rate limit exceeded. Current weight: {current_weight}/{self.rate_limiter.max_weight_per_minute}. "
+                    f"Please wait before making more requests. "
+                    f"速率限制已超出。当前权重: {current_weight}/{self.rate_limiter.max_weight_per_minute}。"
+                    f"请等待后再发出更多请求。"
+                )
+                logger.warning(f"Rate limit exceeded for {endpoint}: {error_msg}")
+                raise ConnectionError(error_msg)
+
+            logger.warning(
+                f"Rate limit approaching. Waiting {wait_time:.1f}s before request to {endpoint}. "
+                f"当前权重: {self.rate_limiter.get_current_weight()}/{self.rate_limiter.max_weight_per_minute}. "
+                f"速率限制接近。等待 {wait_time:.1f} 秒后再请求 {endpoint}。"
+            )
+            time.sleep(wait_time)
+
         # Retry logic for rate limit errors / 速率限制错误的重试逻辑
         for attempt in range(max_retries + 1):
             try:
+                start_time = time.time()
                 if method.upper() == "GET":
                     if is_mocked:
-                        response = requests.get(url, headers=headers, timeout=10)
+                        response = requests.get(
+                            url, headers=headers, timeout=self.request_timeout
+                        )
                     else:
-                        response = self.session.get(url, headers=headers, timeout=10)
+                        response = self.session.get(
+                            url, headers=headers, timeout=self.request_timeout
+                        )
                 elif method.upper() == "POST":
                     if is_mocked:
                         # In test environment, use requests.post directly
                         response = requests.post(
-                            url, headers=headers, json=data, timeout=10
+                            url,
+                            headers=headers,
+                            json=data,
+                            timeout=self.request_timeout,
                         )
                     else:
                         response = self.session.post(
-                            url, headers=headers, json=data, timeout=10
+                            url,
+                            headers=headers,
+                            json=data,
+                            timeout=self.request_timeout,
                         )
                 else:
                     raise ValueError(f"Unsupported HTTP method: {method}")
@@ -469,19 +663,39 @@ class HyperliquidClient:
                 self.last_successful_call = time.time()
                 self.is_connected = True
 
+                # Record successful request for rate limiting / 记录成功请求以进行速率限制
+                self.rate_limiter.record_request(endpoint)
+
+                latency_ms = int((time.time() - start_time) * 1000)
+                logger.info(
+                    "Hyperliquid request succeeded",
+                    extra={
+                        **request_meta,
+                        "status_code": response.status_code,
+                        "latency_ms": latency_ms,
+                        "attempt": attempt,
+                    },
+                )
+
                 if response.content:
                     return response.json()
                 return {"status": "ok"}
 
             except requests.exceptions.HTTPError as e:
-                if e.response.status_code == 401:
+                latency_ms = int((time.time() - start_time) * 1000)
+                status_code = (
+                    e.response.status_code
+                    if hasattr(e, "response") and e.response
+                    else None
+                )
+                if status_code == 401:
                     error_msg = (
                         f"Authentication failed. Invalid API credentials. "
                         f"Error: {str(e)}. "
                         f"认证失败。无效的 API 凭证。错误: {str(e)}。"
                     )
                     raise AuthenticationError(error_msg) from e
-                elif e.response.status_code == 429:
+                elif status_code == 429:
                     # Rate limit exceeded - retry with backoff / 超出速率限制 - 使用退避重试
                     retry_after = (
                         60  # Default retry delay in seconds / 默认重试延迟（秒）
@@ -497,6 +711,19 @@ class HyperliquidClient:
                             retry_after = int(e.response.headers["Retry-After"])
                         except (ValueError, TypeError):
                             pass
+                    # Cap wait time to keep HTTP handlers responsive / 限制等待时间，保持 HTTP 处理快速响应
+                    retry_after = min(retry_after, 5)
+
+                    logger.warning(
+                        "Hyperliquid request rate limited",
+                        extra={
+                            **request_meta,
+                            "status_code": status_code,
+                            "latency_ms": latency_ms,
+                            "attempt": attempt,
+                            "retry_after": retry_after,
+                        },
+                    )
 
                     # Store rate limit error for API endpoints to return quickly
                     # 存储速率限制错误，以便 API 端点快速返回
@@ -524,14 +751,115 @@ class HyperliquidClient:
                             f"Retry after {retry_after}s. "
                             f"速率限制已超出 (429) {endpoint}。{retry_after} 秒后重试。"
                         ) from e
+                elif status_code == 422:
+                    # Unprocessable Entity - usually means invalid request format or parameters
+                    # 无法处理的实体 - 通常意味着请求格式或参数无效
+                    error_detail = "Unknown error"
+                    try:
+                        if hasattr(e, "response") and e.response:
+                            response_text = e.response.text
+                            try:
+                                error_json = e.response.json()
+                                error_detail = str(error_json)
+                            except (ValueError, AttributeError):
+                                error_detail = response_text[
+                                    :500
+                                ]  # Limit length / 限制长度
+                    except Exception:
+                        error_detail = str(e)
+
+                    error_msg = (
+                        f"Invalid request (422) for {endpoint}: {error_detail}. "
+                        f"请求无效 (422) {endpoint}: {error_detail}。"
+                    )
+
+                    self.last_api_error = {
+                        "type": "invalid_request",
+                        "message": error_msg,
+                        "status_code": 422,
+                        "error_detail": error_detail,
+                    }
+
+                    logger.error(
+                        f"Hyperliquid invalid request (422) for {endpoint}",
+                        extra={
+                            **request_meta,
+                            "status_code": status_code,
+                            "latency_ms": latency_ms,
+                            "attempt": attempt,
+                            "error_detail": error_detail,
+                            "request_data": (
+                                str(data)[:500] if data else None
+                            ),  # Log request data for debugging / 记录请求数据以便调试
+                        },
+                    )
+
+                    # Don't retry 422 errors as they indicate a problem with the request itself
+                    # 不重试 422 错误，因为它们表示请求本身有问题
+                    return None
                 else:
                     # Other HTTP errors - return None / 其他 HTTP 错误 - 返回 None
+                    error_detail = "Unknown error"
+                    try:
+                        if hasattr(e, "response") and e.response:
+                            response_text = e.response.text
+                            try:
+                                error_json = e.response.json()
+                                error_detail = str(error_json)
+                            except (ValueError, AttributeError):
+                                error_detail = response_text[
+                                    :500
+                                ]  # Limit length / 限制长度
+                    except Exception:
+                        error_detail = str(e)
+
                     self.last_api_error = {
                         "type": "http_error",
-                        "message": f"HTTP error: {str(e)}",
-                        "status_code": e.response.status_code,
+                        "message": f"HTTP error ({status_code}): {error_detail}",
+                        "status_code": status_code,
+                        "error_detail": error_detail,
                     }
-                    logger.error(f"HTTP error: {e}")
+                    logger.error(
+                        "Hyperliquid HTTP error",
+                        exc_info=True,
+                        extra={
+                            **request_meta,
+                            "status_code": status_code,
+                            "latency_ms": latency_ms,
+                            "attempt": attempt,
+                            "error_detail": error_detail,
+                        },
+                    )
+                    return None
+            except requests.exceptions.Timeout as e:
+                # Handle timeout specifically / 专门处理超时
+                self.is_connected = False
+                self.last_api_error = {
+                    "type": "timeout_error",
+                    "message": f"Request timeout after {self.request_timeout}s: {str(e)}",
+                }
+                logger.warning(
+                    f"Request timeout for {endpoint} (attempt {attempt + 1}/{max_retries + 1}): {e}",
+                    extra={
+                        **request_meta,
+                        "status_code": None,
+                        "latency_ms": int((time.time() - start_time) * 1000),
+                        "attempt": attempt,
+                    },
+                )
+                # Retry if we haven't exceeded max retries / 如果未超过最大重试次数则重试
+                if attempt < max_retries:
+                    retry_delay = self.retry_delays[
+                        min(attempt, len(self.retry_delays) - 1)
+                    ]
+                    logger.info(f"Retrying after {retry_delay}s...")
+                    time.sleep(retry_delay)
+                    continue
+                else:
+                    # Return None after max retries / 达到最大重试次数后返回 None
+                    logger.error(
+                        f"Request timeout after {max_retries + 1} attempts for {endpoint}"
+                    )
                     return None
             except RequestsConnectionError as e:
                 self.is_connected = False
@@ -539,15 +867,53 @@ class HyperliquidClient:
                     "type": "connection_error",
                     "message": f"Connection error: {str(e)}",
                 }
-                logger.error(f"Connection error: {e}")
-                raise ConnectionError(f"Connection failed: {str(e)}") from e
+                logger.error(
+                    "Connection error during Hyperliquid request",
+                    exc_info=True,
+                    extra={
+                        **request_meta,
+                        "status_code": None,
+                        "latency_ms": int((time.time() - start_time) * 1000),
+                        "attempt": attempt,
+                    },
+                )
+                # Retry connection errors if we haven't exceeded max retries / 如果未超过最大重试次数则重试连接错误
+                if attempt < max_retries:
+                    retry_delay = self.retry_delays[
+                        min(attempt, len(self.retry_delays) - 1)
+                    ]
+                    logger.info(f"Retrying connection after {retry_delay}s...")
+                    time.sleep(retry_delay)
+                    continue
+                else:
+                    raise ConnectionError(f"Connection failed: {str(e)}") from e
             except Exception as e:
                 self.last_api_error = {
                     "type": "unknown_error",
                     "message": f"Unexpected error: {str(e)}",
                 }
-                logger.error(f"Unexpected error: {e}")
-                return None
+                logger.error(
+                    "Unexpected error during Hyperliquid request",
+                    exc_info=True,
+                    extra={
+                        **request_meta,
+                        "status_code": None,
+                        "latency_ms": int((time.time() - start_time) * 1000),
+                        "attempt": attempt,
+                    },
+                )
+                # Retry unknown errors if we haven't exceeded max retries / 如果未超过最大重试次数则重试未知错误
+                if attempt < max_retries:
+                    retry_delay = self.retry_delays[
+                        min(attempt, len(self.retry_delays) - 1)
+                    ]
+                    logger.info(
+                        f"Retrying after {retry_delay}s due to unexpected error..."
+                    )
+                    time.sleep(retry_delay)
+                    continue
+                else:
+                    return None
 
         # If we get here, all retries failed / 如果到达这里，所有重试都失败了
         return None
@@ -690,9 +1056,25 @@ class HyperliquidClient:
             )
 
             if not response:
-                logger.warning(
-                    "No response when fetching market data / 获取市场数据时无响应"
-                )
+                # Check if rate limit error occurred / 检查是否发生速率限制错误
+                if hasattr(self, "last_api_error") and self.last_api_error:
+                    error_type = self.last_api_error.get("type", "unknown")
+                    if error_type == "rate_limit":
+                        logger.warning(
+                            f"Rate limit when fetching market data for {coin}. "
+                            f"Current weight: {self.rate_limiter.get_current_weight()}/{self.rate_limiter.max_weight_per_minute}. "
+                            f"获取 {coin} 市场数据时速率限制。"
+                            f"当前权重: {self.rate_limiter.get_current_weight()}/{self.rate_limiter.max_weight_per_minute}。"
+                        )
+                    else:
+                        logger.warning(
+                            f"No response when fetching market data for {coin}: {self.last_api_error.get('message', 'Unknown error')} / "
+                            f"获取 {coin} 市场数据时无响应: {self.last_api_error.get('message', '未知错误')}"
+                        )
+                else:
+                    logger.warning(
+                        f"No response when fetching market data for {coin} / 获取 {coin} 市场数据时无响应"
+                    )
                 return None
 
             # Parse orderbook response
@@ -1487,6 +1869,22 @@ class HyperliquidClient:
         self.last_order_error = None
 
         for order in orders:
+            order_req_id = f"hl-order-{uuid.uuid4().hex[:8]}"
+            order_snapshot = {
+                "side": order.get("side"),
+                "type": order.get("type"),
+                "price": order.get("price"),
+                "quantity": order.get("quantity"),
+            }
+            logger.info(
+                "Placing Hyperliquid order",
+                extra={
+                    "trace_id": get_trace_id(),
+                    "order_req_id": order_req_id,
+                    "symbol": self.symbol,
+                    **order_snapshot,
+                },
+            )
             try:
                 # Validate order
                 validation_error = self._validate_order(order)
@@ -1496,32 +1894,66 @@ class HyperliquidClient:
                         "type": "invalid_order",
                         "message": validation_error,
                         "symbol": self.symbol,
-                        "order": order,
+                        "order": order_snapshot,
+                        "order_req_id": order_req_id,
                     }
                     continue
 
                 # Build order payload
                 order_payload = self._build_order_payload(order)
 
-                # Make API request
+                # Make API request with increased retries for order placement
+                # 下单时增加重试次数以提高成功率
                 response = self._make_request(
                     method="POST",
                     endpoint="/exchange",
                     data=order_payload,
                     public=False,
+                    max_retries=3,  # Increased retries for order placement / 增加下单重试次数
                 )
 
                 if not response:
-                    error_msg = (
-                        f"Failed to place order: No response from API. "
-                        f"下单失败：API 无响应。"
+                    # Get detailed error from last_api_error if available / 如果可用，从 last_api_error 获取详细错误
+                    api_error = self.last_api_error or {}
+                    error_detail = api_error.get(
+                        "error_detail", api_error.get("message", "Unknown error")
                     )
-                    logger.error(error_msg)
+                    status_code = api_error.get("status_code", "Unknown")
+
+                    if status_code == 422:
+                        error_msg = (
+                            f"Failed to place order: Invalid request (422). "
+                            f"Error: {error_detail}. "
+                            f"下单失败：请求无效 (422)。错误: {error_detail}。"
+                        )
+                        error_type = "invalid_request"
+                    else:
+                        error_msg = (
+                            f"Failed to place order: No response from API (HTTP {status_code}). "
+                            f"Error: {error_detail}. "
+                            f"下单失败：API 无响应 (HTTP {status_code})。错误: {error_detail}。"
+                        )
+                        error_type = "network_error"
+
+                    logger.error(
+                        error_msg,
+                        extra={
+                            "trace_id": get_trace_id(),
+                            "order_req_id": order_req_id,
+                            "symbol": self.symbol,
+                            "order": order_snapshot,
+                            "order_payload": order_payload,
+                            "api_error": api_error,
+                        },
+                    )
                     self.last_order_error = {
-                        "type": "network_error",
+                        "type": error_type,
                         "message": error_msg,
                         "symbol": self.symbol,
-                        "order": order,
+                        "order": order_snapshot,
+                        "order_req_id": order_req_id,
+                        "order_payload": order_payload,
+                        "api_error": api_error,
                     }
                     continue
 
@@ -1536,7 +1968,13 @@ class HyperliquidClient:
                     logger.info(
                         f"Placed {side} {order_type} order: "
                         f"price={price if order_type == 'limit' else 'market'}, "
-                        f"qty={quantity}"
+                        f"qty={quantity}",
+                        extra={
+                            "trace_id": get_trace_id(),
+                            "order_req_id": order_req_id,
+                            "symbol": self.symbol,
+                            "order_id": order_result.get("order_id"),
+                        },
                     )
                     self.last_order_error = None
                 else:
@@ -1557,13 +1995,13 @@ class HyperliquidClient:
                         raise InvalidOrderError(error_msg)
 
             except InsufficientBalanceError as e:
-                self._handle_order_error(e, order, "insufficient_funds")
+                self._handle_order_error(e, order_snapshot, "insufficient_funds")
                 continue
             except InvalidOrderError as e:
-                self._handle_order_error(e, order, "invalid_order")
+                self._handle_order_error(e, order_snapshot, "invalid_order")
                 continue
             except Exception as e:
-                self._handle_order_error(e, order, "unknown_error")
+                self._handle_order_error(e, order_snapshot, "unknown_error")
                 continue
 
         return created_orders
@@ -2091,12 +2529,17 @@ class HyperliquidClient:
                 f"下单时发生意外错误: {error_msg}。"
             )
 
-        logger.error(error_msg, exc_info=(error_type == "unknown_error"))
+        logger.error(
+            error_msg,
+            exc_info=(error_type == "unknown_error"),
+            extra={"trace_id": get_trace_id(), "symbol": self.symbol, **order},
+        )
         self.last_order_error = {
             "type": error_type,
             "message": error_msg,
             "symbol": self.symbol,
             "order": order,
+            "trace_id": get_trace_id(),
         }
 
     def _convert_hyperliquid_order_to_internal(self, order_data: Dict) -> Dict:

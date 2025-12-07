@@ -23,7 +23,6 @@ import requests
 from requests.exceptions import ConnectionError as RequestsConnectionError
 from requests.exceptions import RequestException
 
-from src.shared.tracing import get_trace_id, hash_payload
 from src.shared.config import (
     HYPERLIQUID_API_KEY,
     HYPERLIQUID_API_SECRET,
@@ -31,6 +30,7 @@ from src.shared.config import (
     LEVERAGE,
     SYMBOL,
 )
+from src.shared.tracing import get_trace_id, hash_payload
 
 logger = logging.getLogger(__name__)
 

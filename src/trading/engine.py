@@ -15,7 +15,7 @@ from typing import Any, Dict, Optional
 from src.ai.agents.data import DataAgent
 from src.ai.agents.quant import QuantAgent
 from src.ai.agents.risk import RiskAgent
-from src.shared.config import STRATEGY_TYPE, SYMBOL, HYPERLIQUID_ONLY
+from src.shared.config import HYPERLIQUID_ONLY, STRATEGY_TYPE, SYMBOL
 from src.shared.logger import setup_logger
 from src.shared.tracing import get_trace_id
 from src.trading.exchange import BinanceClient

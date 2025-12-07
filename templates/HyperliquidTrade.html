@@ -479,7 +479,7 @@
                     <button class="btn btn-success" style="flex:1;"
                         onclick="applyEvaluation('consensus')">Apply Consensus / 应用共识</button>
                     <button id="startBotBtn" class="btn btn-primary" style="flex:1; display:none;"
-                        onclick="startBotWithLLMSuggestion()">🚀 Start Bot / 启动机器人</button>
+                        onclick="startBot()">🚀 Start Bot / 启动机器人</button>
                     <button id="stopBotBtn" class="btn btn-danger" style="flex:1; display:none;"
                         onclick="stopBot()">⏹ Stop Bot / 停止机器人</button>
                 </div>
@@ -1680,6 +1680,24 @@
             }
         }
 
+        // Start bot with current control panel parameters / 使用当前控制面板参数启动 bot
+        async function startBot() {
+            try {
+                // Start bot directly without applying LLM suggestions / 直接启动 bot，不应用 LLM 建议
+                const res = await diagnosticFetch('/api/control?action=start', {
+                    method: 'POST',
+                });
+                const data = await res.json();
+                if (data.error) throw new Error(data.error);
+                showMessage(controlMessage, '✅ Bot started with current parameters! / Bot 已使用当前参数启动！');
+                updateBotControlButtons(true); // Update button states and refresh interval / 更新按钮状态和刷新间隔
+                setTimeout(refreshOrders, 1000);
+            } catch (err) {
+                showMessage(controlMessage, err.message || 'Failed to start bot / 启动 Bot 失败', true);
+            }
+        }
+
+        // Start bot with LLM suggestion (for future use if needed) / 使用 LLM 建议启动 bot（供将来使用）
         async function startBotWithLLMSuggestion() {
             try {
                 await applyEvaluation('consensus');
@@ -1704,7 +1722,7 @@
                 const data = await res.json();
                 if (data.error) throw new Error(data.error);
                 showMessage(controlMessage, '✅ Bot stopped. / Bot 已停止。');
-                updateBotControlButtons(false); // Update button states / 更新按钮状态
+                updateBotControlButtons(false); // Update button states and refresh interval / 更新按钮状态和刷新间隔
                 setTimeout(refreshOrders, 1000);
             } catch (err) {
                 showMessage(controlMessage, err.message || 'Failed to stop bot / 停止 Bot 失败', true);
@@ -1716,6 +1734,9 @@
             const startBtn = document.getElementById('startBotBtn');
             const stopBtn = document.getElementById('stopBotBtn');
             
+            // Update bot state / 更新 bot 状态
+            botIsActive = isRunning;
+            
             if (isRunning) {
                 // Bot is running: show stop button, hide start button / Bot 正在运行：显示停止按钮，隐藏启动按钮
                 if (startBtn) startBtn.style.display = 'none';
@@ -1725,6 +1746,9 @@
                 if (startBtn) startBtn.style.display = 'flex';
                 if (stopBtn) stopBtn.style.display = 'none';
             }
+            
+            // Update orders refresh interval when bot state changes / bot 状态改变时更新订单刷新间隔
+            updateOrdersRefreshInterval();
         }
 
         // Initialize button state on page load (default to stopped) / 页面加载时初始化按钮状态（默认为停止）
@@ -1771,6 +1795,9 @@
                 
                 const orders = data.orders || [];
                 
+                // Update hasActiveOrders flag / 更新是否有活跃订单标志
+                hasActiveOrders = orders.length > 0;
+                
                 if (orders.length === 0) {
                     if (tableWrapper) tableWrapper.style.display = 'none';
                     if (emptyMessage) emptyMessage.style.display = 'block';
@@ -1785,6 +1812,22 @@
                         statusEl.innerText = `Found ${orders.length} active order(s) / 找到 ${orders.length} 个活跃订单`;
                         statusEl.classList.remove('error');
                     }
+                }
+                
+                // Also check bot status to ensure botIsActive is up to date / 同时检查 bot 状态以确保 botIsActive 是最新的
+                try {
+                    const statusRes = await diagnosticFetch('/api/status');
+                    const statusData = await statusRes.json();
+                    if (statusData && typeof statusData.active === 'boolean') {
+                        botIsActive = statusData.active;
+                    }
+                } catch (statusErr) {
+                    // Ignore error, keep current botIsActive value / 忽略错误，保持当前 botIsActive 值
+                    console.warn('Failed to fetch bot status in refreshOrders / 在 refreshOrders 中获取 bot 状态失败:', statusErr);
+                }
+                
+                // Update orders refresh interval based on bot state and orders / 根据 bot 状态和订单更新订单刷新间隔
+                updateOrdersRefreshInterval();
                     
                     if (tableBody) {
                         const rows = orders.map(order => {
@@ -1862,19 +1905,45 @@
         let positionRefreshInterval = null;
         let connectionRefreshInterval = null;
         
+        // Track bot state and orders for smart refresh / 跟踪 bot 状态和订单以实现智能刷新
+        let botIsActive = false;
+        let hasActiveOrders = false;
+        
+        // Update orders refresh interval based on bot state and orders / 根据 bot 状态和订单更新订单刷新间隔
+        function updateOrdersRefreshInterval() {
+            // Clear existing interval / 清除现有间隔
+            if (ordersRefreshInterval) {
+                clearInterval(ordersRefreshInterval);
+                ordersRefreshInterval = null;
+            }
+            
+            // If bot is active, refresh every 5 seconds / 如果 bot 正在运行，每 5 秒刷新一次
+            if (botIsActive) {
+                ordersRefreshInterval = setInterval(refreshOrders, 5000);  // 5 seconds when bot is running
+            } 
+            // If bot is not active but has orders, still refresh (but less frequently) / 如果 bot 未运行但有订单，仍然刷新（但频率较低）
+            else if (hasActiveOrders) {
+                ordersRefreshInterval = setInterval(refreshOrders, 30000);  // 30 seconds when stopped but has orders
+            }
+            // If bot is not active and no orders, don't auto-refresh / 如果 bot 未运行且无订单，不自动刷新
+            // (ordersRefreshInterval remains null)
+        }
+        
         function startAutoRefresh() {
             if (ordersRefreshInterval) clearInterval(ordersRefreshInterval);
             if (positionRefreshInterval) clearInterval(positionRefreshInterval);
             if (connectionRefreshInterval) clearInterval(connectionRefreshInterval);
             
-            // Initial load
+            // Initial load - query once on page load / 初始加载 - 页面加载时查询一次
             refreshOrders();
             refreshPosition();
             checkConnection();
             
-            // Reduced refresh intervals to avoid rate limiting (429 errors)
-            // 减少刷新间隔以避免速率限制（429 错误）
-            ordersRefreshInterval = setInterval(refreshOrders, 15000);  // 15 seconds (was 3)
+            // Update orders refresh interval based on initial state / 根据初始状态更新订单刷新间隔
+            // (will be set by refreshOrders after checking orders and bot status)
+            // （将在检查订单和 bot 状态后由 refreshOrders 设置）
+            
+            // Other refresh intervals / 其他刷新间隔
             positionRefreshInterval = setInterval(refreshPosition, 20000);  // 20 seconds (was 5)
             connectionRefreshInterval = setInterval(checkConnection, 30000);  // 30 seconds (was 10)
         }

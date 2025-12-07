@@ -745,6 +745,10 @@ async def get_status(request: Request, exchange: Optional[str] = Query(None)):
             # Keep the error field as is for backward compatibility / 保持 error 字段不变以保持向后兼容
             pass
 
+        # Capture alert once and store safe copies to avoid shared references
+        raw_alert = getattr(bot_engine, "alert", None)
+        safe_alert_for_status = _safe_to_simple(raw_alert, max_depth=2)
+
         # Add strategy info & core config for UI display
         strategy_type_name = type(bot_engine.strategy).__name__
         status["strategy_type"] = (
@@ -782,7 +786,7 @@ async def get_status(request: Request, exchange: Optional[str] = Query(None)):
             global_error_history = []
 
         errors = {
-            "global_alert": bot_engine.alert if hasattr(bot_engine, "alert") else None,
+            "global_alert": _safe_to_simple(raw_alert, max_depth=2),
             "global_error_history": global_error_history,
             "instance_errors": {},
         }
@@ -830,6 +834,9 @@ async def get_status(request: Request, exchange: Optional[str] = Query(None)):
                     "alert": alert,
                     "error_history": error_history_list,
                 }
+
+        # Use the safe alert copy in the overall status payload
+        status["alert"] = safe_alert_for_status
 
         status["errors"] = errors
 
@@ -897,7 +904,8 @@ async def get_status(request: Request, exchange: Optional[str] = Query(None)):
         status["trace_id"] = trace_id
         status["ok"] = True
 
-        return status
+        # Ensure response is JSON-safe and recursion-proof
+        return _safe_to_simple(status, max_depth=4)
     except Exception as e:
         logger.error(
             "Error getting status",

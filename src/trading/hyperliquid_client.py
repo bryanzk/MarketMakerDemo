@@ -538,10 +538,35 @@ class HyperliquidClient:
                 self._exchange = HyperliquidExchange(wallet, **exchange_kwargs)
                 self._info = HyperliquidInfo(self.base_url, skip_ws=True, timeout=self.request_timeout)
                 
+                # Verify account_address was set correctly
+                # 验证 account_address 是否正确设置
+                actual_account_address = getattr(self._exchange, 'account_address', None)
                 logger.info(
                     f"Successfully initialized Hyperliquid SDK Exchange and Info instances. "
+                    f"Exchange.account_address: {actual_account_address}. "
+                    f"Expected user_address: {self.user_address}. "
+                    f"Wallet address (for signing): {self._account.address if self._account else None}. "
                     f"成功初始化 Hyperliquid SDK Exchange 和 Info 实例。"
+                    f"Exchange.account_address: {actual_account_address}。"
+                    f"预期用户地址: {self.user_address}。"
+                    f"钱包地址（用于签名）: {self._account.address if self._account else None}。"
                 )
+                
+                # Warn if account_address doesn't match user_address
+                # 如果 account_address 与 user_address 不匹配，发出警告
+                if actual_account_address and self.user_address:
+                    if actual_account_address.lower() != self.user_address.lower():
+                        logger.warning(
+                            f"⚠️  Exchange.account_address ({actual_account_address}) does not match user_address ({self.user_address})! "
+                            f"This may cause order placement failures. "
+                            f"⚠️  Exchange.account_address ({actual_account_address}) 与 user_address ({self.user_address}) 不匹配！"
+                            f"这可能导致下单失败。"
+                        )
+                    else:
+                        logger.info(
+                            f"✅ Exchange.account_address matches user_address: {actual_account_address}. "
+                            f"✅ Exchange.account_address 与 user_address 匹配: {actual_account_address}。"
+                        )
             except Exception as e:
                 logger.warning(
                     f"Failed to initialize Hyperliquid SDK: {e}. "
@@ -2156,15 +2181,21 @@ class HyperliquidClient:
                     if coin != fill_coin:
                         continue
 
+                # Handle None values safely / 安全处理 None 值
+                sz_value = fill.get("sz") or 0
+                px_value = fill.get("px") or 0
+                closed_pnl_value = fill.get("closedPnl") or 0
+                time_value = fill.get("time") or int(time.time() * 1000)
+                
                 history_entry = {
                     "symbol": f"{fill_symbol}/USDT:USDT",
-                    "side": "LONG" if float(fill.get("sz", 0)) > 0 else "SHORT",
-                    "size": abs(float(fill.get("sz", 0))),
-                    "entry_price": float(fill.get("px", 0)),
-                    "exit_price": float(fill.get("px", 0)),  # Same as entry for fills
-                    "realized_pnl": float(fill.get("closedPnl", 0)),
-                    "open_time": int(fill.get("time", time.time() * 1000)),
-                    "close_time": int(fill.get("time", time.time() * 1000)),
+                    "side": "LONG" if float(sz_value) > 0 else "SHORT",
+                    "size": abs(float(sz_value)),
+                    "entry_price": float(px_value),
+                    "exit_price": float(px_value),  # Same as entry for fills
+                    "realized_pnl": float(closed_pnl_value),
+                    "open_time": int(time_value),
+                    "close_time": int(time_value),
                     "status": "closed",
                 }
                 position_history.append(history_entry)
@@ -2373,11 +2404,47 @@ class HyperliquidClient:
                         else:
                             order_type = {"market": {}}
                         
+                        # Log account address being used
+                        # 记录正在使用的账户地址
+                        exchange_account_address = getattr(self._exchange, 'account_address', None) if self._exchange else None
                         logger.info(
                             f"Placing order using Hyperliquid SDK Exchange. "
                             f"Coin: {coin}, Side: {side}, Quantity: {quantity}, Price: {price}. "
+                            f"User address (expected): {self.user_address}. "
+                            f"Exchange account_address attribute: {exchange_account_address}. "
+                            f"Wallet address (for signing): {self._account.address if self._account else None}. "
                             f"使用 Hyperliquid SDK Exchange 下单。交易对: {coin}。"
+                            f"用户地址（预期）: {self.user_address}。"
+                            f"Exchange account_address 属性: {exchange_account_address}。"
+                            f"钱包地址（用于签名）: {self._account.address if self._account else None}。"
                         )
+                        
+                        # Verify account_address is set before placing order
+                        # 在下单前验证 account_address 已设置
+                        if not exchange_account_address:
+                            logger.error(
+                                f"⚠️  Exchange.account_address is None! This will cause order placement to fail. "
+                                f"Expected user_address: {self.user_address}. "
+                                f"⚠️  Exchange.account_address 为 None！这将导致下单失败。"
+                                f"预期用户地址: {self.user_address}。"
+                            )
+                            # Try to reinitialize Exchange with account_address
+                            # 尝试使用 account_address 重新初始化 Exchange
+                            logger.warning(
+                                f"Attempting to reinitialize Exchange with account_address: {self.user_address}. "
+                                f"尝试使用 account_address 重新初始化 Exchange: {self.user_address}。"
+                            )
+                            exchange_kwargs_reinit = {
+                                "base_url": self.base_url,
+                                "timeout": self.request_timeout,
+                                "account_address": self.user_address,
+                            }
+                            self._exchange = HyperliquidExchange(self._account, **exchange_kwargs_reinit)
+                            exchange_account_address = getattr(self._exchange, 'account_address', None)
+                            logger.info(
+                                f"Reinitialized Exchange. account_address: {exchange_account_address}. "
+                                f"重新初始化 Exchange。account_address: {exchange_account_address}。"
+                            )
                         
                         # Place order using SDK
                         # 使用 SDK 下单
@@ -2388,6 +2455,17 @@ class HyperliquidClient:
                             limit_px=price,
                             order_type=order_type,
                             reduce_only=False,
+                        )
+                        
+                        # Log response to check what address was used
+                        # 记录响应以检查使用的地址
+                        logger.info(
+                            f"SDK order response received. Response type: {type(response)}. "
+                            f"Response keys: {list(response.keys()) if isinstance(response, dict) else 'N/A'}. "
+                            f"Full response: {str(response)[:500]}. "
+                            f"SDK 订单响应已接收。响应类型: {type(response)}。"
+                            f"响应键: {list(response.keys()) if isinstance(response, dict) else 'N/A'}。"
+                            f"完整响应: {str(response)[:500]}。"
                         )
                         
                         # Parse SDK response
@@ -3254,6 +3332,15 @@ class HyperliquidClient:
             "nonce": nonce,
             "vaultAddress": None,
         }
+        
+        # Add accountAddress if user_address is set (for API wallet mode)
+        # 如果设置了 user_address，添加 accountAddress（用于 API 钱包模式）
+        if self.user_address:
+            payload["accountAddress"] = self.user_address
+            logger.debug(
+                f"Added accountAddress to payload: {self.user_address}. "
+                f"已在负载中添加 accountAddress: {self.user_address}。"
+            )
 
         # Add signature if available
         if signature:
@@ -3537,7 +3624,9 @@ class HyperliquidClient:
 
             # Get position size (szi: signed size, positive for long, negative for short)
             # 获取仓位数量（szi：有符号数量，正数为多头，负数为空头）
-            szi = float(position_data.get("szi", 0))
+            # Handle None values safely / 安全处理 None 值
+            szi_value = position_data.get("szi") or 0
+            szi = float(szi_value)
             size = abs(szi)
 
             # Determine side based on szi
@@ -3549,25 +3638,32 @@ class HyperliquidClient:
             else:
                 side = "NONE"
 
-            # Get entry price
-            # 获取开仓价格
-            entry_price = float(position_data.get("entryPx", 0))
+            # Get entry price (handle None values)
+            # 获取开仓价格（处理 None 值）
+            entry_px_value = position_data.get("entryPx") or 0
+            entry_price = float(entry_px_value)
 
-            # Get liquidation price
-            # 获取清算价格
-            liquidation_price = float(position_data.get("liquidationPx", 0))
+            # Get liquidation price (handle None values)
+            # 获取清算价格（处理 None 值）
+            liquidation_px_value = position_data.get("liquidationPx") or 0
+            liquidation_price = float(liquidation_px_value)
 
-            # Get unrealized PnL (already calculated by Hyperliquid)
-            # 获取未实现盈亏（已由 Hyperliquid 计算）
-            unrealized_pnl = float(position_data.get("unrealizedPnl", 0))
+            # Get unrealized PnL (already calculated by Hyperliquid, handle None values)
+            # 获取未实现盈亏（已由 Hyperliquid 计算，处理 None 值）
+            unrealized_pnl_value = position_data.get("unrealizedPnl") or 0
+            unrealized_pnl = float(unrealized_pnl_value)
 
             # Try to get mark price from API response first
             # 首先尝试从 API 响应获取标记价格
             mark_price = None
             if "markPx" in position_data:
-                mark_price = float(position_data.get("markPx", 0))
+                mark_px_value = position_data.get("markPx")
+                if mark_px_value is not None:
+                    mark_price = float(mark_px_value)
             elif asset_pos and "markPx" in asset_pos:
-                mark_price = float(asset_pos.get("markPx", 0))
+                mark_px_value = asset_pos.get("markPx")
+                if mark_px_value is not None:
+                    mark_price = float(mark_px_value)
 
             # If mark price not available from API, try to fetch from market data
             # 如果 API 未提供标记价格，尝试从市场数据获取
@@ -3620,7 +3716,15 @@ class HyperliquidClient:
             }
 
         except Exception as e:
-            logger.error(f"Error converting position: {e}")
+            logger.error(
+                f"Error converting position: {e}. "
+                f"Position data: {position_data}. "
+                f"Asset pos: {asset_pos}. "
+                f"错误转换仓位: {e}。"
+                f"仓位数据: {position_data}。"
+                f"资产仓位: {asset_pos}。",
+                exc_info=True
+            )
             return None
 
     def _map_order_status(self, order_data: Dict) -> str:

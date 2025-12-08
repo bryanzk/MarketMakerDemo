@@ -1,3 +1,5 @@
+import asyncio
+import json
 import logging
 import os
 import threading
@@ -17,7 +19,7 @@ except PermissionError as e:
     logging.warning("Could not load .env file due to permission error: %s", e)
 
 logger = logging.getLogger(__name__)
-from fastapi import FastAPI, Query, Request, Body
+from fastapi import FastAPI, Query, Request, Body, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -46,6 +48,180 @@ from src.shared.tracing import (
 from src.shared.error_mapper import ErrorMapper
 from src.shared.errors import StandardErrorResponse
 from src.shared.exchange_metrics import metrics_collector, ExchangeName
+
+
+def _result_to_dict(result):
+    """Normalize EvaluationResult to JSON serializable dict / 规范化结果为 JSON 可序列化字典"""
+    score = result.score if result.score is not None else 0.0
+    return {
+        "provider_name": result.provider_name,
+        "rank": result.rank if result.rank is not None else 0,
+        "score": float(score),
+        "latency_ms": result.latency_ms if result.latency_ms is not None else 0.0,
+        "proposal": {
+            "recommended_strategy": result.proposal.recommended_strategy,
+            "spread": result.proposal.spread,
+            "skew_factor": result.proposal.skew_factor,
+            "quantity": result.proposal.quantity,
+            "leverage": result.proposal.leverage,
+            "confidence": result.proposal.confidence,
+            "risk_level": result.proposal.risk_level,
+            "reasoning": result.proposal.reasoning,
+            "parse_success": result.proposal.parse_success,
+            "parse_error": result.proposal.parse_error or "",
+        },
+        "simulation": {
+            "realized_pnl": result.simulation.realized_pnl,
+            "total_trades": result.simulation.total_trades,
+            "win_rate": result.simulation.win_rate,
+            "sharpe_ratio": result.simulation.sharpe_ratio,
+            "simulation_steps": result.simulation.simulation_steps,
+        },
+    }
+
+
+def _aggregated_to_dict(agg):
+    """Normalize AggregatedResult to dict / 规范化汇总结果为字典"""
+    return {
+        "strategy_consensus": {
+            "consensus_strategy": agg.strategy_consensus.consensus_strategy,
+            "consensus_level": agg.strategy_consensus.consensus_level,
+            "consensus_ratio": agg.strategy_consensus.consensus_ratio,
+            "consensus_count": agg.strategy_consensus.consensus_count,
+            "total_models": agg.strategy_consensus.total_models,
+            "strategy_votes": agg.strategy_consensus.strategy_votes,
+            "strategy_percentages": agg.strategy_consensus.strategy_percentages,
+        },
+        "consensus_confidence": agg.consensus_confidence,
+        "consensus_proposal": {
+            "recommended_strategy": agg.consensus_proposal.recommended_strategy,
+            "spread": agg.consensus_proposal.spread,
+            "skew_factor": agg.consensus_proposal.skew_factor,
+            "quantity": agg.consensus_proposal.quantity,
+            "leverage": agg.consensus_proposal.leverage,
+            "confidence": agg.consensus_proposal.confidence,
+            "reasoning": agg.consensus_proposal.reasoning,
+        }
+        if agg.consensus_proposal
+        else None,
+        "avg_pnl": agg.avg_pnl,
+        "avg_sharpe": agg.avg_sharpe,
+        "avg_win_rate": agg.avg_win_rate,
+        "avg_latency_ms": agg.avg_latency_ms,
+        "successful_evaluations": agg.successful_evaluations,
+        "failed_evaluations": agg.failed_evaluations,
+    }
+
+
+async def _prepare_market_context_for_evaluation(symbol: str, exchange_name: str, trace_id: str):
+    """
+    Build MarketContext for evaluation (shared by HTTP and WebSocket flows).
+    为评估构建 MarketContext（HTTP 与 WebSocket 共用）。
+    """
+    exchange = get_exchange_by_name(exchange_name)
+
+    is_connected, connection_error, status_code = _check_exchange_connection(
+        exchange_name, exchange, error_format="error"
+    )
+    if not is_connected:
+        return None, connection_error, status_code
+
+    try:
+        original_symbol = getattr(exchange, "symbol", None)
+        if hasattr(exchange, "set_symbol"):
+            exchange.set_symbol(symbol)
+
+        market_data = exchange.fetch_market_data()
+        account_data = exchange.fetch_account_data()
+
+        if original_symbol and hasattr(exchange, "set_symbol"):
+            exchange.set_symbol(original_symbol)
+    except Exception as e:
+        error_msg = f"Failed to fetch market data: {str(e)} / 获取市场数据失败：{str(e)}"
+        logger.error(
+            f"Error fetching market data for evaluation: {error_msg}",
+            exc_info=True,
+            extra={
+                "trace_id": trace_id,
+                "symbol": symbol,
+                "exchange": exchange_name,
+            },
+        )
+        return None, {
+            "error": error_msg,
+            "error_code": "MARKET_DATA_FETCH_ERROR",
+            "error_type": "market_data",
+            "trace_id": trace_id,
+            "ok": False,
+        }, 500
+
+    if not market_data:
+        error_details = {
+            "symbol": symbol,
+            "exchange": exchange_name,
+            "suggestion": "The exchange may be rate-limited or the symbol may not be available. Try again in a few seconds. / 交易所可能受到速率限制或交易对不可用。请几秒后重试。",
+        }
+        logger.warning(
+            f"No market data available for symbol {symbol} on {exchange_name}",
+            extra={"trace_id": trace_id, **error_details},
+        )
+        return None, create_error_response(
+            ValueError("No market data available / 无可用市场数据"),
+            error_code="NO_MARKET_DATA",
+            details=error_details,
+        ), None
+
+    mid_price = market_data.get("mid_price", 0.0)
+    best_bid = market_data.get("best_bid", mid_price * 0.999)
+    best_ask = market_data.get("best_ask", mid_price * 1.001)
+    spread_bps = (
+        ((best_ask - best_bid) / mid_price * 10000) if mid_price > 0 else 10.0
+    )
+    funding_rate = market_data.get("funding_rate", 0.0)
+    funding_rate_trend = "stable"
+
+    position_amt = account_data.get("position_amt", 0.0) if account_data else 0.0
+    position_side = "long" if position_amt > 0 else ("short" if position_amt < 0 else "neutral")
+    unrealized_pnl = account_data.get("unrealizedProfit", 0.0) if account_data else 0.0
+    balance = account_data.get("balance", 10000.0) if account_data else 10000.0
+    leverage = account_data.get("leverage", 1.0) if account_data else 1.0
+
+    win_rate = 0.0
+    sharpe_ratio = 0.0
+    recent_pnl = 0.0
+    if hasattr(bot_engine, "data"):
+        metrics = bot_engine.data.calculate_metrics()
+        sharpe_ratio = metrics.get("sharpe_ratio", 0.0) or 0.0
+        trades = bot_engine.data.trade_history
+        if trades:
+            winning = len([t for t in trades if t.get("pnl", 0) > 0])
+            win_rate = winning / len(trades) if len(trades) > 0 else 0.0
+            recent_pnl = sum(t.get("pnl", 0) for t in trades[-10:])
+
+    volatility_24h = 0.03
+    volatility_1h = 0.01
+    symbol_with_exchange = _format_symbol_with_exchange(symbol, exchange_name)
+
+    context = MarketContext(
+        symbol=symbol_with_exchange,
+        mid_price=mid_price,
+        best_bid=best_bid,
+        best_ask=best_ask,
+        spread_bps=spread_bps,
+        volatility_24h=volatility_24h,
+        volatility_1h=volatility_1h,
+        funding_rate=funding_rate,
+        funding_rate_trend=funding_rate_trend,
+        current_position=position_amt,
+        position_side=position_side,
+        unrealized_pnl=unrealized_pnl,
+        available_balance=balance,
+        current_leverage=leverage,
+        win_rate=win_rate,
+        sharpe_ratio=sharpe_ratio,
+        recent_pnl=recent_pnl,
+    )
+    return context, None, None
 
 
 @asynccontextmanager
@@ -1804,6 +1980,172 @@ async def get_providers():
             error_code="PROVIDER_AVAILABILITY_CHECK_FAILED",
             details={"error": str(e)}
         )
+
+
+@app.websocket("/ws/evaluation")
+async def ws_evaluation(websocket: WebSocket):
+    """
+    WebSocket endpoint to stream per-model evaluation results.
+    WebSocket 端点：按模型流式推送评估结果。
+    """
+    trace_id = get_trace_id()
+    await websocket.accept()
+
+    try:
+        init_msg = await websocket.receive_text()
+        payload = json.loads(init_msg)
+        symbol = payload.get("symbol")
+        exchange_name = (payload.get("exchange") or "hyperliquid").lower()
+        simulation_steps = int(payload.get("simulation_steps") or 100)
+        selected_models = payload.get("selected_models") or []
+    except Exception as e:
+        await websocket.send_json(
+            {"type": "error", "message": f"Invalid request payload: {e}", "trace_id": trace_id}
+        )
+        await websocket.close()
+        return
+
+    request_context = create_request_context(
+        "/ws/evaluation", "WEBSOCKET", hash_payload(payload)
+    )
+
+    # Validate exchange
+    is_valid, validation_error = _validate_exchange_parameter(exchange_name)
+    if not is_valid:
+        await websocket.send_json(
+            {"type": "error", "message": validation_error["error"], "trace_id": trace_id}
+        )
+        await websocket.close()
+        return
+
+    # Prepare market context
+    context, context_error, status_code = await _prepare_market_context_for_evaluation(
+        symbol, exchange_name, trace_id
+    )
+    if context_error:
+        await websocket.send_json(
+            {"type": "error", "message": context_error.get("error", "context error"), "trace_id": trace_id}
+        )
+        await websocket.close(code=status_code or 1011)
+        return
+
+    # Provider filtering
+    try:
+        availability = get_provider_availability()
+        all_providers = [item["provider"] for item in availability["available"]]
+
+        if selected_models:
+            model_to_provider_map = {"gemini": "Gemini", "openai": "OpenAI", "claude": "Claude"}
+            selected_provider_names = [
+                model_to_provider_map.get(model.lower(), model.capitalize())
+                for model in selected_models
+            ]
+            providers = [
+                p for p in all_providers if any(p.name.startswith(name) for name in selected_provider_names)
+            ]
+            if not providers:
+                await websocket.send_json(
+                    {
+                        "type": "error",
+                        "message": "Selected LLM providers not available / 选中的 LLM 提供商不可用",
+                        "trace_id": trace_id,
+                    }
+                )
+                await websocket.close()
+                return
+        else:
+            providers = all_providers
+    except Exception as e:
+        await websocket.send_json(
+            {"type": "error", "message": f"Provider init failed: {e}", "trace_id": trace_id}
+        )
+        await websocket.close()
+        return
+
+    total = len(providers)
+    await websocket.send_json({"type": "start", "total": total, "trace_id": trace_id})
+
+    results: List[Any] = []
+
+    async def evaluate_provider(provider):
+        def _run_single():
+            evaluator = MultiLLMEvaluator(
+                providers=[provider], simulation_steps=simulation_steps, parallel=False
+            )
+            res = evaluator.evaluate(context)
+            return res[0] if res else None
+
+        return await asyncio.to_thread(_run_single)
+
+    try:
+        for provider in providers:
+            try:
+                result = await evaluate_provider(provider)
+                if not result:
+                    raise ValueError("Empty evaluation result")
+            except Exception as e:
+                evaluator = MultiLLMEvaluator(
+                    providers=[provider], simulation_steps=simulation_steps, parallel=False
+                )
+                result = evaluator._create_error_result(getattr(provider, "name", "unknown"), str(e))
+
+            results.append(result)
+
+            # Re-score and rank with all completed results
+            scorer = MultiLLMEvaluator(
+                providers=providers, simulation_steps=simulation_steps, parallel=False
+            )
+            ranked = scorer._score_and_rank(list(results))
+            result_map = {r.provider_name: r for r in ranked}
+            current = result_map.get(result.provider_name, result)
+
+            await websocket.send_json(
+                {
+                    "type": "model_done",
+                    "provider": current.provider_name,
+                    "result": _result_to_dict(current),
+                    "completed": len(results),
+                    "total": total,
+                    "trace_id": trace_id,
+                }
+            )
+            await websocket.send_json(
+                {
+                    "type": "progress",
+                    "completed": len(results),
+                    "total": total,
+                    "trace_id": trace_id,
+                }
+            )
+
+        # Final aggregation
+        scorer = MultiLLMEvaluator(providers=providers, simulation_steps=simulation_steps, parallel=False)
+        final_ranked = scorer._score_and_rank(list(results))
+        aggregated = scorer.aggregate_results(final_ranked)
+        comparison_table = MultiLLMEvaluator.generate_comparison_table(final_ranked)
+        consensus_report = MultiLLMEvaluator.generate_consensus_summary(aggregated)
+
+        await websocket.send_json(
+            {
+                "type": "finished",
+                "results": [_result_to_dict(r) for r in final_ranked],
+                "aggregated": _aggregated_to_dict(aggregated),
+                "comparison_table": comparison_table,
+                "consensus_report": {"summary": consensus_report},
+                "trace_id": trace_id,
+                "symbol": symbol,
+                "exchange": exchange_name,
+            }
+        )
+    except WebSocketDisconnect:
+        logger.info("WebSocket client disconnected / WebSocket 客户端断开", extra={"trace_id": trace_id})
+    except Exception as e:
+        logger.error(f"WebSocket evaluation error: {e}", exc_info=True, extra={"trace_id": trace_id})
+        await websocket.send_json(
+            {"type": "error", "message": str(e), "trace_id": trace_id}
+        )
+    finally:
+        await websocket.close()
 
 
 @app.post("/api/evaluation/run")

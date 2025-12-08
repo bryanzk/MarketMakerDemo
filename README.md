@@ -225,7 +225,129 @@ This project has comprehensive documentation. **If you are new to the system**, 
 ### Prerequisites / 先决条件
 *   Python 3.11+
 *   Virtual environment (recommended)
-*   `pip install -r requirements.txt`
+*   Git
+*   Cursor IDE (recommended for multi-agent development)
+
+### Environment Setup / 环境设置
+
+#### 1. Clone the Repository / 克隆仓库
+```bash
+git clone <repository-url>
+cd MarketMakerDemo
+```
+
+#### 2. Create Virtual Environment / 创建虚拟环境
+```bash
+# Create virtual environment / 创建虚拟环境
+python3 -m venv venv
+
+# Activate virtual environment / 激活虚拟环境
+# On macOS/Linux:
+source venv/bin/activate
+# On Windows:
+# venv\Scripts\activate
+```
+
+#### 3. Install Dependencies / 安装依赖
+```bash
+# Install Python packages / 安装 Python 包
+pip install --upgrade pip
+pip install -r requirements.txt
+
+# Install Playwright browsers (for E2E tests) / 安装 Playwright 浏览器（用于 E2E 测试）
+playwright install --with-deps
+```
+
+#### 4. Configure Environment Variables / 配置环境变量
+
+Create a `.env` file in the project root directory:
+在项目根目录创建 `.env` 文件：
+
+```bash
+# Copy example template (if available) / 复制示例模板（如果可用）
+# cp .env.example .env
+
+# Or create manually / 或手动创建
+touch .env
+```
+
+**Required Environment Variables / 必需的环境变量：**
+
+```bash
+# Binance API Credentials (optional if using Hyperliquid only)
+# Binance API 凭证（如果仅使用 Hyperliquid 则为可选）
+BINANCE_API_KEY=your_binance_api_key
+BINANCE_API_SECRET=your_binance_api_secret
+
+# Hyperliquid API Credentials / Hyperliquid API 凭证
+HYPERLIQUID_API_KEY=your_hyperliquid_api_key
+HYPERLIQUID_API_SECRET=your_hyperliquid_api_secret
+
+# Hyperliquid Network Configuration / Hyperliquid 网络配置
+# Set to "true" for testnet, "false" for mainnet
+# 设置为 "true" 使用测试网，"false" 使用主网
+HYPERLIQUID_TESTNET=true
+
+# Optional: Run Hyperliquid only (disable Binance)
+# 可选：仅运行 Hyperliquid（禁用 Binance）
+HYPERLIQUID_ONLY=false
+```
+
+**Optional: LLM API Keys (for Multi-LLM Evaluation) / 可选：LLM API 密钥（用于多 LLM 评估）**
+
+```bash
+# Google Gemini API Key / Google Gemini API 密钥
+GEMINI_API_KEY=your_gemini_api_key
+
+# OpenAI API Key / OpenAI API 密钥
+OPENAI_API_KEY=your_openai_api_key
+
+# Anthropic Claude API Key / Anthropic Claude API 密钥
+ANTHROPIC_API_KEY=your_anthropic_api_key
+```
+
+**⚠️ Security Note / 安全提示：**
+- Never commit `.env` file to Git (already in `.gitignore`)
+- 永远不要将 `.env` 文件提交到 Git（已在 `.gitignore` 中）
+- Keep your API keys secure and never share them
+- 妥善保管 API 密钥，不要分享
+
+#### 5. Cursor IDE Configuration / Cursor IDE 配置
+
+This project uses Cursor IDE with a multi-agent development workflow. The configuration is automatically loaded from:
+本项目使用 Cursor IDE 进行多 Agent 开发工作流。配置会自动从以下文件加载：
+
+**Configuration Files / 配置文件：**
+- `.cursorrules` - AI assistant behavior rules and agent system definitions
+  - AI 助手行为规则和 Agent 体系定义
+- `.cursorignore` - Workspace indexing exclusions
+  - 工作区索引排除规则
+
+**After cloning the repository / 克隆仓库后：**
+1. Open the project in Cursor IDE
+   在 Cursor IDE 中打开项目
+2. The `.cursorrules` file will be automatically loaded
+   `.cursorrules` 文件会自动加载
+3. Cursor will use the defined agent system and workflow rules
+   Cursor 将使用定义的 Agent 体系和工作流规则
+
+**Note / 注意：**
+- The `.cursor/` directory contains temporary files and is not committed to Git
+  `.cursor/` 目录包含临时文件，不会提交到 Git
+- Each developer's Cursor environment will automatically adapt to the project rules
+  每个开发者的 Cursor 环境会自动适配项目规则
+
+#### 6. Verify Installation / 验证安装
+```bash
+# Check Python version / 检查 Python 版本
+python3 --version  # Should be 3.11+
+
+# Check installed packages / 检查已安装的包
+pip list | grep -E "(fastapi|ccxt|pandas)"
+
+# Run tests to verify setup / 运行测试以验证设置
+pytest tests/unit/shared/ -v
+```
 
 ### Project Structure / 项目结构
 ```

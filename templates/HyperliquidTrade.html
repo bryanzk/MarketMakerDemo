@@ -1546,6 +1546,54 @@
                 return;
             }
             
+            // Check if any selected model is unavailable / 检查是否有选中的模型不可用
+            const modelMap = {
+                'gemini': 'Gemini',
+                'openai': 'OpenAI',
+                'claude': 'Claude'
+            };
+            const unavailableNames = new Set(
+                providerAvailability.unavailable.map(p => p.name)
+            );
+            const unavailableSelected = selectedModels.filter(model => {
+                const providerName = modelMap[model];
+                return unavailableNames.has(providerName);
+            });
+            
+            if (unavailableSelected.length > 0) {
+                const errorBox = document.getElementById('evaluationErrorBox');
+                const unavailableProviders = unavailableSelected.map(model => {
+                    const providerName = modelMap[model];
+                    const info = providerAvailability.unavailable.find(p => p.name === providerName);
+                    return {
+                        name: providerName,
+                        api_key: info ? info.api_key_name : '',
+                        reason: info ? info.reason : 'Not available / 不可用'
+                    };
+                });
+                
+                const providerNames = unavailableProviders.map(p => p.name).join(', ');
+                const apiKeyNames = unavailableProviders.map(p => p.api_key).filter(k => k).join(', ');
+                
+                if (errorBox && typeof handleApiError === 'function') {
+                    handleApiError({
+                        error_type: 'api_key_missing',
+                        message: `Selected LLM models are not available: ${providerNames}. / 选中的 LLM 模型不可用: ${providerNames}。`,
+                        message_zh: `选中的 LLM 模型不可用: ${providerNames}。`,
+                        severity: 'error',
+                        suggestion: `Please configure the following API keys in your .env file: ${apiKeyNames}. See README.md for setup instructions. / 请在 .env 文件中配置以下 API 密钥: ${apiKeyNames}。查看 README.md 了解设置说明。`,
+                        suggestion_zh: `请在 .env 文件中配置以下 API 密钥: ${apiKeyNames}。查看 README.md 了解设置说明。`,
+                        details: {
+                            unavailable_providers: unavailableProviders
+                        }
+                    }, errorBox, { showDetails: true });
+                } else if (errorBox) {
+                    errorBox.style.display = 'block';
+                    errorBox.innerText = `Selected models are not available: ${providerNames}. Please configure API keys: ${apiKeyNames}. / 选中的模型不可用: ${providerNames}。请配置 API 密钥: ${apiKeyNames}。`;
+                }
+                return; // Stop evaluation if unavailable models are selected / 如果选中了不可用的模型，停止评估
+            }
+            
             evaluationState.loading = true;
             evaluationState.lastError = null;
             evaluationState.startTime = Date.now();
@@ -2113,16 +2161,116 @@
             originalError.apply(console, args);
         };
 
+        // Store provider availability status / 存储提供商可用性状态
+        let providerAvailability = {
+            available: [],
+            unavailable: []
+        };
+
+        // Check provider availability on page load / 页面加载时检查提供商可用性
+        async function checkProviderAvailability() {
+            try {
+                const res = await fetch('/api/evaluation/providers');
+                const data = await res.json();
+                if (data.ok && data.providers) {
+                    providerAvailability = data.providers;
+                    updateModelCheckboxesAvailability();
+                }
+            } catch (err) {
+                console.error('Failed to check provider availability:', err);
+            }
+        }
+
+        // Update checkbox availability based on provider status / 根据提供商状态更新 checkbox 可用性
+        function updateModelCheckboxesAvailability() {
+            const modelMap = {
+                'gemini': 'Gemini',
+                'openai': 'OpenAI',
+                'claude': 'Claude'
+            };
+            
+            const unavailableNames = new Set(
+                providerAvailability.unavailable.map(p => p.name)
+            );
+            
+            Object.keys(modelMap).forEach(modelKey => {
+                const checkbox = document.getElementById(`model${modelMap[modelKey]}`);
+                if (!checkbox) return;
+                
+                const providerName = modelMap[modelKey];
+                const isUnavailable = unavailableNames.has(providerName);
+                
+                if (isUnavailable) {
+                    checkbox.disabled = true;
+                    checkbox.checked = false;
+                    const label = checkbox.closest('label');
+                    if (label) {
+                        label.style.opacity = '0.5';
+                        label.style.cursor = 'not-allowed';
+                        const unavailableInfo = providerAvailability.unavailable.find(p => p.name === providerName);
+                        if (unavailableInfo) {
+                            label.title = `${unavailableInfo.reason}. Please configure ${unavailableInfo.api_key_name} in .env file. / ${unavailableInfo.reason}。请在 .env 文件中配置 ${unavailableInfo.api_key_name}。`;
+                        }
+                    }
+                } else {
+                    checkbox.disabled = false;
+                    const label = checkbox.closest('label');
+                    if (label) {
+                        label.style.opacity = '1';
+                        label.style.cursor = 'pointer';
+                        label.title = '';
+                    }
+                }
+            });
+            
+            updateSelectedModelsHint();
+        }
+
         // Initialize checkbox event listeners / 初始化 checkbox 事件监听器
         function initModelCheckboxes() {
             const checkboxes = document.querySelectorAll('.llm-model-checkbox');
             checkboxes.forEach(cb => {
-                cb.addEventListener('change', updateSelectedModelsHint);
+                cb.addEventListener('change', () => {
+                    // Check if selected model has API key / 检查选中的模型是否有 API 密钥
+                    const modelMap = {
+                        'gemini': 'Gemini',
+                        'openai': 'OpenAI',
+                        'claude': 'Claude'
+                    };
+                    const providerName = modelMap[cb.value];
+                    const unavailableInfo = providerAvailability.unavailable.find(p => p.name === providerName);
+                    
+                    if (cb.checked && unavailableInfo) {
+                        // Uncheck if no API key / 如果没有 API 密钥则取消选中
+                        cb.checked = false;
+                        const errorBox = document.getElementById('evaluationErrorBox');
+                        if (errorBox && typeof handleApiError === 'function') {
+                            handleApiError({
+                                error_type: 'api_key_missing',
+                                message: `${providerName} is not available: ${unavailableInfo.reason}. / ${providerName} 不可用: ${unavailableInfo.reason}。`,
+                                message_zh: `${providerName} 不可用: ${unavailableInfo.reason}。`,
+                                severity: 'error',
+                                suggestion: `Please configure ${unavailableInfo.api_key_name} in your .env file. See README.md for setup instructions. / 请在 .env 文件中配置 ${unavailableInfo.api_key_name}。查看 README.md 了解设置说明。`,
+                                suggestion_zh: `请在 .env 文件中配置 ${unavailableInfo.api_key_name}。查看 README.md 了解设置说明。`,
+                                details: {
+                                    provider: providerName,
+                                    api_key_name: unavailableInfo.api_key_name,
+                                    reason: unavailableInfo.reason
+                                }
+                            }, errorBox, { showDetails: true });
+                        } else if (errorBox) {
+                            errorBox.style.display = 'block';
+                            errorBox.innerText = `${providerName} is not available: ${unavailableInfo.reason}. Please configure ${unavailableInfo.api_key_name}. / ${providerName} 不可用: ${unavailableInfo.reason}。请配置 ${unavailableInfo.api_key_name}。`;
+                        }
+                    }
+                    updateSelectedModelsHint();
+                });
             });
             updateSelectedModelsHint();
         }
 
         document.addEventListener('DOMContentLoaded', () => {
+            checkProviderAvailability(); // Check provider availability first / 首先检查提供商可用性
             initModelCheckboxes();  // Initialize model selection checkboxes / 初始化模型选择复选框
             initializeBotButtons(); // Initialize button states / 初始化按钮状态
             loadStatus(); // This will update button states based on actual bot status / 这将根据实际 bot 状态更新按钮状态

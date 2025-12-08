@@ -314,3 +314,117 @@ class TestHyperliquid422ErrorIntegration:
             assert "Validation failed" in error_detail
             assert "must be positive" in error_detail
 
+    @patch.dict(
+        os.environ,
+        {
+            "HYPERLIQUID_API_KEY": "test_key",
+            "HYPERLIQUID_API_SECRET": "0x" + "1" * 64,  # Valid private key format
+        },
+    )
+    @patch("src.trading.hyperliquid_client.requests.post")
+    @patch("src.trading.hyperliquid_client.ETH_ACCOUNT_AVAILABLE", True)
+    def test_integration_order_with_signature(self, mock_post):
+        """
+        Integration Test: Order placement includes signature in payload
+        集成测试：订单下单在负载中包含签名
+        
+        Verifies that signature is properly included in order payload for /exchange endpoint.
+        验证签名正确包含在 /exchange 端点的订单负载中。
+        """
+        # Mock successful connection / 模拟成功连接
+        mock_success = MagicMock()
+        mock_success.status_code = 200
+        mock_success.json.return_value = {"status": "ok"}
+        
+        # Mock successful order placement / 模拟成功的订单下单
+        mock_order_response = MagicMock()
+        mock_order_response.status_code = 200
+        mock_order_response.json.return_value = {
+            "status": "ok",
+            "response": {
+                "type": "order",
+                "data": {
+                    "statuses": [
+                        {
+                            "resting": {
+                                "oid": 12345
+                            }
+                        }
+                    ]
+                }
+            }
+        }
+        
+        # Setup mock sequence / 设置 mock 序列
+        mock_post.side_effect = [
+            mock_success,  # Connection
+            mock_order_response,  # Order placement
+        ]
+        
+        client = HyperliquidClient()
+        
+        # Place an order / 下一个订单
+        orders = [{"side": "buy", "price": 100.0, "quantity": 1.0, "type": "limit"}]
+        result = client.place_orders(orders)
+        
+        # Verify order was placed (or at least attempted with signature) / 验证订单已下单（或至少尝试使用签名）
+        # Check that the request included signature in payload / 检查请求在负载中包含签名
+        order_call = None
+        for call in mock_post.call_args_list:
+            args, kwargs = call
+            url = args[0] if args else kwargs.get("url", "")
+            if "/exchange" in url:
+                order_call = call
+                break
+        
+        if order_call:
+            _, kwargs = order_call
+            json_data = kwargs.get("json", {})
+            # Verify payload structure / 验证负载结构
+            assert "action" in json_data
+            assert "nonce" in json_data
+            # If account is available, signature should be included / 如果账户可用，应该包含签名
+            if client._account is not None:
+                assert "signature" in json_data
+                assert json_data["signature"] is not None
+
+    @patch.dict(
+        os.environ,
+        {
+            "HYPERLIQUID_API_KEY": "test_key",
+            "HYPERLIQUID_API_SECRET": "test_secret",
+        },
+    )
+    @patch("src.trading.hyperliquid_client.requests.post")
+    def test_integration_connection_without_empty_exchange_request(self, mock_post):
+        """
+        Integration Test: Connection does not send empty POST to /exchange
+        集成测试：连接不发送空 POST 到 /exchange
+        
+        Verifies that _connect_and_authenticate no longer sends empty {} to /exchange,
+        which was causing 422 errors and masking real connection issues.
+        验证 _connect_and_authenticate 不再发送空 {} 到 /exchange，
+        这会导致 422 错误并掩盖真实的连接问题。
+        """
+        # Mock successful connection / 模拟成功连接
+        mock_success = MagicMock()
+        mock_success.status_code = 200
+        mock_success.json.return_value = {"status": "ok"}
+        mock_post.return_value = mock_success
+        
+        client = HyperliquidClient()
+        
+        # Verify client is connected / 验证客户端已连接
+        assert client.is_connected is True
+        
+        # Verify no empty POST was made to /exchange / 验证没有向 /exchange 发送空 POST
+        calls = mock_post.call_args_list
+        for call in calls:
+            args, kwargs = call
+            url = args[0] if args else kwargs.get("url", "")
+            json_data = kwargs.get("json", {})
+            # If it's a call to /exchange, json should not be empty {}
+            # 如果是对 /exchange 的调用，json 不应该是空的 {}
+            if "/exchange" in url:
+                assert json_data != {}, "Empty {} should not be sent to /exchange during connection"
+

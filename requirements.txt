@@ -17,3 +17,8 @@ pytest
 pytest-cov
 pytest-mock
 playwright
+# Hyperliquid signature support
+eth-account
+msgpack
+eth-utils
+hyperliquid-python-sdk

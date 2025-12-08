@@ -646,26 +646,58 @@
             isCheckingConnection = true;
             lastConnectionCheckTime = now;
             
+            // Get status elements early to ensure they exist / 提前获取状态元素以确保它们存在
+            const statusEl = document.getElementById('connectionStatus');
+            const detailsEl = document.getElementById('connectionDetails');
+            
+            if (!statusEl || !detailsEl) {
+                isCheckingConnection = false;
+                return; // Elements not found, page might not be fully loaded
+            }
+            
             try {
                 // Get currently selected pair / 获取当前选中的交易对
                 const pairSelect = document.getElementById('pairSelect');
                 const selectedSymbol = pairSelect ? pairSelect.value : null;
                 
-                // Use Hyperliquid status API to check connection (faster than evaluation API)
-                // 使用 Hyperliquid 状态 API 检查连接（比评估 API 更快）
-                // If a specific symbol is selected, we'll update the status with that symbol's price
-                // 如果选择了特定交易对，我们将使用该交易对的价格更新状态
-                const res = await diagnosticFetch('/api/hyperliquid/status');
-                const data = await res.json();
+                // Add timeout to prevent hanging / 添加超时以防止挂起
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => {
+                    controller.abort();
+                }, 10000); // 10 second timeout / 10 秒超时
                 
-                const statusEl = document.getElementById('connectionStatus');
-                const detailsEl = document.getElementById('connectionDetails');
+                let res;
+                try {
+                    // Use Hyperliquid status API to check connection (faster than evaluation API)
+                    // 使用 Hyperliquid 状态 API 检查连接（比评估 API 更快）
+                    // If a specific symbol is selected, we'll update the status with that symbol's price
+                    // 如果选择了特定交易对，我们将使用该交易对的价格更新状态
+                    res = await diagnosticFetch('/api/hyperliquid/status', {
+                        signal: controller.signal
+                    });
+                    clearTimeout(timeoutId);
+                } catch (fetchErr) {
+                    clearTimeout(timeoutId);
+                    if (fetchErr.name === 'AbortError') {
+                        throw new Error('Request timeout after 10 seconds / 请求在 10 秒后超时');
+                    }
+                    throw fetchErr;
+                }
+                
+                // Check if response is ok before parsing JSON / 在解析 JSON 之前检查响应是否正常
+                if (!res.ok) {
+                    throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+                }
+                
+                let data;
+                try {
+                    data = await res.json();
+                } catch (jsonErr) {
+                    throw new Error(`Failed to parse response: ${jsonErr.message} / 解析响应失败：${jsonErr.message}`);
+                }
+                
                 const networkEl = document.getElementById('networkStatus');
                 const networkTextEl = document.getElementById('networkText');
-                
-                if (!statusEl || !detailsEl) {
-                    return; // Elements not found, page might not be fully loaded
-                }
                 
                 // Handle rate limit error / 处理速率限制错误
                 if (data.error && (data.error.includes('429') || data.error.includes('Too Many Requests') || data.error.includes('速率限制'))) {
@@ -762,8 +794,7 @@
                     connectionRefreshInterval = setInterval(checkConnection, 30000); // 30 seconds
                 }
             } catch (err) {
-                const statusEl = document.getElementById('connectionStatus');
-                const detailsEl = document.getElementById('connectionDetails');
+                // Ensure status is updated even on error / 确保即使出错也更新状态
                 if (statusEl && detailsEl) {
                     statusEl.className = 'status-badge status-disconnected';
                     statusEl.innerText = 'Error / 错误';
@@ -776,11 +807,14 @@
                         errorMsg = 'Request timeout. The server may be slow or rate-limited. / 请求超时。服务器可能较慢或受到速率限制。';
                     } else if (errorMsg.includes('timeout')) {
                         errorMsg = 'Request timeout. Please try again. / 请求超时。请重试。';
+                    } else if (errorMsg.includes('Failed to fetch') || errorMsg.includes('NetworkError')) {
+                        errorMsg = 'Network error. Please check your connection. / 网络错误。请检查您的连接。';
                     }
                     
                     detailsEl.innerHTML = `<span style="color:#991b1b;">Failed to check connection: ${errorMsg} / 检查连接失败：${errorMsg}</span>`;
                 }
             } finally {
+                // Always reset the flag, even if there was an error / 即使出错也始终重置标志
                 isCheckingConnection = false;
             }
         }
@@ -1812,23 +1846,8 @@
                         statusEl.innerText = `Found ${orders.length} active order(s) / 找到 ${orders.length} 个活跃订单`;
                         statusEl.classList.remove('error');
                     }
-                }
-                
-                // Also check bot status to ensure botIsActive is up to date / 同时检查 bot 状态以确保 botIsActive 是最新的
-                try {
-                    const statusRes = await diagnosticFetch('/api/status');
-                    const statusData = await statusRes.json();
-                    if (statusData && typeof statusData.active === 'boolean') {
-                        botIsActive = statusData.active;
-                    }
-                } catch (statusErr) {
-                    // Ignore error, keep current botIsActive value / 忽略错误，保持当前 botIsActive 值
-                    console.warn('Failed to fetch bot status in refreshOrders / 在 refreshOrders 中获取 bot 状态失败:', statusErr);
-                }
-                
-                // Update orders refresh interval based on bot state and orders / 根据 bot 状态和订单更新订单刷新间隔
-                updateOrdersRefreshInterval();
                     
+                    // Render orders table / 渲染订单表格
                     if (tableBody) {
                         const rows = orders.map(order => {
                             const orderId = order.id || order.orderId || order.oid || '--';
@@ -1856,6 +1875,21 @@
                         tableBody.innerHTML = rows;
                     }
                 }
+                
+                // Also check bot status to ensure botIsActive is up to date / 同时检查 bot 状态以确保 botIsActive 是最新的
+                try {
+                    const statusRes = await diagnosticFetch('/api/status');
+                    const statusData = await statusRes.json();
+                    if (statusData && typeof statusData.active === 'boolean') {
+                        botIsActive = statusData.active;
+                    }
+                } catch (statusErr) {
+                    // Ignore error, keep current botIsActive value / 忽略错误，保持当前 botIsActive 值
+                    console.warn('Failed to fetch bot status in refreshOrders / 在 refreshOrders 中获取 bot 状态失败:', statusErr);
+                }
+                
+                // Update orders refresh interval based on bot state and orders / 根据 bot 状态和订单更新订单刷新间隔
+                updateOrdersRefreshInterval();
             } catch (err) {
                 const statusEl = document.getElementById('ordersStatusText');
                 if (statusEl) {
@@ -1980,7 +2014,23 @@
             initializeBotButtons(); // Initialize button states / 初始化按钮状态
             loadStatus(); // This will update button states based on actual bot status / 这将根据实际 bot 状态更新按钮状态
             updateEvaluationUI();
-            checkConnection();
+            
+            // Reset connection check time to allow immediate check on page load / 重置连接检查时间以允许页面加载时立即检查
+            lastConnectionCheckTime = 0;
+            checkConnection(); // Check connection immediately on page load / 页面加载时立即检查连接
+            
+            // Set a fallback timeout to ensure status is updated even if checkConnection fails / 设置回退超时以确保即使 checkConnection 失败也更新状态
+            setTimeout(() => {
+                const statusEl = document.getElementById('connectionStatus');
+                const detailsEl = document.getElementById('connectionDetails');
+                if (statusEl && detailsEl && statusEl.innerText === 'Checking...') {
+                    // If still showing "Checking...", update to error state / 如果仍显示 "Checking..."，更新为错误状态
+                    statusEl.className = 'status-badge status-disconnected';
+                    statusEl.innerText = 'Timeout / 超时';
+                    detailsEl.innerHTML = '<span style="color:#991b1b;">Connection check timed out. Please refresh the page. / 连接检查超时。请刷新页面。</span>';
+                }
+            }, 15000); // 15 second fallback timeout / 15 秒回退超时
+            
             refreshPosition();
             refreshOrders();
             startAutoRefresh();

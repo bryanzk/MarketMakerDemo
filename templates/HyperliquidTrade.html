@@ -579,6 +579,122 @@
             progress: { completed: 0, total: 0 },
         };
 
+        function getWebSocketUrl(path) {
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            return `${protocol}//${window.location.host}${path}`;
+        }
+
+        function upsertEvaluationResult(result) {
+            const idx = evaluationState.results.findIndex(r => r.provider_name === result.provider_name);
+            if (idx >= 0) {
+                evaluationState.results[idx] = result;
+            } else {
+                evaluationState.results.push(result);
+            }
+            // Keep results sorted by rank if available
+            evaluationState.results.sort((a, b) => (a.rank || 0) - (b.rank || 0));
+        }
+
+        async function startEvaluationWebSocket(payload) {
+            return new Promise((resolve, reject) => {
+                let finished = false;
+                let ws;
+                try {
+                    ws = new WebSocket(getWebSocketUrl('/ws/evaluation'));
+                } catch (err) {
+                    return reject(err);
+                }
+
+                ws.onopen = () => {
+                    ws.send(JSON.stringify(payload));
+                };
+
+                ws.onmessage = (event) => {
+                    let msg;
+                    try {
+                        msg = JSON.parse(event.data);
+                    } catch (err) {
+                        console.warn('Failed to parse WS message', err);
+                        return;
+                    }
+
+                    switch (msg.type) {
+                        case 'start':
+                            evaluationState.progress = {
+                                completed: 0,
+                                total: msg.total || payload.selected_models.length || evaluationState.providers.length
+                            };
+                            updateEvaluationUI();
+                            break;
+                        case 'progress':
+                            evaluationState.progress = {
+                                completed: msg.completed || 0,
+                                total: msg.total || evaluationState.progress.total || 0
+                            };
+                            updateEvaluationUI();
+                            break;
+                        case 'model_done':
+                            if (msg.result) {
+                                upsertEvaluationResult(msg.result);
+                                evaluationState.lastRunSymbol = payload.symbol;
+                                evaluationState.lastRunAt = new Date().toISOString();
+                            }
+                            evaluationState.progress = {
+                                completed: msg.completed || evaluationState.progress.completed,
+                                total: msg.total || evaluationState.progress.total
+                            };
+                            if (msg.provider && evaluationState.providerStatus[msg.provider]) {
+                                evaluationState.providerStatus[msg.provider].status = 'completed';
+                                evaluationState.providerStatus[msg.provider].completedAt = Date.now();
+                            }
+                            updateEvaluationUI();
+                            break;
+                        case 'finished':
+                            if (msg.results) evaluationState.results = msg.results;
+                            if (msg.aggregated) evaluationState.aggregated = msg.aggregated;
+                            evaluationState.lastRunSymbol = msg.symbol || payload.symbol;
+                            evaluationState.lastRunAt = new Date().toISOString();
+                            evaluationState.progress = {
+                                completed: msg.results ? msg.results.length : evaluationState.progress.completed,
+                                total: msg.total || evaluationState.progress.total
+                            };
+                            evaluationState.loading = false;
+                            updateEvaluationUI();
+                            finished = true;
+                            ws.close();
+                            resolve();
+                            break;
+                        case 'error':
+                            evaluationState.lastError = msg.message || 'Evaluation error';
+                            evaluationState.loading = false;
+                            updateEvaluationUI();
+                            finished = true;
+                            ws.close();
+                            reject(new Error(evaluationState.lastError));
+                            break;
+                        default:
+                            break;
+                    }
+                };
+
+                ws.onerror = () => {
+                    if (finished) return;
+                    evaluationState.lastError = 'WebSocket error / WebSocket错误';
+                    evaluationState.loading = false;
+                    updateEvaluationUI();
+                    finished = true;
+                    reject(new Error('WebSocket error'));
+                };
+
+                ws.onclose = () => {
+                    if (finished) return;
+                    evaluationState.loading = false;
+                    updateEvaluationUI();
+                    reject(new Error('WebSocket closed'));
+                };
+            });
+        }
+
         function showMessage(el, text, isError = false) {
             if (!el) return;
             el.innerText = text;

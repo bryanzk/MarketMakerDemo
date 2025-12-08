@@ -576,6 +576,7 @@
             elapsedInterval: null,
             providers: ['Gemini', 'OpenAI', 'Claude'], // Expected providers
             providerStatus: {}, // Track status for each provider
+            progress: { completed: 0, total: 0 },
         };
 
         function showMessage(el, text, isError = false) {
@@ -1407,7 +1408,11 @@
 
             if (runBtn) runBtn.disabled = evaluationState.loading;
             if (evaluationState.loading) {
-                statusEl.innerText = 'Running evaluation... Please wait. / 正在运行评估... 请稍候。';
+                if (evaluationState.progress && evaluationState.progress.total) {
+                    statusEl.innerText = `Running evaluation... ${evaluationState.progress.completed}/${evaluationState.progress.total} / 正在运行评估...`;
+                } else {
+                    statusEl.innerText = 'Running evaluation... Please wait. / 正在运行评估... 请稍候。';
+                }
             } else if (evaluationState.lastRunAt) {
                 statusEl.innerText = `Last run: ${evaluationState.lastRunSymbol} @ ${new Date(evaluationState.lastRunAt).toLocaleTimeString()} / 上次运行: ${evaluationState.lastRunSymbol} @ ${new Date(evaluationState.lastRunAt).toLocaleTimeString()}`;
             } else {
@@ -1601,41 +1606,39 @@
             evaluationState.loading = true;
             evaluationState.lastError = null;
             evaluationState.startTime = Date.now();
+            evaluationState.results = [];
+            evaluationState.aggregated = null;
+            evaluationState.progress = { completed: 0, total: 0 };
             evaluationState.providerStatus = {};
             
-            // Map selected models to provider names / 将选中的模型映射到提供商名称
             const modelToProviderName = {
                 'gemini': 'Gemini',
                 'openai': 'OpenAI',
                 'claude': 'Claude'
             };
             evaluationState.providers = selectedModels.map(m => modelToProviderName[m] || m);
-            
-            // Initialize provider status / 初始化提供商状态
             evaluationState.providers.forEach(name => {
                 evaluationState.providerStatus[name] = { status: 'pending', step: 0, stepProgress: 0 };
             });
 
-            // Start elapsed time counter / 启动已用时间计数器
             if (evaluationState.elapsedInterval) clearInterval(evaluationState.elapsedInterval);
             evaluationState.elapsedInterval = setInterval(() => {
                 updateProgressDisplay();
             }, 1000);
 
             updateEvaluationUI();
-            simulateProgress(); // Start progress simulation / 启动进度模拟
 
             try {
-                // Use longer timeout for evaluation API (45 seconds) as it may take time to call multiple LLMs and run simulations
-                // 为评估 API 使用更长的超时时间（45 秒），因为调用多个 LLM 和运行模拟可能需要时间
+                // Use longer timeout for evaluation API (120 seconds) as it may take time to call multiple LLMs and run simulations
+                // 为评估 API 使用更长的超时时间（120 秒），因为调用多个 LLM 和运行模拟可能需要时间
                 const res = await diagnosticFetch('/api/evaluation/run', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    timeout: 45000, // 45 seconds timeout for evaluation / 评估 45 秒超时
+                    timeout: 120000, // 120 seconds timeout for evaluation / 评估 120 秒超时
                     body: JSON.stringify({ 
                         symbol: getEvaluationSymbol(),
                         exchange: 'hyperliquid',  // Always use hyperliquid exchange
-                        simulation_steps: 500,
+                        simulation_steps: 100, // Use fewer simulation steps to return faster / 使用更少的模拟步数以更快返回
                         selected_models: selectedModels  // Send selected models to backend / 发送选中的模型到后端
                     }),
                 });
@@ -2190,13 +2193,24 @@
         async function checkProviderAvailability() {
             try {
                 const res = await fetch('/api/evaluation/providers');
+                if (!res.ok) {
+                    console.error('Failed to fetch provider availability:', res.status, res.statusText);
+                    // If API call fails, don't disable checkboxes - allow user to try / 如果 API 调用失败，不禁用复选框 - 允许用户尝试
+                    return;
+                }
                 const data = await res.json();
+                console.log('Provider availability response:', data); // Debug log / 调试日志
                 if (data.ok && data.providers) {
                     providerAvailability = data.providers;
+                    console.log('Provider availability:', providerAvailability); // Debug log / 调试日志
                     updateModelCheckboxesAvailability();
+                } else {
+                    console.warn('Provider availability response format unexpected:', data);
+                    // If response format is unexpected, don't disable checkboxes / 如果响应格式不符合预期，不禁用复选框
                 }
             } catch (err) {
                 console.error('Failed to check provider availability:', err);
+                // If error occurs, don't disable checkboxes - allow user to try / 如果发生错误，不禁用复选框 - 允许用户尝试
             }
         }
 
@@ -2208,16 +2222,29 @@
                 'claude': 'Claude'
             };
             
+            // Ensure providerAvailability has the expected structure / 确保 providerAvailability 具有预期的结构
+            if (!providerAvailability || typeof providerAvailability !== 'object') {
+                console.warn('Provider availability data is invalid, skipping checkbox update / 提供商可用性数据无效，跳过复选框更新');
+                return;
+            }
+            
             const unavailableNames = new Set(
-                providerAvailability.unavailable.map(p => p.name)
+                (providerAvailability.unavailable || []).map(p => p.name)
             );
+            
+            console.log('Unavailable providers:', Array.from(unavailableNames)); // Debug log / 调试日志
             
             Object.keys(modelMap).forEach(modelKey => {
                 const checkbox = document.getElementById(`model${modelMap[modelKey]}`);
-                if (!checkbox) return;
+                if (!checkbox) {
+                    console.warn(`Checkbox not found for model: ${modelKey} (ID: model${modelMap[modelKey]})`);
+                    return;
+                }
                 
                 const providerName = modelMap[modelKey];
                 const isUnavailable = unavailableNames.has(providerName);
+                
+                console.log(`Provider ${providerName}: ${isUnavailable ? 'unavailable' : 'available'}`); // Debug log / 调试日志
                 
                 if (isUnavailable) {
                     checkbox.disabled = true;
@@ -2226,7 +2253,7 @@
                     if (label) {
                         label.style.opacity = '0.5';
                         label.style.cursor = 'not-allowed';
-                        const unavailableInfo = providerAvailability.unavailable.find(p => p.name === providerName);
+                        const unavailableInfo = (providerAvailability.unavailable || []).find(p => p.name === providerName);
                         if (unavailableInfo) {
                             label.title = `${unavailableInfo.reason}. Please configure ${unavailableInfo.api_key_name} in .env file. / ${unavailableInfo.reason}。请在 .env 文件中配置 ${unavailableInfo.api_key_name}。`;
                         }

@@ -1464,12 +1464,14 @@
                 }
             }
 
-            if (resultsWrapper) {
-                if (evaluationState.results.length > 0) {
+            if (resultsWrapper && resultsBody) {
+                if (evaluationState.results && evaluationState.results.length > 0) {
                     resultsWrapper.style.display = 'block';
-                    lastRunEl.innerText = evaluationState.lastRunAt
-                        ? `Updated ${new Date(evaluationState.lastRunAt).toLocaleTimeString()} / 更新于 ${new Date(evaluationState.lastRunAt).toLocaleTimeString()}`
-                        : '';
+                    if (lastRunEl) {
+                        lastRunEl.innerText = evaluationState.lastRunAt
+                            ? `Updated ${new Date(evaluationState.lastRunAt).toLocaleTimeString()} / 更新于 ${new Date(evaluationState.lastRunAt).toLocaleTimeString()}`
+                            : '';
+                    }
                     const rows = evaluationState.results.map((result) => {
                         const proposal = result.proposal || {};
                         const simulation = result.simulation || {};
@@ -1499,7 +1501,9 @@
                     resultsBody.innerHTML = rows;
                 } else {
                     resultsWrapper.style.display = 'none';
-                    lastRunEl.innerText = '';
+                    if (lastRunEl) {
+                        lastRunEl.innerText = '';
+                    }
                 }
             }
         }
@@ -1622,9 +1626,12 @@
             simulateProgress(); // Start progress simulation / 启动进度模拟
 
             try {
+                // Use longer timeout for evaluation API (45 seconds) as it may take time to call multiple LLMs and run simulations
+                // 为评估 API 使用更长的超时时间（45 秒），因为调用多个 LLM 和运行模拟可能需要时间
                 const res = await diagnosticFetch('/api/evaluation/run', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
+                    timeout: 45000, // 45 seconds timeout for evaluation / 评估 45 秒超时
                     body: JSON.stringify({ 
                         symbol: getEvaluationSymbol(),
                         exchange: 'hyperliquid',  // Always use hyperliquid exchange
@@ -1679,6 +1686,15 @@
                 evaluationState.aggregated = data.aggregated || null;
                 evaluationState.lastRunSymbol = data.symbol || getEvaluationSymbol();
                 evaluationState.lastRunAt = new Date().toISOString();
+                
+                // Debug: Log results to verify score field is present / 调试：记录结果以验证 score 字段存在
+                if (evaluationState.results.length > 0) {
+                    console.log('Evaluation results received:', evaluationState.results.map(r => ({
+                        provider: r.provider_name,
+                        score: r.score,
+                        rank: r.rank
+                    })));
+                }
                 
                 // Check for warnings about unavailable models / 检查关于不可用模型的警告
                 const errorBox = document.getElementById('evaluationErrorBox');
@@ -1766,6 +1782,9 @@
                         errorBox.style.display = 'none';
                     }
                 }
+                
+                // Update UI immediately after successful evaluation / 评估成功后立即更新 UI
+                updateEvaluationUI();
             } catch (err) {
                 // Mark all providers as failed / 标记所有提供商为失败
                 evaluationState.providers.forEach(name => {

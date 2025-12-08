@@ -11,7 +11,7 @@ Tests for:
 - GeminiProvider.name property
 """
 
-from unittest.mock import Mock, patch
+from unittest.mock import Mock, MagicMock, patch
 
 import pytest
 
@@ -36,7 +36,7 @@ class TestOpenAIProvider:
                 mock_openai.return_value = mock_client
                 provider = OpenAIProvider()
                 assert provider.api_key == "test_key"
-                assert provider._model_name == "gpt-5"
+                assert provider._model_name == "gpt-5.1"  # Default changed to gpt-5.1
                 mock_openai.assert_called_with(api_key="test_key")
 
     def test_init_failure_no_key(self):
@@ -52,12 +52,39 @@ class TestOpenAIProvider:
                 provider = OpenAIProvider(model="gpt-3.5-turbo")
                 assert provider._model_name == "gpt-3.5-turbo"
 
+    def test_init_respects_env_model_preference(self):
+        """Should pick model specified via OPENAI_MODEL env"""
+        with patch.dict(
+            "os.environ",
+            {"OPENAI_API_KEY": "test_key", "OPENAI_MODEL": "gpt-4o-mini"},
+            clear=True,
+        ):
+            with patch("openai.OpenAI"):
+                provider = OpenAIProvider()
+                assert provider._model_name == "gpt-4o-mini"
+
+    def test_init_with_custom_base_url(self):
+        """Test initialization with custom base_url"""
+        with patch.dict("os.environ", {"OPENAI_API_KEY": "test_key"}):
+            with patch("openai.OpenAI") as mock_openai:
+                mock_openai.return_value = Mock()
+                provider = OpenAIProvider(base_url="https://api.example.com")
+                mock_openai.assert_called_with(api_key="test_key", base_url="https://api.example.com")
+
+    def test_init_with_timeout(self):
+        """Test initialization with timeout"""
+        with patch.dict("os.environ", {"OPENAI_API_KEY": "test_key"}):
+            with patch("openai.OpenAI") as mock_openai:
+                mock_openai.return_value = Mock()
+                provider = OpenAIProvider(timeout=30.0)
+                mock_openai.assert_called_with(api_key="test_key", timeout=30.0)
+
     def test_name_property(self):
         """Test name property returns correct format"""
         with patch.dict("os.environ", {"OPENAI_API_KEY": "test_key"}):
             with patch("openai.OpenAI"):
                 provider = OpenAIProvider()
-                assert provider.name == "OpenAI (gpt-5)"
+                assert provider.name == "OpenAI (gpt-5.1)"
 
     def test_generate_success(self):
         """Test successful content generation"""
@@ -78,15 +105,55 @@ class TestOpenAIProvider:
                 mock_client.chat.completions.create.assert_called_once()
 
     def test_generate_error(self):
-        """Test error handling during generation"""
+        """Test error handling during generation - should include original API error"""
         with patch.dict("os.environ", {"OPENAI_API_KEY": "test_key"}):
             with patch("openai.OpenAI") as mock_openai:
                 mock_client = Mock()
-                mock_client.chat.completions.create.side_effect = Exception("API Error")
+                original_error = Exception("API Error: Rate limit exceeded")
+                mock_client.chat.completions.create.side_effect = original_error
                 mock_openai.return_value = mock_client
 
                 provider = OpenAIProvider()
-                with pytest.raises(RuntimeError, match="OpenAI API error"):
+                with pytest.raises(RuntimeError) as exc_info:
+                    provider.generate("Test prompt")
+                # Verify error message contains original API error
+                # 验证错误消息包含原始 API 错误
+                assert "OpenAI API error" in str(exc_info.value)
+                assert "API Error" in str(exc_info.value)
+                assert "gpt-5.1" in str(exc_info.value)
+
+    def test_generate_error_with_model_not_found(self):
+        """Test error handling when model is not found - should raise error directly"""
+        with patch.dict("os.environ", {"OPENAI_API_KEY": "test_key"}):
+            with patch("openai.OpenAI") as mock_openai:
+                mock_client = Mock()
+                # Simulate model not found error from API
+                # 模拟 API 返回的模型未找到错误
+                mock_client.chat.completions.create.side_effect = Exception(
+                    "The model 'gpt-5.1' does not exist or you do not have access to it"
+                )
+                mock_openai.return_value = mock_client
+
+                provider = OpenAIProvider(model="gpt-5.1")
+                with pytest.raises(RuntimeError) as exc_info:
+                    provider.generate("Test prompt")
+                # Verify error message contains original API error
+                # 验证错误消息包含原始 API 错误
+                assert "gpt-5.1" in str(exc_info.value)
+                assert "does not exist" in str(exc_info.value) or "OpenAI API error" in str(exc_info.value)
+
+    def test_generate_empty_response(self):
+        """Test handling of empty API response"""
+        with patch.dict("os.environ", {"OPENAI_API_KEY": "test_key"}):
+            with patch("openai.OpenAI") as mock_openai:
+                mock_client = Mock()
+                mock_response = Mock()
+                mock_response.choices = []  # Empty choices
+                mock_client.chat.completions.create.return_value = mock_response
+                mock_openai.return_value = mock_client
+
+                provider = OpenAIProvider()
+                with pytest.raises(RuntimeError, match="empty response"):
                     provider.generate("Test prompt")
 
     def test_init_import_error(self):
@@ -111,7 +178,7 @@ class TestClaudeProvider:
                 mock_anthropic.return_value = mock_client
                 provider = ClaudeProvider()
                 assert provider.api_key == "test_key"
-                assert provider._model_name == "claude-3-5-sonnet-20241022"
+                assert provider._model_name == "claude-sonnet-4-5"
                 mock_anthropic.assert_called_with(api_key="test_key")
 
     def test_init_failure_no_key(self):
@@ -127,12 +194,30 @@ class TestClaudeProvider:
                 provider = ClaudeProvider(model="claude-3-opus-20240229")
                 assert provider._model_name == "claude-3-opus-20240229"
 
+    def test_init_respects_env_model_preference(self):
+        """Should pick model specified via ANTHROPIC_MODEL env"""
+        with patch.dict(
+            "os.environ",
+            {"ANTHROPIC_API_KEY": "test_key", "ANTHROPIC_MODEL": "claude-3-opus-20240229"},
+            clear=True,
+        ):
+            with patch("anthropic.Anthropic"):
+                provider = ClaudeProvider()
+                assert provider._model_name == "claude-3-opus-20240229"
+
+    def test_init_with_custom_max_tokens(self):
+        """Test initialization with custom max_tokens"""
+        with patch.dict("os.environ", {"ANTHROPIC_API_KEY": "test_key"}):
+            with patch("anthropic.Anthropic"):
+                provider = ClaudeProvider(max_tokens=2048)
+                assert provider.max_tokens == 2048
+
     def test_name_property(self):
         """Test name property returns correct format"""
         with patch.dict("os.environ", {"ANTHROPIC_API_KEY": "test_key"}):
             with patch("anthropic.Anthropic"):
                 provider = ClaudeProvider()
-                assert provider.name == "Claude (claude-3-5-sonnet-20241022)"
+                assert provider.name == "Claude (claude-sonnet-4-5)"
 
     def test_generate_success(self):
         """Test successful content generation"""
@@ -152,15 +237,35 @@ class TestClaudeProvider:
                 mock_client.messages.create.assert_called_once()
 
     def test_generate_error(self):
-        """Test error handling during generation"""
+        """Test error handling during generation - should include original API error"""
         with patch.dict("os.environ", {"ANTHROPIC_API_KEY": "test_key"}):
             with patch("anthropic.Anthropic") as mock_anthropic:
                 mock_client = Mock()
-                mock_client.messages.create.side_effect = Exception("API Error")
+                original_error = Exception("API Error: Rate limit exceeded")
+                mock_client.messages.create.side_effect = original_error
                 mock_anthropic.return_value = mock_client
 
                 provider = ClaudeProvider()
-                with pytest.raises(RuntimeError, match="Claude API error"):
+                with pytest.raises(RuntimeError) as exc_info:
+                    provider.generate("Test prompt")
+                # Verify error message contains original API error
+                # 验证错误消息包含原始 API 错误
+                assert "Claude API error" in str(exc_info.value)
+                assert "API Error" in str(exc_info.value)
+                assert "claude-sonnet-4-5" in str(exc_info.value)
+
+    def test_generate_empty_response(self):
+        """Test handling of empty API response"""
+        with patch.dict("os.environ", {"ANTHROPIC_API_KEY": "test_key"}):
+            with patch("anthropic.Anthropic") as mock_anthropic:
+                mock_client = Mock()
+                mock_response = Mock()
+                mock_response.content = []  # Empty content
+                mock_client.messages.create.return_value = mock_response
+                mock_anthropic.return_value = mock_client
+
+                provider = ClaudeProvider()
+                with pytest.raises(RuntimeError, match="empty response"):
                     provider.generate("Test prompt")
 
     def test_init_import_error(self):
@@ -183,7 +288,7 @@ class TestGeminiProviderName:
             with patch("google.generativeai.configure"):
                 with patch("google.generativeai.GenerativeModel"):
                     provider = GeminiProvider()
-                    assert provider.name == "Gemini (gemini-3-pro)"
+                    assert provider.name == "Gemini (gemini-3-pro-preview)"
 
     def test_name_property_custom_model(self):
         """Test name property with custom model"""
@@ -237,9 +342,11 @@ class TestCreateAllProviders:
                 "GEMINI_API_KEY": "gemini_key",
                 "OPENAI_API_KEY": "openai_key",
             },
+            clear=True,
         ):
-            with patch("google.generativeai.configure"):
-                with patch("google.generativeai.GenerativeModel"):
+            with patch("src.ai.llm._USE_NEW_SDK", True):
+                with patch("src.ai.llm.genai_new") as mock_genai:
+                    mock_genai.Client.return_value = MagicMock()
                     with patch("openai.OpenAI"):
                         providers = create_all_providers()
                         assert len(providers) == 2

@@ -75,14 +75,65 @@ class MultiLLMEvaluator:
         Returns:
             评估结果列表（按得分排名）
         """
+        logger.info(
+            f"Starting multi-LLM evaluation / 开始多 LLM 评估",
+            extra={
+                "extra_data": {
+                    "symbol": context.symbol,
+                    "mid_price": context.mid_price,
+                    "providers_count": len(self.providers),
+                    "provider_names": [p.name for p in self.providers],
+                    "simulation_steps": self.simulation_steps,
+                    "parallel": self.parallel,
+                }
+            }
+        )
+        
         prompt = StrategyAdvisorPrompt.generate(context)
+        logger.debug(f"Generated evaluation prompt (length: {len(prompt)} chars) / 生成评估提示（长度：{len(prompt)} 字符）")
 
+        start_time = time.time()
         if self.parallel and len(self.providers) > 1:
             results = self._evaluate_parallel(prompt, context)
         else:
             results = self._evaluate_sequential(prompt, context)
+        
+        evaluation_time = time.time() - start_time
+        logger.info(
+            f"Completed LLM calls / 完成 LLM 调用",
+            extra={
+                "extra_data": {
+                    "evaluation_time_seconds": evaluation_time,
+                    "results_count": len(results),
+                    "successful_count": len([r for r in results if r.proposal.parse_success]),
+                    "failed_count": len([r for r in results if not r.proposal.parse_success]),
+                }
+            }
+        )
 
         results = self._score_and_rank(results)
+        
+        # Log final results summary
+        logger.info(
+            f"Evaluation completed / 评估完成",
+            extra={
+                "extra_data": {
+                    "total_time_seconds": time.time() - start_time,
+                    "ranked_results": [
+                        {
+                            "rank": r.rank,
+                            "provider": r.provider_name,
+                            "strategy": r.proposal.recommended_strategy,
+                            "score": r.score,
+                            "pnl": r.simulation.realized_pnl,
+                            "latency_ms": r.latency_ms,
+                        }
+                        for r in results
+                    ],
+                }
+            }
+        )
+        
         return results
 
     def _evaluate_parallel(
@@ -142,16 +193,73 @@ class MultiLLMEvaluator:
         """
         provider_name = provider.name
 
+        logger.info(
+            f"Calling LLM provider / 调用 LLM 提供商: {provider_name}",
+            extra={
+                "extra_data": {
+                    "provider": provider_name,
+                    "symbol": context.symbol,
+                }
+            }
+        )
+
         start_time = time.time()
         try:
             raw_response = provider.generate(prompt)
             latency_ms = (time.time() - start_time) * 1000
+            logger.info(
+                f"LLM response received / 收到 LLM 响应: {provider_name}",
+                extra={
+                    "extra_data": {
+                        "provider": provider_name,
+                        "latency_ms": latency_ms,
+                        "response_length": len(raw_response) if raw_response else 0,
+                    }
+                }
+            )
         except Exception as e:
-            logger.error(f"LLM call failed for {provider_name}: {e}")
+            latency_ms = (time.time() - start_time) * 1000
+            logger.error(
+                f"LLM call failed / LLM 调用失败: {provider_name}",
+                extra={
+                    "extra_data": {
+                        "provider": provider_name,
+                        "error": str(e),
+                        "latency_ms": latency_ms,
+                    }
+                },
+                exc_info=True
+            )
             return self._create_error_result(provider_name, str(e))
 
         proposal = self._parse_response(raw_response, provider_name)
+        logger.info(
+            f"Parsed LLM response / 解析 LLM 响应: {provider_name}",
+            extra={
+                "extra_data": {
+                    "provider": provider_name,
+                    "parse_success": proposal.parse_success,
+                    "strategy": proposal.recommended_strategy,
+                    "spread": proposal.spread,
+                    "confidence": proposal.confidence,
+                    "parse_error": proposal.parse_error if not proposal.parse_success else None,
+                }
+            }
+        )
+        
         simulation = self._run_simulation(proposal, context)
+        logger.info(
+            f"Simulation completed / 模拟完成: {provider_name}",
+            extra={
+                "extra_data": {
+                    "provider": provider_name,
+                    "simulation_steps": self.simulation_steps,
+                    "realized_pnl": simulation.realized_pnl,
+                    "win_rate": simulation.win_rate,
+                    "sharpe_ratio": simulation.sharpe_ratio,
+                }
+            }
+        )
 
         result = EvaluationResult(
             provider_name=provider_name,
@@ -161,12 +269,14 @@ class MultiLLMEvaluator:
         )
 
         logger.info(
-            f"Evaluated {provider_name}",
+            f"Evaluated {provider_name} / 评估完成: {provider_name}",
             extra={
                 "extra_data": {
+                    "provider": provider_name,
                     "strategy": proposal.recommended_strategy,
                     "spread": proposal.spread,
                     "pnl": simulation.realized_pnl,
+                    "latency_ms": latency_ms,
                 }
             },
         )
@@ -186,6 +296,17 @@ class MultiLLMEvaluator:
         Returns:
             解析后的策略建议
         """
+        if raw_response is None:
+            logger.warning(f"Received None response from {provider_name}")
+            return StrategyProposal(
+                recommended_strategy="FixedSpread",
+                spread=0.01,
+                provider_name=provider_name,
+                raw_response="",
+                parse_success=False,
+                parse_error="Received None response from LLM",
+            )
+        
         clean_response = raw_response.strip()
 
         if "```" in clean_response:
@@ -675,7 +796,17 @@ class MultiLLMEvaluator:
         Returns:
             AggregatedResult 对象
         """
+        logger.info(
+            f"Aggregating evaluation results / 聚合评估结果",
+            extra={
+                "extra_data": {
+                    "results_count": len(results),
+                }
+            }
+        )
+        
         if not results:
+            logger.warning("No results to aggregate / 没有结果可聚合")
             return AggregatedResult()
 
         strategy_consensus = self.get_strategy_consensus(results)
@@ -700,7 +831,7 @@ class MultiLLMEvaluator:
             results, strategy_consensus, parameter_stats, consensus_confidence
         )
 
-        return AggregatedResult(
+        aggregated = AggregatedResult(
             strategy_consensus=strategy_consensus,
             parameter_stats=parameter_stats,
             consensus_confidence=consensus_confidence,
@@ -714,6 +845,26 @@ class MultiLLMEvaluator:
             avg_win_rate=avg_win_rate,
             avg_latency_ms=avg_latency,
         )
+        
+        logger.info(
+            f"Aggregation completed / 聚合完成",
+            extra={
+                "extra_data": {
+                    "consensus_strategy": strategy_consensus.consensus_strategy,
+                    "consensus_level": strategy_consensus.consensus_level,
+                    "consensus_ratio": strategy_consensus.consensus_ratio,
+                    "consensus_confidence": consensus_confidence,
+                    "successful_evaluations": len(successful),
+                    "failed_evaluations": len(failed),
+                    "avg_pnl": avg_pnl,
+                    "avg_sharpe": avg_sharpe,
+                    "avg_win_rate": avg_win_rate,
+                    "avg_latency_ms": avg_latency,
+                }
+            }
+        )
+        
+        return aggregated
 
     def _generate_consensus_proposal(
         self,

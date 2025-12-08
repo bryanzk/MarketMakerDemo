@@ -1708,6 +1708,52 @@ class HyperliquidClient:
             # 获取资金费率
             funding_rate = self.fetch_funding_rate()
 
+            # Get tick_size and step_size from meta data
+            # 从 meta 数据获取 tick_size 和 step_size
+            tick_size = None
+            step_size = None
+
+            try:
+                meta_data = self._fetch_meta_data()
+                if meta_data:
+                    universe = meta_data.get("universe", [])
+                    # Get coin name from symbol
+                    # 从交易对名称获取币种名称
+                    symbol = self.symbol.split(":")[0] if ":" in self.symbol else self.symbol
+                    coin_normalized = symbol.split("/")[0] if "/" in symbol else symbol
+                    coin_normalized = coin_normalized.upper()
+                    
+                    # Find asset info in universe
+                    # 在 universe 中查找资产信息
+                    for asset_info in universe:
+                        if isinstance(asset_info, dict) and asset_info.get("name") == coin_normalized:
+                            # Hyperliquid uses szDecimals for step_size
+                            # Hyperliquid 使用 szDecimals 作为 step_size
+                            if "szDecimals" in asset_info:
+                                step_size = 10 ** (-asset_info["szDecimals"])
+                            # Common tick sizes: 0.1 for ETH, 0.01 for BTC
+                            # 常见 tick size: ETH 使用 0.1, BTC 使用 0.01
+                            # For ETH, tick_size is typically 0.1
+                            # 对于 ETH，tick_size 通常是 0.1
+                            tick_size = 0.1  # Default for ETH, adjust based on asset
+                            logger.debug(
+                                f"Found tick_size={tick_size}, step_size={step_size} for {coin_normalized} from meta data. "
+                                f"从 meta 数据找到 {coin_normalized} 的 tick_size={tick_size}, step_size={step_size}。"
+                            )
+                            break
+            except Exception as e:
+                logger.debug(
+                    f"Failed to get tick_size/step_size from meta: {e}. "
+                    f"从 meta 获取 tick_size/step_size 失败: {e}。"
+                )
+
+            # Use defaults if not found
+            # 如果未找到，使用默认值
+            if tick_size is None:
+                tick_size = 0.1  # Default for ETH (changed from 0.01)
+            if step_size is None:
+                step_size = 0.001  # Default for ETH
+
             # Return market data
             # 返回市场数据
             return {
@@ -1716,8 +1762,8 @@ class HyperliquidClient:
                 "mid_price": mid_price,
                 "timestamp": int(time.time() * 1000),
                 "funding_rate": funding_rate,
-                "tick_size": None,  # Will be populated from symbol limits if needed
-                "step_size": None,  # Will be populated from symbol limits if needed
+                "tick_size": tick_size,
+                "step_size": step_size,
             }
 
         except Exception as e:
@@ -2389,225 +2435,213 @@ class HyperliquidClient:
                     }
                     continue
 
-                # Use Hyperliquid SDK Exchange if available, otherwise fall back to manual implementation
-                # 如果可用，使用 Hyperliquid SDK Exchange，否则回退到手动实现
+                # Use Hyperliquid SDK Exchange (required for all order operations)
+                # 使用 Hyperliquid SDK Exchange（所有订单操作都需要）
+                if not self._exchange:
+                    error_msg = (
+                        "Hyperliquid SDK Exchange not initialized. Cannot place orders. "
+                        "Hyperliquid SDK Exchange 未初始化。无法下单。"
+                    )
+                    logger.error(error_msg)
+                    self.last_order_error = {
+                        "type": "sdk_not_initialized",
+                        "message": error_msg,
+                        "symbol": self.symbol,
+                        "order": order_snapshot,
+                    }
+                    continue
+                
                 order_result = None
                 response = None
                 
-                if self._exchange:
-                    # Use SDK Exchange.order() method
-                    # 使用 SDK Exchange.order() 方法
-                    try:
-                        # Normalize symbol to coin name for Hyperliquid SDK
-                        # Hyperliquid uses coin names like "ETH", "BTC", not pairs like "ETH/USDT"
-                        # 规范化交易对为 Hyperliquid SDK 的 coin 名称
-                        # Hyperliquid 使用 coin 名称如 "ETH"、"BTC"，而不是交易对如 "ETH/USDT"
-                        symbol = self.symbol.split(":")[0] if ":" in self.symbol else self.symbol
-                        # Extract coin name (first part before "/")
-                        # 提取 coin 名称（"/" 前的第一部分）
-                        coin = symbol.split("/")[0] if "/" in symbol else symbol
-                        # Ensure coin is uppercase (Hyperliquid convention)
-                        # 确保 coin 为大写（Hyperliquid 约定）
-                        coin = coin.upper()
-                        
-                        logger.info(
-                            f"Symbol normalization: {self.symbol} -> {coin}. "
-                            f"交易对规范化: {self.symbol} -> {coin}。"
-                        )
-                        
-                        # Convert order format to SDK format
-                        # 将订单格式转换为 SDK 格式
-                        side = order.get("side", "").lower()
-                        is_buy = side == "buy"
-                        quantity = float(order.get("quantity", 0))
-                        price = float(order.get("price", 0)) if order.get("price") else 0.0
-                        order_type_str = order.get("type", "limit").lower()
-                        
-                        # Build order_type for SDK
-                        # 为 SDK 构建 order_type
-                        if order_type_str == "limit":
-                            order_type = {"limit": {"tif": "Gtc"}}
-                        else:
-                            order_type = {"market": {}}
-                        
-                        # Log account address being used
-                        # 记录正在使用的账户地址
-                        exchange_account_address = getattr(self._exchange, 'account_address', None) if self._exchange else None
-                        logger.info(
-                            f"Placing order using Hyperliquid SDK Exchange. "
-                            f"Coin: {coin}, Side: {side}, Quantity: {quantity}, Price: {price}. "
-                            f"User address (expected): {self.user_address}. "
-                            f"Exchange account_address attribute: {exchange_account_address}. "
-                            f"Wallet address (for signing): {self._account.address if self._account else None}. "
-                            f"使用 Hyperliquid SDK Exchange 下单。交易对: {coin}。"
-                            f"用户地址（预期）: {self.user_address}。"
-                            f"Exchange account_address 属性: {exchange_account_address}。"
-                            f"钱包地址（用于签名）: {self._account.address if self._account else None}。"
-                        )
-                        
-                        # Verify account_address is set before placing order
-                        # 在下单前验证 account_address 已设置
-                        if not exchange_account_address:
-                            logger.error(
-                                f"⚠️  Exchange.account_address is None! This will cause order placement to fail. "
-                                f"Expected user_address: {self.user_address}. "
-                                f"⚠️  Exchange.account_address 为 None！这将导致下单失败。"
-                                f"预期用户地址: {self.user_address}。"
-                            )
-                            # Try to reinitialize Exchange with account_address
-                            # 尝试使用 account_address 重新初始化 Exchange
-                            logger.warning(
-                                f"Attempting to reinitialize Exchange with account_address: {self.user_address}. "
-                                f"尝试使用 account_address 重新初始化 Exchange: {self.user_address}。"
-                            )
-                            exchange_kwargs_reinit = {
-                                "base_url": self.base_url,
-                                "timeout": self.request_timeout,
-                                "account_address": self.user_address,
-                            }
-                            self._exchange = HyperliquidExchange(self._account, **exchange_kwargs_reinit)
-                            exchange_account_address = getattr(self._exchange, 'account_address', None)
-                            logger.info(
-                                f"Reinitialized Exchange. account_address: {exchange_account_address}. "
-                                f"重新初始化 Exchange。account_address: {exchange_account_address}。"
-                            )
-                        
-                        # Place order using SDK
-                        # 使用 SDK 下单
-                        response = self._exchange.order(
-                            name=coin,
-                            is_buy=is_buy,
-                            sz=quantity,
-                            limit_px=price,
-                            order_type=order_type,
-                            reduce_only=False,
-                        )
-                        
-                        # Log response to check what address was used
-                        # 记录响应以检查使用的地址
-                        logger.info(
-                            f"SDK order response received. Response type: {type(response)}. "
-                            f"Response keys: {list(response.keys()) if isinstance(response, dict) else 'N/A'}. "
-                            f"Full response: {str(response)[:500]}. "
-                            f"SDK 订单响应已接收。响应类型: {type(response)}。"
-                            f"响应键: {list(response.keys()) if isinstance(response, dict) else 'N/A'}。"
-                            f"完整响应: {str(response)[:500]}。"
-                        )
-                        
-                        # Parse SDK response
-                        # 解析 SDK 响应
-                        order_result = self._parse_sdk_order_response(response, order, coin)
-                        
-                    except Exception as e:
-                        logger.error(
-                            f"Failed to place order using Hyperliquid SDK: {e}. "
-                            f"Falling back to manual implementation. "
-                            f"使用 Hyperliquid SDK 下单失败: {e}。回退到手动实现。",
-                            exc_info=True,
-                        )
-                        # Fall back to manual implementation
-                        # 回退到手动实现
-                        order_result = None
-                        response = None
-                
-                # If SDK failed or not available, use manual implementation
-                # 如果 SDK 失败或不可用，使用手动实现
-                if not order_result:
-                    # Build order payload
-                    order_payload = self._build_order_payload(order)
+                # Use SDK Exchange.order() method
+                # 使用 SDK Exchange.order() 方法
+                try:
+                    # Normalize symbol to coin name for Hyperliquid SDK
+                    # Hyperliquid uses coin names like "ETH", "BTC", not pairs like "ETH/USDT"
+                    # 规范化交易对为 Hyperliquid SDK 的 coin 名称
+                    # Hyperliquid 使用 coin 名称如 "ETH"、"BTC"，而不是交易对如 "ETH/USDT"
+                    symbol = self.symbol.split(":")[0] if ":" in self.symbol else self.symbol
+                    # Extract coin name (first part before "/")
+                    # 提取 coin 名称（"/" 前的第一部分）
+                    coin = symbol.split("/")[0] if "/" in symbol else symbol
+                    # Ensure coin is uppercase (Hyperliquid convention)
+                    # 确保 coin 为大写（Hyperliquid 约定）
+                    coin = coin.upper()
                     
-                    # Log payload structure before sending (hide sensitive signature details)
-                    # 发送前记录负载结构（隐藏敏感签名详情）
-                    payload_log = {
-                        "action": {
-                            "type": order_payload.get("action", {}).get("type"),
-                            "orders_count": len(order_payload.get("action", {}).get("orders", [])),
-                        },
-                        "nonce": order_payload.get("nonce"),
-                        "has_signature": "signature" in order_payload and order_payload["signature"] is not None,
-                        "signature_type": "real" if (order_payload.get("signature") and self._account) else "placeholder",
-                    }
                     logger.info(
-                        f"Placing order with payload. {payload_log}. "
-                        f"使用以下负载下单: {payload_log}。"
+                        f"Symbol normalization: {self.symbol} -> {coin}. "
+                        f"交易对规范化: {self.symbol} -> {coin}。"
                     )
-
-                    # Make API request with increased retries for order placement
-                    # 下单时增加重试次数以提高成功率
-                    response = self._make_request(
-                        method="POST",
-                        endpoint="/exchange",
-                        data=order_payload,
-                        public=False,
-                        max_retries=3,  # Increased retries for order placement / 增加下单重试次数
+                    
+                    # Convert order format to SDK format
+                    # 将订单格式转换为 SDK 格式
+                    side = order.get("side", "").lower()
+                    is_buy = side == "buy"
+                    quantity = float(order.get("quantity", 0))
+                    price = float(order.get("price", 0)) if order.get("price") else 0.0
+                    order_type_str = order.get("type", "limit").lower()
+                    
+                    # Validate price against current market price (Hyperliquid requires price within 80% of reference price)
+                    # 验证价格是否在当前市场价格范围内（Hyperliquid 要求价格在参考价格的 80% 范围内）
+                    if order_type_str == "limit" and price > 0:
+                        try:
+                            # Fetch current market price for validation
+                            # 获取当前市场价格进行验证
+                            market_data = self.fetch_market_data()
+                            if market_data and market_data.get("mid_price"):
+                                reference_price = market_data.get("mid_price")
+                                # Hyperliquid allows orders within 80% of reference price (0.2x to 1.8x)
+                                # Hyperliquid 允许订单价格在参考价格的 80% 范围内（0.2x 到 1.8x）
+                                min_price = reference_price * 0.2
+                                max_price = reference_price * 1.8
+                                
+                                if price < min_price or price > max_price:
+                                    price_deviation_pct = abs((price - reference_price) / reference_price) * 100
+                                    error_msg = (
+                                        f"Order price {price} is {price_deviation_pct:.2f}% away from reference price {reference_price:.2f}. "
+                                        f"Hyperliquid requires price within 80% of reference (range: {min_price:.2f} - {max_price:.2f}). "
+                                        f"订单价格 {price} 与参考价格 {reference_price:.2f} 相差 {price_deviation_pct:.2f}%。"
+                                        f"Hyperliquid 要求价格在参考价格的 80% 范围内（范围: {min_price:.2f} - {max_price:.2f}）。"
+                                    )
+                                    logger.error(error_msg)
+                                    self.last_order_error = {
+                                        "type": "price_out_of_range",
+                                        "message": error_msg,
+                                        "symbol": self.symbol,
+                                        "order": order_snapshot,
+                                        "order_price": price,
+                                        "reference_price": reference_price,
+                                        "min_price": min_price,
+                                        "max_price": max_price,
+                                        "deviation_pct": price_deviation_pct,
+                                    }
+                                    continue
+                                else:
+                                    logger.debug(
+                                        f"Price validation passed. Order price: {price}, Reference price: {reference_price:.2f}. "
+                                        f"价格验证通过。订单价格: {price}，参考价格: {reference_price:.2f}。"
+                                    )
+                            else:
+                                logger.warning(
+                                    f"Could not fetch market data for price validation. Proceeding with order placement. "
+                                    f"无法获取市场数据进行价格验证。继续下单。"
+                                )
+                        except Exception as e:
+                            logger.warning(
+                                f"Error during price validation: {e}. Proceeding with order placement. "
+                                f"价格验证时出错: {e}。继续下单。",
+                                exc_info=True,
+                            )
+                    
+                    # Build order_type for SDK
+                    # 为 SDK 构建 order_type
+                    if order_type_str == "limit":
+                        order_type = {"limit": {"tif": "Gtc"}}
+                    else:
+                        order_type = {"market": {}}
+                    
+                    # Log account address being used
+                    # 记录正在使用的账户地址
+                    exchange_account_address = getattr(self._exchange, 'account_address', None) if self._exchange else None
+                    logger.info(
+                        f"Placing order using Hyperliquid SDK Exchange. "
+                        f"Coin: {coin}, Side: {side}, Quantity: {quantity}, Price: {price}. "
+                        f"User address (expected): {self.user_address}. "
+                        f"Exchange account_address attribute: {exchange_account_address}. "
+                        f"Wallet address (for signing): {self._account.address if self._account else None}. "
+                        f"使用 Hyperliquid SDK Exchange 下单。交易对: {coin}。"
+                        f"用户地址（预期）: {self.user_address}。"
+                        f"Exchange account_address 属性: {exchange_account_address}。"
+                        f"钱包地址（用于签名）: {self._account.address if self._account else None}。"
                     )
-
-                    if not response:
-                        # Get detailed error from last_api_error if available / 如果可用，从 last_api_error 获取详细错误
-                        api_error = self.last_api_error or {}
-                        error_detail = api_error.get(
-                            "error_detail", api_error.get("message", "Unknown error")
-                        )
-                        status_code = api_error.get("status_code")
-                        
-                        # Log the full API error for debugging / 记录完整的API错误以便调试
-                        logger.info(
-                            f"API request failed. last_api_error keys: {list(api_error.keys())}, "
-                            f"status_code: {status_code}, error_detail length: {len(str(error_detail))}. "
-                            f"API请求失败。状态码: {status_code}。"
-                        )
-
-                        if status_code == 422:
-                            # Extract response body if available / 如果可用，提取响应体
-                            response_body = api_error.get("response_body")
-                            if response_body:
-                                error_detail = f"{error_detail}. Response body: {response_body[:300]}"
-                            
-                            error_msg = (
-                                f"Failed to place order: Invalid request (422). "
-                                f"Error: {error_detail}. "
-                                f"下单失败：请求无效 (422)。错误: {error_detail}。"
-                            )
-                            error_type = "invalid_request"
-                        elif status_code:
-                            error_msg = (
-                                f"Failed to place order: API error (HTTP {status_code}). "
-                                f"Error: {error_detail}. "
-                                f"下单失败：API错误 (HTTP {status_code})。错误: {error_detail}。"
-                            )
-                            error_type = "api_error"
-                        else:
-                            error_msg = (
-                                f"Failed to place order: No response from API. "
-                                f"Error: {error_detail}. "
-                                f"下单失败：API 无响应。错误: {error_detail}。"
-                            )
-                            error_type = "network_error"
-
+                    
+                    # Verify account_address is set before placing order
+                    # 在下单前验证 account_address 已设置
+                    if not exchange_account_address:
                         logger.error(
-                            error_msg,
-                            extra={
-                                "trace_id": get_trace_id(),
-                                "order_req_id": order_req_id,
-                                "symbol": self.symbol,
-                                "order": order_snapshot,
-                                "order_payload": order_payload,
-                                "api_error": api_error,
-                            },
+                            f"⚠️  Exchange.account_address is None! This will cause order placement to fail. "
+                            f"Expected user_address: {self.user_address}. "
+                            f"⚠️  Exchange.account_address 为 None！这将导致下单失败。"
+                            f"预期用户地址: {self.user_address}。"
                         )
-                        self.last_order_error = {
-                            "type": error_type,
-                            "message": error_msg,
-                            "symbol": self.symbol,
-                            "order": order_snapshot,
-                            "order_req_id": order_req_id,
-                            "order_payload": order_payload,
-                            "api_error": api_error,
+                        # Try to reinitialize Exchange with account_address
+                        # 尝试使用 account_address 重新初始化 Exchange
+                        logger.warning(
+                            f"Attempting to reinitialize Exchange with account_address: {self.user_address}. "
+                            f"尝试使用 account_address 重新初始化 Exchange: {self.user_address}。"
+                        )
+                        exchange_kwargs_reinit = {
+                            "base_url": self.base_url,
+                            "timeout": self.request_timeout,
+                            "account_address": self.user_address,
                         }
-                        continue
-
-                    # Parse response
-                    order_result = self._parse_order_response(response, order)
+                        self._exchange = HyperliquidExchange(self._account, **exchange_kwargs_reinit)
+                        exchange_account_address = getattr(self._exchange, 'account_address', None)
+                        logger.info(
+                            f"Reinitialized Exchange. account_address: {exchange_account_address}. "
+                            f"重新初始化 Exchange。account_address: {exchange_account_address}。"
+                        )
+                    
+                    # Place order using SDK
+                    # 使用 SDK 下单
+                    response = self._exchange.order(
+                        name=coin,
+                        is_buy=is_buy,
+                        sz=quantity,
+                        limit_px=price,
+                        order_type=order_type,
+                        reduce_only=False,
+                    )
+                    
+                    # Log response to check what address was used
+                    # 记录响应以检查使用的地址
+                    logger.info(
+                        f"SDK order response received. Response type: {type(response)}. "
+                        f"Response keys: {list(response.keys()) if isinstance(response, dict) else 'N/A'}. "
+                        f"Full response: {str(response)[:500]}. "
+                        f"SDK 订单响应已接收。响应类型: {type(response)}。"
+                        f"响应键: {list(response.keys()) if isinstance(response, dict) else 'N/A'}。"
+                        f"完整响应: {str(response)[:500]}。"
+                    )
+                    
+                    # Parse SDK response
+                    # 解析 SDK 响应
+                    order_result = self._parse_sdk_order_response(response, order, coin)
+                    
+                except Exception as e:
+                    error_msg = (
+                        f"Failed to place order using Hyperliquid SDK: {e}. "
+                        f"使用 Hyperliquid SDK 下单失败: {e}。"
+                    )
+                    logger.error(error_msg, exc_info=True)
+                    self.last_order_error = {
+                        "type": "sdk_error",
+                        "message": error_msg,
+                        "symbol": self.symbol,
+                        "order": order_snapshot,
+                        "error": str(e),
+                    }
+                    continue
+                
+                # Process order result
+                # 处理订单结果
+                if not order_result:
+                    # SDK returned None or invalid response
+                    # SDK 返回 None 或无效响应
+                    error_msg = (
+                        f"SDK order placement returned no result. Response: {response}. "
+                        f"SDK 下单未返回结果。响应: {response}。"
+                    )
+                    logger.error(error_msg)
+                    self.last_order_error = {
+                        "type": "sdk_no_result",
+                        "message": error_msg,
+                        "symbol": self.symbol,
+                        "order": order_snapshot,
+                        "response": str(response)[:500] if response else None,
+                    }
+                    continue
                 if order_result:
                     created_orders.append(order_result)
                     order_type = order.get("type", "limit").lower()
@@ -2671,91 +2705,100 @@ class HyperliquidClient:
         Args:
             order_ids: List of order IDs to cancel
         """
-        for oid in order_ids:
+        if not order_ids:
+            logger.warning("No order IDs provided for cancellation / 未提供要取消的订单 ID")
+            return
+        
+        # Filter out empty order IDs
+        # 过滤掉空的订单 ID
+        valid_order_ids = [oid for oid in order_ids if oid]
+        if not valid_order_ids:
+            logger.warning("No valid order IDs to cancel / 没有有效的订单 ID 可取消")
+            return
+        
+        # Use Hyperliquid SDK Exchange if available, otherwise fall back to manual implementation
+        # 如果可用，使用 Hyperliquid SDK Exchange，否则回退到手动实现
+        if self._exchange:
             try:
-                if not oid:
-                    logger.warning("Skipping empty order ID / 跳过空的订单 ID")
-                    continue
-
-                # Prepare cancel request for Hyperliquid API
-                cancel_payload = {
-                    "action": {
-                        "type": "cancel",
-                        "cancels": [
-                            {
-                                "a": int(oid) if oid.isdigit() else oid,  # Order ID
-                                "s": (
-                                    self.symbol.split(":")[0]
-                                    if ":" in self.symbol
-                                    else self.symbol
-                                ),  # Symbol
-                            }
-                        ],
-                    },
-                    "nonce": int(time.time() * 1000),
-                    "vaultAddress": None,
-                }
-
-                # Make API request
-                response = self._make_request(
-                    method="POST",
-                    endpoint="/exchange",
-                    data=cancel_payload,
-                    public=False,
-                )
-
-                if not response:
-                    error_msg = (
-                        f"Failed to cancel order {oid}: No response from API. "
-                        f"取消订单 {oid} 失败：API 无响应。"
+                # Normalize symbol to coin name for Hyperliquid SDK
+                # 规范化交易对为 Hyperliquid SDK 的 coin 名称
+                symbol = self.symbol.split(":")[0] if ":" in self.symbol else self.symbol
+                coin = symbol.split("/")[0] if "/" in symbol else symbol
+                coin = coin.upper()  # Ensure coin is uppercase
+                
+                # Convert order IDs to integers
+                # 将订单 ID 转换为整数
+                cancel_requests = []
+                for oid in valid_order_ids:
+                    try:
+                        order_id_int = int(oid) if isinstance(oid, str) and oid.isdigit() else int(oid)
+                        cancel_requests.append({"coin": coin, "oid": order_id_int})
+                    except (ValueError, TypeError) as e:
+                        logger.warning(
+                            f"Invalid order ID format: {oid}. Skipping. "
+                            f"无效的订单 ID 格式: {oid}。跳过。"
+                        )
+                        continue
+                
+                if not cancel_requests:
+                    logger.error(
+                        "No valid cancel requests after processing order IDs. "
+                        "处理订单 ID 后没有有效的取消请求。"
                     )
-                    logger.error(error_msg)
-                    raise ConnectionError(error_msg)
-
-                # Parse response
-                if response.get("status") == "ok" and "response" in response:
-                    resp_data = response.get("response", {})
-                    if resp_data.get("type") == "cancel":
-                        logger.info(f"Canceled order {oid} / 已取消订单 {oid}")
+                    return
+                
+                logger.info(
+                    f"Cancelling {len(cancel_requests)} order(s) using Hyperliquid SDK. "
+                    f"Coin: {coin}, Order IDs: {[req['oid'] for req in cancel_requests]}. "
+                    f"使用 Hyperliquid SDK 取消 {len(cancel_requests)} 个订单。"
+                    f"交易对: {coin}，订单 ID: {[req['oid'] for req in cancel_requests]}。"
+                )
+                
+                # Use SDK bulk_cancel method
+                # 使用 SDK bulk_cancel 方法
+                response = self._exchange.bulk_cancel(cancel_requests)
+                
+                # Parse SDK response
+                # 解析 SDK 响应
+                if isinstance(response, dict):
+                    if response.get("status") == "ok":
+                        logger.info(
+                            f"✅ Successfully cancelled {len(cancel_requests)} order(s) using SDK. "
+                            f"✅ 使用 SDK 成功取消 {len(cancel_requests)} 个订单。"
+                        )
                     else:
                         # Check for error in response
-                        error_text = resp_data.get("data", "Unknown error")
-                        if "not found" in str(error_text).lower():
-                            raise OrderNotFoundError(
-                                f"Order {oid} not found. " f"订单 {oid} 未找到。"
-                            )
-                        else:
-                            error_msg = (
-                                f"Failed to cancel order {oid}: {error_text}. "
-                                f"取消订单 {oid} 失败: {error_text}。"
-                            )
-                            logger.error(error_msg)
-                            raise InvalidOrderError(error_msg)
-                else:
-                    # API returned error
-                    error_text = response.get("response", {}).get("data", str(response))
-                    if "not found" in str(error_text).lower():
-                        raise OrderNotFoundError(
-                            f"Order {oid} not found. " f"订单 {oid} 未找到。"
-                        )
-                    else:
+                        # 检查响应中的错误
+                        error_text = response.get("response", {}).get("data", str(response))
                         error_msg = (
-                            f"Failed to cancel order {oid}: {error_text}. "
-                            f"取消订单 {oid} 失败: {error_text}。"
+                            f"Failed to cancel orders using SDK: {error_text}. "
+                            f"使用 SDK 取消订单失败: {error_text}。"
                         )
                         logger.error(error_msg)
-                        raise ConnectionError(error_msg)
-
-            except OrderNotFoundError:
-                # Re-raise OrderNotFoundError
-                raise
+                        raise InvalidOrderError(error_msg)
+                else:
+                    logger.warning(
+                        f"Unexpected SDK cancel response format: {type(response)}. "
+                        f"Response: {response}. "
+                        f"意外的 SDK 取消响应格式: {type(response)}。响应: {response}。"
+                    )
+                    
             except Exception as e:
                 error_msg = (
-                    f"Error canceling order {oid}: {str(e)}. "
-                    f"取消订单 {oid} 时发生错误: {str(e)}。"
+                    f"Failed to cancel orders using Hyperliquid SDK: {e}. "
+                    f"使用 Hyperliquid SDK 取消订单失败: {e}。"
                 )
                 logger.error(error_msg, exc_info=True)
-                raise
+                # Re-raise the exception since we require SDK for order operations
+                # 重新抛出异常，因为我们需要 SDK 进行订单操作
+                raise ConnectionError(error_msg) from e
+        else:
+            error_msg = (
+                "Hyperliquid SDK Exchange not initialized. Cannot cancel orders. "
+                "Hyperliquid SDK Exchange 未初始化。无法取消订单。"
+            )
+            logger.error(error_msg)
+            raise ConnectionError(error_msg)
 
     def cancel_all_orders(self) -> None:
         """Cancels all open orders for the symbol / 取消交易对的所有未成交订单"""
@@ -3751,9 +3794,46 @@ class HyperliquidClient:
                 # 最终备用方案：使用开仓价格
                 mark_price = entry_price
 
-            # Format symbol
-            # 格式化交易对
-            symbol = f"{coin}/USDT:USDT"
+            # Format symbol for Hyperliquid positions
+            # Hyperliquid 永续合约仓位都使用 USDC 作为结算货币
+            # Format symbol for Hyperliquid positions
+            # Hyperliquid perpetual positions always use USDC as settlement currency
+            # 格式化 Hyperliquid 仓位的 symbol
+            # Hyperliquid 永续合约仓位始终使用 USDC 作为结算货币
+            # Check if this coin exists in perpetual universe (always USDC) or spot universe
+            # 检查此币种是否存在于永续合约 universe（始终使用 USDC）或现货 universe
+            settlement = "USDC"  # Default to USDC for Hyperliquid perpetuals / Hyperliquid 永续合约默认使用 USDC
+            
+            # Try to determine from meta data if available
+            # 如果可用，尝试从 meta 数据确定
+            try:
+                meta_data = self._fetch_meta_data()
+                if meta_data:
+                    universe = meta_data.get("universe", [])
+                    # Check if coin is in perpetual universe (uses USDC)
+                    # 检查币种是否在永续合约 universe 中（使用 USDC）
+                    coin_in_perpetual = any(
+                        asset.get("name", "").upper() == coin.upper() 
+                        for asset in universe if isinstance(asset, dict)
+                    )
+                    if coin_in_perpetual:
+                        settlement = "USDC"
+                    else:
+                        # Check spot universe for settlement currency
+                        # 检查现货 universe 的结算货币
+                        spot_meta = meta_data.get("spotMeta", {})
+                        spot_universe = spot_meta.get("universe", []) if isinstance(spot_meta, dict) else []
+                        # For spot, we'd need to check the actual settlement currency
+                        # For now, default to USDC as Hyperliquid primarily uses USDC
+                        # 对于现货，我们需要检查实际的结算货币
+                        # 目前，默认使用 USDC，因为 Hyperliquid 主要使用 USDC
+                        settlement = "USDC"
+            except Exception:
+                # If meta data fetch fails, default to USDC
+                # 如果获取 meta 数据失败，默认使用 USDC
+                pass
+            
+            symbol = f"{coin}/{settlement}:{settlement}"
 
             return {
                 "symbol": symbol,

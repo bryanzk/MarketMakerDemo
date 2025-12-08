@@ -13,12 +13,25 @@ import uvicorn
 from dotenv import load_dotenv
 
 # Load environment variables from .env file / 从 .env 文件加载环境变量
+# Force reload to ensure latest values are loaded / 强制重新加载以确保加载最新值
 try:
-    load_dotenv()
+    load_dotenv(override=True)  # override=True ensures env vars are reloaded / override=True 确保环境变量被重新加载
 except PermissionError as e:
     logging.warning("Could not load .env file due to permission error: %s", e)
+except Exception as e:
+    logging.warning(f"Error loading .env file: {e}")
 
 logger = logging.getLogger(__name__)
+
+# Verify critical API keys are loaded after logger is initialized / 在 logger 初始化后验证关键 API 密钥已加载
+gemini_key = os.getenv("GEMINI_API_KEY")
+openai_key = os.getenv("OPENAI_API_KEY")
+anthropic_key = os.getenv("ANTHROPIC_API_KEY")
+logger.info(
+    f"Environment variables loaded. GEMINI_API_KEY: {'SET' if gemini_key else 'NOT SET'}, "
+    f"OPENAI_API_KEY: {'SET' if openai_key else 'NOT SET'}, "
+    f"ANTHROPIC_API_KEY: {'SET' if anthropic_key else 'NOT SET'}"
+)
 from fastapi import FastAPI, Query, Request, Body, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
@@ -4449,6 +4462,47 @@ def _sync_portfolio_with_bot():
 
     # Record PnL snapshot for portfolio Sharpe calculation
     portfolio_manager.record_pnl_snapshot()
+
+
+@app.post("/api/server/shutdown")
+async def shutdown_server():
+    """
+    Shutdown the server gracefully.
+    WARNING: This will stop the server and disconnect all clients.
+    优雅地关闭服务器。
+    警告：这将停止服务器并断开所有客户端连接。
+    """
+    import os
+    import signal
+    import sys
+    
+    logger.warning(
+        "Server shutdown requested via API / 通过 API 请求关闭服务器",
+        extra={"trace_id": get_trace_id()}
+    )
+    
+    # Schedule shutdown after response is sent
+    # 在响应发送后安排关闭
+    def shutdown():
+        import time
+        time.sleep(1)  # Give time for response to be sent / 给响应发送留出时间
+        try:
+            # Try graceful shutdown with SIGTERM first / 首先尝试使用 SIGTERM 优雅关闭
+            os.kill(os.getpid(), signal.SIGTERM)
+        except Exception:
+            # Fallback to sys.exit if signal fails / 如果信号失败，回退到 sys.exit
+            sys.exit(0)
+    
+    import threading
+    shutdown_thread = threading.Thread(target=shutdown)
+    shutdown_thread.daemon = True
+    shutdown_thread.start()
+    
+    return {
+        "status": "shutting_down",
+        "message": "Server is shutting down. Please wait... / 服务器正在关闭，请稍候...",
+        "trace_id": get_trace_id(),
+    }
 
 
 if __name__ == "__main__":

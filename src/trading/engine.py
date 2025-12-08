@@ -434,6 +434,10 @@ class AlphaLoop:
             )
 
             if to_cancel_ids:
+                logger.info(
+                    f"Cancelling {len(to_cancel_ids)} order(s) for strategy '{instance.strategy_id}'. "
+                    f"取消策略 '{instance.strategy_id}' 的 {len(to_cancel_ids)} 个订单。"
+                )
                 for order_id in to_cancel_ids:
                     instance.remove_tracked_order(order_id)
                     for hist_order in instance.order_history:
@@ -442,11 +446,75 @@ class AlphaLoop:
                 instance.exchange.cancel_orders(to_cancel_ids)
 
             if to_place:
+                # Log order details before placing
+                order_summary = [
+                    {
+                        "side": o.get("side"),
+                        "price": o.get("price"),
+                        "quantity": o.get("quantity"),
+                    }
+                    for o in to_place
+                ]
+                buy_count = sum(1 for o in to_place if o.get("side") == "buy")
+                sell_count = sum(1 for o in to_place if o.get("side") == "sell")
+                
+                logger.info(
+                    f"Placing {len(to_place)} order(s) for strategy '{instance.strategy_id}'. "
+                    f"Buy orders: {buy_count}, Sell orders: {sell_count}. "
+                    f"Orders: {order_summary}. "
+                    f"为策略 '{instance.strategy_id}' 下单 {len(to_place)} 个订单。"
+                    f"买入订单: {buy_count}, 卖出订单: {sell_count}。"
+                    f"订单详情: {order_summary}。"
+                )
+
                 placed_orders = instance.exchange.place_orders(to_place)
+
+                # Verify all orders were placed successfully
+                if len(placed_orders) < len(to_place):
+                    failed_count = len(to_place) - len(placed_orders)
+                    logger.warning(
+                        f"⚠️  Only {len(placed_orders)}/{len(to_place)} orders placed successfully. "
+                        f"{failed_count} order(s) failed. "
+                        f"Target orders: {order_summary}. "
+                        f"Placed orders: {[{'side': o.get('side'), 'id': o.get('id')} for o in placed_orders]}. "
+                        f"⚠️  仅成功下单 {len(placed_orders)}/{len(to_place)} 个订单。"
+                        f"{failed_count} 个订单失败。"
+                    )
+
+                    # Log which orders failed
+                    placed_sides = {o.get("side") for o in placed_orders if o.get("side")}
+                    target_sides = {o.get("side") for o in to_place}
+                    failed_sides = target_sides - placed_sides
+                    if failed_sides:
+                        logger.error(
+                            f"Failed to place orders for side(s): {failed_sides}. "
+                            f"Check exchange.last_order_error for details. "
+                            f"下单失败的订单方向: {failed_sides}。"
+                            f"请检查 exchange.last_order_error 获取详细信息。"
+                        )
+                else:
+                    logger.info(
+                        f"✅ Successfully placed {len(placed_orders)} order(s). "
+                        f"Buy orders: {sum(1 for o in placed_orders if o.get('side')=='buy')}, "
+                        f"Sell orders: {sum(1 for o in placed_orders if o.get('side')=='sell')}. "
+                        f"✅ 成功下单 {len(placed_orders)} 个订单。"
+                        f"买入订单: {sum(1 for o in placed_orders if o.get('side')=='buy')}, "
+                        f"卖出订单: {sum(1 for o in placed_orders if o.get('side')=='sell')}。"
+                    )
+
                 for order in placed_orders:
                     order_id = order.get("id")
                     if order_id:
                         instance.add_tracked_order(order_id)
+                        logger.debug(
+                            f"Tracked order {order_id} ({order.get('side')}) for strategy '{instance.strategy_id}'. "
+                            f"跟踪订单 {order_id} ({order.get('side')})，策略 '{instance.strategy_id}'。"
+                        )
+                    else:
+                        logger.warning(
+                            f"Placed order has no ID: {order}. Strategy: '{instance.strategy_id}'. "
+                            f"已下单但无订单ID: {order}。策略: '{instance.strategy_id}'。"
+                        )
 
                     order_record = {
                         "id": order_id or "unknown",

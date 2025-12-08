@@ -2299,16 +2299,42 @@ class HyperliquidClient:
                 return []
 
             # Parse response
+            # Handle both list and dict response formats
+            # 处理列表和字典两种响应格式
             open_orders = []
-            if isinstance(response, dict):
-                # Hyperliquid returns openOrders as a list
+            if isinstance(response, list):
+                # Direct list response (from SDK Info.open_orders)
+                # 直接列表响应（来自 SDK Info.open_orders）
+                orders_data = response
+            elif isinstance(response, dict):
+                # Dict response with openOrders key (from manual API call)
+                # 包含 openOrders 键的字典响应（来自手动 API 调用）
                 orders_data = response.get("openOrders", [])
+            else:
+                logger.warning(
+                    f"Unexpected response format when fetching open orders: {type(response)}. "
+                    f"获取未成交订单时遇到意外的响应格式: {type(response)}。"
+                )
+                return []
 
-                for order_data in orders_data:
-                    # Convert Hyperliquid order format to internal format
-                    order = self._convert_hyperliquid_order_to_internal(order_data)
+            for order_data in orders_data:
+                if not isinstance(order_data, dict):
+                    logger.warning(
+                        f"Skipping invalid order data: {order_data}. "
+                        f"跳过无效的订单数据: {order_data}。"
+                    )
+                    continue
+                
+                # Convert Hyperliquid order format to internal format
+                # 将 Hyperliquid 订单格式转换为内部格式
+                order = self._convert_hyperliquid_order_to_internal(order_data)
+                if order:
                     open_orders.append(order)
 
+            logger.info(
+                f"Fetched {len(open_orders)} open order(s) / 获取了 {len(open_orders)} 个未成交订单"
+            )
+            
             return open_orders
 
         except Exception as e:
@@ -3587,21 +3613,46 @@ class HyperliquidClient:
         Returns:
             Internal order format dictionary
         """
+        # Handle side format: 'B' for buy, 'A' for sell, or dict with 'bids'/'asks'
+        # 处理方向格式：'B' 表示买入，'A' 表示卖出，或包含 'bids'/'asks' 的字典
+        side_raw = order_data.get("side", "")
+        if isinstance(side_raw, str):
+            side = "buy" if side_raw.upper() == "B" else "sell"
+        elif isinstance(side_raw, dict):
+            side = "buy" if side_raw.get("bids") else "sell"
+        else:
+            side = "buy"  # Default to buy if unknown format / 未知格式时默认为买入
+        
+        # Handle None values safely / 安全处理 None 值
+        oid_value = order_data.get("oid") or ""
+        limit_px_value = order_data.get("limitPx")
+        sz_value = order_data.get("sz") or "0"
+        filled_sz_value = order_data.get("filledSz") or "0"
+        timestamp_value = order_data.get("timestamp") or int(time.time() * 1000)
+        
+        # Get coin name for symbol construction
+        # 获取币种名称以构建交易对
+        coin = order_data.get("coin", "")
+        if coin:
+            symbol = f"{coin}/USDT:USDT"
+        else:
+            symbol = self.symbol
+        
         return {
-            "id": str(order_data.get("oid", "")),
-            "order_id": str(order_data.get("oid", "")),
-            "symbol": self.symbol,
-            "side": ("buy" if order_data.get("side", "").upper() == "B" else "sell"),
-            "type": "limit" if order_data.get("limitPx") else "market",
+            "id": str(oid_value),
+            "order_id": str(oid_value),
+            "symbol": symbol,
+            "side": side,
+            "type": "limit" if limit_px_value else "market",
             "price": (
-                float(order_data.get("limitPx", 0))
-                if order_data.get("limitPx")
+                float(limit_px_value)
+                if limit_px_value
                 else None
             ),
-            "quantity": float(order_data.get("sz", 0)),
-            "filled_qty": float(order_data.get("filledSz", 0)),
+            "quantity": float(sz_value),
+            "filled_qty": float(filled_sz_value),
             "status": "open",
-            "timestamp": int(order_data.get("timestamp", time.time() * 1000)),
+            "timestamp": int(timestamp_value),
         }
 
     def _convert_hyperliquid_position_to_internal(

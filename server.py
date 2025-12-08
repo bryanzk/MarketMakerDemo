@@ -2003,10 +2003,31 @@ async def run_evaluation(request: EvaluationRunRequest):
                 # 如果没有选择，使用所有可用的提供商
                 providers = all_providers
         except Exception as e:
-            return {"error": f"Failed to create LLM providers: {str(e)}"}
+            error_msg = str(e)
+            # Provide more detailed error message for API key issues / 为 API 密钥问题提供更详细的错误消息
+            if "API_KEY" in error_msg or "not set" in error_msg.lower():
+                return create_error_response(
+                    ValueError(error_msg),
+                    error_code="LLM_API_KEY_MISSING",
+                    details={
+                        "error": error_msg,
+                        "suggestion": "Please configure the required API keys in your .env file. See README.md for setup instructions. / 请在 .env 文件中配置所需的 API 密钥。查看 README.md 了解设置说明。"
+                    }
+                )
+            return create_error_response(
+                ValueError(error_msg),
+                error_code="LLM_PROVIDER_INIT_FAILED",
+                details={"error": error_msg}
+            )
         
         if not providers:
-            return {"error": "No LLM providers available. Please configure API keys."}
+            return create_error_response(
+                ValueError("No LLM providers available"),
+                error_code="NO_LLM_PROVIDERS",
+                details={
+                    "suggestion": "Please configure at least one LLM API key (GEMINI_API_KEY, OPENAI_API_KEY, or ANTHROPIC_API_KEY) in your .env file. / 请在 .env 文件中配置至少一个 LLM API 密钥（GEMINI_API_KEY、OPENAI_API_KEY 或 ANTHROPIC_API_KEY）。"
+                }
+            )
         
         evaluator = MultiLLMEvaluator(
             providers=providers,

@@ -46,24 +46,86 @@ class GeminiProvider(LLMProvider):
         self.api_key = api_key or os.getenv("GEMINI_API_KEY")
         if not self.api_key:
             raise ValueError("GEMINI_API_KEY is not set")
-        genai.configure(api_key=self.api_key)
+        
+        try:
+            genai.configure(api_key=self.api_key)
+        except Exception as e:
+            raise ValueError(f"Failed to configure Gemini API: {e}")
 
         env_preferred = os.getenv("GEMINI_MODEL")
         self._model_name = model or env_preferred or "gemini-3-pro"
-        self.model = genai.GenerativeModel(self._model_name)
+        
+        # Try to create model - delay actual model creation to first use if needed
+        # 尝试创建模型 - 如果需要，延迟实际模型创建到首次使用时
+        try:
+            self.model = genai.GenerativeModel(self._model_name)
+        except Exception as e:
+            # Store error for better error message in generate() method
+            # 存储错误以便在 generate() 方法中提供更好的错误消息
+            self._init_error = e
+            self.model = None
+            logger.warning(f"Failed to initialize Gemini model '{self._model_name}': {e}")
 
     @property
     def name(self) -> str:
         return f"Gemini ({self._model_name})"
 
     def generate(self, prompt: str) -> str:
+        # If model initialization failed, try to create it now or provide helpful error
+        # 如果模型初始化失败，现在尝试创建它或提供有用的错误
+        if self.model is None:
+            if hasattr(self, '_init_error'):
+                error_msg = str(self._init_error)
+                if "v1beta" in error_msg or "not found" in error_msg.lower():
+                    raise RuntimeError(
+                        f"Gemini model '{self._model_name}' is not available with the current API configuration. "
+                        f"Error: {error_msg}. "
+                        f"This may be due to API version mismatch. Please check: "
+                        f"1. The model name is correct (e.g., 'gemini-3-pro' or 'gemini-1.5-pro'), "
+                        f"2. Your API key has access to this model, "
+                        f"3. Try setting GEMINI_MODEL environment variable to a different model. / "
+                        f"Gemini 模型 '{self._model_name}' 在当前 API 配置下不可用。"
+                        f"错误: {error_msg}。"
+                        f"这可能是由于 API 版本不匹配。请检查："
+                        f"1. 模型名称是否正确（例如 'gemini-3-pro' 或 'gemini-1.5-pro'），"
+                        f"2. 您的 API 密钥是否有权访问此模型，"
+                        f"3. 尝试将 GEMINI_MODEL 环境变量设置为不同的模型。"
+                    )
+                raise RuntimeError(
+                    f"Failed to initialize Gemini model '{self._model_name}': {error_msg}"
+                )
+            # Try to create model now
+            # 现在尝试创建模型
+            try:
+                self.model = genai.GenerativeModel(self._model_name)
+            except Exception as e:
+                raise RuntimeError(
+                    f"Gemini model '{self._model_name}' initialization failed: {e}. "
+                    f"Please check the model name and API configuration. / "
+                    f"Gemini 模型 '{self._model_name}' 初始化失败: {e}。"
+                    f"请检查模型名称和 API 配置。"
+                )
+        
         try:
             response = self.model.generate_content(prompt)
             return response.text
         except Exception as e:
+            error_msg = str(e)
+            # Provide more helpful error messages for common issues
+            # 为常见问题提供更有用的错误消息
+            if "v1beta" in error_msg or "not found" in error_msg.lower():
+                raise RuntimeError(
+                    f"Gemini API error ({self._model_name}): {error_msg}. "
+                    f"The model may not be available with the current API version. "
+                    f"Please check the model name or try a different model. / "
+                    f"Gemini API 错误 ({self._model_name}): {error_msg}。"
+                    f"该模型可能在当前 API 版本下不可用。"
+                    f"请检查模型名称或尝试其他模型。"
+                )
             raise RuntimeError(
-                f"Gemini API error ({self._model_name}): {e}. "
-                "Please ensure the requested model is available."
+                f"Gemini API error ({self._model_name}): {error_msg}. "
+                "Please ensure the requested model is available and your API key is valid. / "
+                "请确保请求的模型可用且您的 API 密钥有效。"
             )
 
 

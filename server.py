@@ -1739,6 +1739,73 @@ _last_evaluation_results = None
 _last_evaluation_aggregated = None
 
 
+@app.get("/api/evaluation/providers")
+async def get_providers():
+    """
+    Get available and unavailable LLM providers with their status.
+    Returns information about which providers have API keys configured.
+    
+    获取可用和不可用的 LLM 提供商及其状态。
+    返回哪些提供商已配置 API 密钥的信息。
+    """
+    try:
+        availability = get_provider_availability()
+        
+        # Convert to JSON-serializable format
+        # 转换为可 JSON 序列化的格式
+        # Note: availability["available"] contains provider instances, not dicts
+        # 注意：availability["available"] 包含 provider 实例，不是字典
+        result = {
+            "available": [
+                {
+                    "name": item["name"],
+                    "api_key_name": item.get("api_key_name", "")
+                }
+                for item in availability["available"]
+            ],
+            "unavailable": [
+                {
+                    "name": item["name"],
+                    "reason": item["reason"],
+                    "api_key_name": item.get("api_key_name", "")
+                }
+                for item in availability["unavailable"]
+            ]
+        }
+        
+        # For available providers, we need to extract just the name
+        # 对于可用的提供商，我们只需要提取名称
+        # The provider instance is not JSON-serializable, so we only return metadata
+        # provider 实例不可 JSON 序列化，所以我们只返回元数据
+        available_list = []
+        for item in availability["available"]:
+            # Determine API key name based on provider name
+            # 根据提供商名称确定 API 密钥名称
+            api_key_map = {
+                "Gemini": "GEMINI_API_KEY",
+                "OpenAI": "OPENAI_API_KEY",
+                "Claude": "ANTHROPIC_API_KEY"
+            }
+            available_list.append({
+                "name": item["name"],
+                "api_key_name": api_key_map.get(item["name"], "")
+            })
+        
+        result["available"] = available_list
+        
+        return {
+            "ok": True,
+            "providers": result,
+            "trace_id": get_trace_id()
+        }
+    except Exception as e:
+        return create_error_response(
+            e,
+            error_code="PROVIDER_AVAILABILITY_CHECK_FAILED",
+            details={"error": str(e)}
+        )
+
+
 @app.post("/api/evaluation/run")
 async def run_evaluation(request: EvaluationRunRequest):
     """

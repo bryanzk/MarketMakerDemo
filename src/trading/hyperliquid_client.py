@@ -430,8 +430,8 @@ class HyperliquidClient:
                     account_address = self._account.address
                     logger.info(
                         f"Successfully initialized Ethereum account for signing. "
-                        f"Account address: {account_address}. "
-                        f"成功初始化以太坊账户用于签名。账户地址: {account_address}。"
+                        f"Account address (from private key): {account_address}. "
+                        f"成功初始化以太坊账户用于签名。账户地址（从私钥派生）: {account_address}。"
                     )
                     # Set user_address: Use HYPERLIQUID_WALLET_ADDRESS if set (this is the account address on Hyperliquid)
                     # The signature is still generated using the private key, but Hyperliquid may support
@@ -440,9 +440,32 @@ class HyperliquidClient:
                     # 签名仍使用私钥生成，但 Hyperliquid 可能支持 API 钱包模式，其中用户地址与签名地址不同
                     wallet_address_env = os.getenv("HYPERLIQUID_WALLET_ADDRESS")
                     if wallet_address_env:
+                        # Normalize address format (ensure lowercase for comparison)
+                        # 规范化地址格式（确保小写以便比较）
+                        wallet_address_env = wallet_address_env.strip()
+                        account_address_lower = account_address.lower()
+                        wallet_address_env_lower = wallet_address_env.lower()
+                        
                         # Use wallet address from environment (this is the correct account address)
                         # 使用环境变量中的钱包地址（这是正确的账户地址）
                         self.user_address = wallet_address_env
+                        
+                        if account_address_lower != wallet_address_env_lower:
+                            logger.warning(
+                                f"⚠️  Address mismatch detected! / 检测到地址不匹配！\n"
+                                f"   Account address from private key: {account_address}\n"
+                                f"   HYPERLIQUID_WALLET_ADDRESS: {wallet_address_env}\n"
+                                f"   This is expected in API wallet mode where signing address differs from user address.\n"
+                                f"   从私钥派生的账户地址: {account_address}\n"
+                                f"   HYPERLIQUID_WALLET_ADDRESS: {wallet_address_env}\n"
+                                f"   这在 API 钱包模式下是预期的，其中签名地址与用户地址不同。"
+                            )
+                        else:
+                            logger.info(
+                                f"✅ Addresses match. Using {self.user_address} as user address. "
+                                f"✅ 地址匹配。使用 {self.user_address} 作为用户地址。"
+                            )
+                        
                         logger.info(
                             f"Using HYPERLIQUID_WALLET_ADDRESS as user address: {self.user_address}. "
                             f"Account address from private key (for signing): {account_address}. "
@@ -455,9 +478,11 @@ class HyperliquidClient:
                         # Fallback: use account address from private key
                         # 回退：使用从私钥派生的账户地址
                         self.user_address = account_address
-                        logger.info(
-                            f"Using account address from private key as user address: {self.user_address}. "
-                            f"使用从私钥派生的账户地址作为用户地址: {self.user_address}。"
+                        logger.warning(
+                            f"⚠️  HYPERLIQUID_WALLET_ADDRESS not set. Using account address from private key: {self.user_address}. "
+                            f"If you're using API wallet mode, please set HYPERLIQUID_WALLET_ADDRESS in .env file. "
+                            f"⚠️  HYPERLIQUID_WALLET_ADDRESS 未设置。使用从私钥派生的账户地址: {self.user_address}。"
+                            f"如果您使用 API 钱包模式，请在 .env 文件中设置 HYPERLIQUID_WALLET_ADDRESS。"
                         )
                 except Exception as e:
                     logger.warning(
@@ -491,15 +516,23 @@ class HyperliquidClient:
                     "base_url": self.base_url,
                     "timeout": self.request_timeout,
                 }
-                if self.user_address and self.user_address != self._account.address:
-                    # Use account_address if different from wallet address (API wallet mode)
-                    # 如果与钱包地址不同，使用 account_address（API 钱包模式）
+                # Always use user_address as account_address if set (for API wallet mode)
+                # 如果设置了 user_address，始终将其用作 account_address（用于 API 钱包模式）
+                if self.user_address:
                     exchange_kwargs["account_address"] = self.user_address
                     logger.info(
                         f"Initializing Exchange with account_address: {self.user_address} "
-                        f"(wallet address: {self._account.address}). "
+                        f"(wallet address for signing: {self._account.address}). "
                         f"使用 account_address 初始化 Exchange: {self.user_address} "
-                        f"（钱包地址: {self._account.address}）。"
+                        f"（用于签名的钱包地址: {self._account.address}）。"
+                    )
+                else:
+                    # Fallback: use wallet address as account_address
+                    # 回退：使用钱包地址作为 account_address
+                    exchange_kwargs["account_address"] = self._account.address
+                    logger.info(
+                        f"Initializing Exchange with wallet address as account_address: {self._account.address}. "
+                        f"使用钱包地址作为 account_address 初始化 Exchange: {self._account.address}。"
                     )
                 
                 self._exchange = HyperliquidExchange(wallet, **exchange_kwargs)
@@ -2308,10 +2341,22 @@ class HyperliquidClient:
                     # Use SDK Exchange.order() method
                     # 使用 SDK Exchange.order() 方法
                     try:
-                        # Normalize symbol (remove :USDT suffix if present)
-                        # 规范化交易对（移除 :USDT 后缀）
+                        # Normalize symbol to coin name for Hyperliquid SDK
+                        # Hyperliquid uses coin names like "ETH", "BTC", not pairs like "ETH/USDT"
+                        # 规范化交易对为 Hyperliquid SDK 的 coin 名称
+                        # Hyperliquid 使用 coin 名称如 "ETH"、"BTC"，而不是交易对如 "ETH/USDT"
                         symbol = self.symbol.split(":")[0] if ":" in self.symbol else self.symbol
+                        # Extract coin name (first part before "/")
+                        # 提取 coin 名称（"/" 前的第一部分）
                         coin = symbol.split("/")[0] if "/" in symbol else symbol
+                        # Ensure coin is uppercase (Hyperliquid convention)
+                        # 确保 coin 为大写（Hyperliquid 约定）
+                        coin = coin.upper()
+                        
+                        logger.info(
+                            f"Symbol normalization: {self.symbol} -> {coin}. "
+                            f"交易对规范化: {self.symbol} -> {coin}。"
+                        )
                         
                         # Convert order format to SDK format
                         # 将订单格式转换为 SDK 格式

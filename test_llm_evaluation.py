@@ -53,11 +53,18 @@ def format_result(result) -> str:
     status = "✅ Success" if proposal.parse_success else "❌ Failed"
     if not proposal.parse_success:
         error_info = f"\n   Error: {proposal.parse_error}" if proposal.parse_error else ""
+        raw_response_info = ""
+        if proposal.raw_response:
+            # Show first 500 chars of raw response for debugging
+            raw_preview = proposal.raw_response[:500]
+            if len(proposal.raw_response) > 500:
+                raw_preview += "..."
+            raw_response_info = f"\n   Raw Response (first 500 chars):\n   {raw_preview}"
         return f"""
 {result.provider_name} - {status}
    Rank: {result.rank}
    Score: {result.score:.2f}
-   Latency: {result.latency_ms:.0f}ms{error_info}
+   Latency: {result.latency_ms:.0f}ms{error_info}{raw_response_info}
 """
     
     return f"""
@@ -142,6 +149,12 @@ def main():
     
     for result in results:
         print(format_result(result))
+        # Show raw response for failed parses
+        if not result.proposal.parse_success and result.proposal.raw_response:
+            print(f"\n   📄 Raw Response (full):")
+            print(f"   {'-' * 76}")
+            print(f"   {result.proposal.raw_response}")
+            print(f"   {'-' * 76}")
         print("-" * 80)
     
     # Display summary

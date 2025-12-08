@@ -51,7 +51,7 @@ class FixedSpreadStrategy:
         Calculates target orders based on fixed spread.
 
         Args:
-            market_data: Dict with 'mid_price', 'best_bid', 'best_ask'
+            market_data: Dict with 'mid_price', 'best_bid', 'best_ask', 'tick_size', 'step_size'
 
         Returns:
             List of order dicts with 'side', 'price', 'quantity'
@@ -59,6 +59,18 @@ class FixedSpreadStrategy:
         mid_price = market_data.get("mid_price")
         if not mid_price:
             return []
+
+        # Get tick_size and step_size from market_data if available
+        # 如果可用，从 market_data 获取 tick_size 和 step_size
+        tick_size = market_data.get("tick_size")
+        step_size = market_data.get("step_size")
+        
+        # Fallback to defaults if not available
+        # 如果不可用，使用默认值
+        if tick_size is None:
+            tick_size = 0.1  # Default for ETH (changed from 0.01)
+        if step_size is None:
+            step_size = 0.001  # Default for ETH
 
         # Calculate raw prices
         bid_price = mid_price * (1 - self.spread / 2)
@@ -73,10 +85,8 @@ class FixedSpreadStrategy:
         if best_bid and ask_price <= best_bid:
             ask_price = best_bid * 1.0005
 
-        # Rounding (default ETHUSDT precision)
-        tick_size = 0.01
-        step_size = 0.001
-
+        # Use dynamic tick_size and step_size
+        # 使用动态的 tick_size 和 step_size
         final_bid = round_tick_size(bid_price, tick_size)
         final_ask = round_tick_size(ask_price, tick_size)
         qty = round_step_size(self.quantity, step_size)

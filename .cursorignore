@@ -27,7 +27,7 @@ env/
 Thumbs.db
 
 # Logs
-*.log
+# *.log
 logs/*.log
 
 # Test coverage

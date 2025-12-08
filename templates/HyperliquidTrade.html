@@ -271,6 +271,9 @@
                     <span id="networkText">Mainnet / 主网</span>
                 </span>
                 <span id="connectionStatus" class="status-badge status-disconnected">Checking...</span>
+                <button id="shutdownServerBtn" class="btn btn-danger" style="font-size:12px; padding:6px 12px;" onclick="shutdownServer()" title="Stop the server / 停止服务器">
+                    ⛔ Stop Server / 停止服务器
+                </button>
                 <a class="nav-link" href="/">← Back to Dashboard</a>
             </div>
         </header>
@@ -368,6 +371,32 @@
         <!-- Strategy Control Panel / 策略控制面板 -->
         <section class="panel">
             <h2>Fixed Spread Strategy Control Panel / 固定价差策略控制面板</h2>
+            
+            <!-- Current Order Parameters Display / 当前下单参数显示 -->
+            <div id="currentParamsCard" style="margin-bottom: 20px; padding: 16px; background: #f0f9ff; border-radius: 8px; border: 1px solid #bae6fd;">
+                <div style="font-size: 13px; font-weight: 600; color: #0369a1; margin-bottom: 12px;">
+                    📊 Current Order Parameters / 当前下单参数
+                </div>
+                <div class="grid" style="grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px;">
+                    <div>
+                        <div style="font-size: 11px; color: #6b7280; margin-bottom: 4px;">Trading Pair / 交易对</div>
+                        <div id="currentPair" style="font-size: 14px; font-weight: 600; color: #1f2937;">--</div>
+                    </div>
+                    <div>
+                        <div style="font-size: 11px; color: #6b7280; margin-bottom: 4px;">Spread / 价差</div>
+                        <div id="currentSpread" style="font-size: 14px; font-weight: 600; color: #1f2937;">--</div>
+                    </div>
+                    <div>
+                        <div style="font-size: 11px; color: #6b7280; margin-bottom: 4px;">Quantity / 数量</div>
+                        <div id="currentQuantity" style="font-size: 14px; font-weight: 600; color: #1f2937;">--</div>
+                    </div>
+                    <div>
+                        <div style="font-size: 11px; color: #6b7280; margin-bottom: 4px;">Leverage / 杠杆</div>
+                        <div id="currentLeverage" style="font-size: 14px; font-weight: 600; color: #1f2937;">--</div>
+                    </div>
+                </div>
+            </div>
+            
             <div class="grid">
                 <div>
                     <label>Trading Pair / 交易对</label>
@@ -1076,6 +1105,8 @@
                     if (positionsTableBody) {
                         if (data.positions && Array.isArray(data.positions) && data.positions.length > 0) {
                             const rows = data.positions.map(pos => {
+                                // Use symbol from backend, which is already correctly formatted based on exchange symbol
+                                // 使用后端返回的 symbol，它已经根据交易所交易对正确格式化
                                 const symbol = pos.symbol || pos.coin || '--';
                                 const side = pos.side || (pos.szi > 0 ? 'LONG' : 'SHORT') || '--';
                                 const size = Math.abs(pos.szi || pos.size || 0);
@@ -1151,6 +1182,9 @@
                     document.getElementById('leverageInput').value = 5;
                 }
                 currentEvalSymbol = normalizeSymbol(data.symbol);
+                
+                // Update current order parameters display / 更新当前下单参数显示
+                updateCurrentParamsDisplay(data);
 
                 const pairSelect = document.getElementById('pairSelect');
                 if (pairSelect && data.symbol) {
@@ -1182,6 +1216,42 @@
             }
         }
 
+        // Update current order parameters display / 更新当前下单参数显示
+        function updateCurrentParamsDisplay(data) {
+            const currentPairEl = document.getElementById('currentPair');
+            const currentSpreadEl = document.getElementById('currentSpread');
+            const currentQuantityEl = document.getElementById('currentQuantity');
+            const currentLeverageEl = document.getElementById('currentLeverage');
+            
+            if (currentPairEl) {
+                currentPairEl.innerText = data.symbol || '--';
+            }
+            
+            if (currentSpreadEl) {
+                if (data.spread !== undefined && data.spread !== null) {
+                    currentSpreadEl.innerText = `${(data.spread * 100).toFixed(2)}%`;
+                } else {
+                    currentSpreadEl.innerText = '--';
+                }
+            }
+            
+            if (currentQuantityEl) {
+                if (data.quantity !== undefined && data.quantity !== null) {
+                    currentQuantityEl.innerText = formatNumber(data.quantity, 4);
+                } else {
+                    currentQuantityEl.innerText = '--';
+                }
+            }
+            
+            if (currentLeverageEl) {
+                if (data.leverage !== undefined && data.leverage !== null) {
+                    currentLeverageEl.innerText = `${data.leverage}x`;
+                } else {
+                    currentLeverageEl.innerText = '--';
+                }
+            }
+        }
+
         async function updateConfig() {
             try {
                 const payload = {
@@ -1199,6 +1269,8 @@
                 const data = await res.json();
                 if (data.error) throw new Error(data.error);
                 showMessage(controlMessage, 'Strategy config updated. / 策略配置已更新。');
+                // Reload status to update current params display / 重新加载状态以更新当前参数显示
+                await loadStatus();
             } catch (err) {
                 showMessage(controlMessage, err.message || 'Failed to update config / 更新配置失败', true);
             }
@@ -1225,6 +1297,8 @@
                 // 如果响应中有消息则使用，否则构造消息
                 const message = data.message || `Leverage updated to ${data.leverage || leverage}x / 杠杆已更新至 ${data.leverage || leverage}x`;
                 showMessage(controlMessage, message);
+                // Reload status to update current params display / 重新加载状态以更新当前参数显示
+                await loadStatus();
             } catch (err) {
                 showMessage(controlMessage, err.message || 'Failed to update leverage / 更新杠杆失败', true);
             }
@@ -1338,6 +1412,9 @@
                 
                 // Update symbol
                 currentEvalSymbol = normalizeSymbol(symbol);
+                
+                // Reload status to update current params display / 重新加载状态以更新当前参数显示
+                await loadStatus();
                 
                 // Show success message, with warning if connection is needed
                 if (data.warning) {
@@ -2025,6 +2102,33 @@
                 }
                 
                 showMessage(controlMessage, data.message || 'Applied evaluation proposal. / 已应用评估建议。');
+                // Update current params display with applied config / 使用应用的配置更新当前参数显示
+                if (data.applied_config) {
+                    const config = data.applied_config;
+                    // Get current status to get symbol and leverage / 获取当前状态以获取 symbol 和 leverage
+                    try {
+                        const statusRes = await diagnosticFetch('/api/hyperliquid/status');
+                        const statusData = await statusRes.json();
+                        if (!statusData.error) {
+                            // Merge applied config with status data / 合并应用的配置和状态数据
+                            const displayData = {
+                                symbol: statusData.symbol || config.symbol,
+                                spread: config.spread,
+                                quantity: config.quantity,
+                                leverage: config.leverage || statusData.leverage,
+                            };
+                            updateCurrentParamsDisplay(displayData);
+                        }
+                    } catch (err) {
+                        // If status fetch fails, use config data only / 如果状态获取失败，仅使用配置数据
+                        updateCurrentParamsDisplay({
+                            symbol: '--',
+                            spread: config.spread,
+                            quantity: config.quantity,
+                            leverage: config.leverage,
+                        });
+                    }
+                }
                 // Don't call loadStatus() here as it will overwrite the leverage we just set
                 // Instead, only refresh orders and position if needed
                 // 不要在这里调用 loadStatus()，因为它会覆盖我们刚刚设置的 leverage
@@ -2067,6 +2171,66 @@
                 setTimeout(refreshOrders, 1000);
             } catch (err) {
                 showMessage(controlMessage, err.message || 'Failed to start bot / 启动 Bot 失败', true);
+            }
+        }
+
+        // Shutdown server function / 关闭服务器函数
+        async function shutdownServer() {
+            // Show confirmation dialog / 显示确认对话框
+            const confirmed = confirm(
+                '⚠️ WARNING: This will stop the server and disconnect all clients.\n' +
+                'You will need to restart the server manually to access the page again.\n\n' +
+                '⚠️ 警告：这将停止服务器并断开所有客户端连接。\n' +
+                '您需要手动重启服务器才能再次访问页面。\n\n' +
+                'Are you sure you want to shutdown the server? / 您确定要关闭服务器吗？'
+            );
+            
+            if (!confirmed) {
+                return;
+            }
+            
+            try {
+                const shutdownBtn = document.getElementById('shutdownServerBtn');
+                if (shutdownBtn) {
+                    shutdownBtn.disabled = true;
+                    shutdownBtn.innerText = 'Shutting down... / 正在关闭...';
+                }
+                
+                const res = await diagnosticFetch('/api/server/shutdown', {
+                    method: 'POST',
+                });
+                const data = await res.json();
+                
+                if (data.error) {
+                    throw new Error(data.error);
+                }
+                
+                // Show success message / 显示成功消息
+                alert(
+                    '✅ Server shutdown initiated. / 服务器关闭已启动。\n\n' +
+                    'The server will stop shortly. / 服务器将很快停止。\n' +
+                    'Please restart the server manually to continue. / 请手动重启服务器以继续。'
+                );
+                
+                // Wait a bit and then try to detect if server is down / 等待一会儿，然后尝试检测服务器是否已关闭
+                setTimeout(() => {
+                    const shutdownBtn = document.getElementById('shutdownServerBtn');
+                    if (shutdownBtn) {
+                        shutdownBtn.innerText = '⛔ Server Stopped / 服务器已停止';
+                        shutdownBtn.style.opacity = '0.6';
+                    }
+                }, 2000);
+                
+            } catch (err) {
+                const shutdownBtn = document.getElementById('shutdownServerBtn');
+                if (shutdownBtn) {
+                    shutdownBtn.disabled = false;
+                    shutdownBtn.innerText = '⛔ Stop Server / 停止服务器';
+                }
+                alert(
+                    '❌ Failed to shutdown server: ' + (err.message || 'Unknown error') + '\n' +
+                    '❌ 关闭服务器失败: ' + (err.message || '未知错误')
+                );
             }
         }
 

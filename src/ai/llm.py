@@ -10,7 +10,14 @@ import os
 from abc import ABC, abstractmethod
 from typing import List, Optional
 
-import google.generativeai as genai
+try:
+    from google import genai as genai_new
+    _USE_NEW_SDK = True
+except ImportError:
+    # Fallback to old SDK if new one is not available
+    # 如果新 SDK 不可用，回退到旧 SDK
+    genai_new = None
+    _USE_NEW_SDK = False
 
 from src.shared.logger import setup_logger
 
@@ -41,113 +48,188 @@ class GeminiProvider(LLMProvider):
 
         Args:
             api_key: Gemini API key (optional, will use GEMINI_API_KEY env var if not provided)
-            model: Model name. Default: "gemini-3-pro"
+            model: Model name. Default: "gemini-3-pro-preview" (latest Gemini 3 model available)
         """
         self.api_key = api_key or os.getenv("GEMINI_API_KEY")
         if not self.api_key:
             raise ValueError("GEMINI_API_KEY is not set")
-        
-        try:
-            genai.configure(api_key=self.api_key)
-        except Exception as e:
-            raise ValueError(f"Failed to configure Gemini API: {e}")
 
         env_preferred = os.getenv("GEMINI_MODEL")
-        self._model_name = model or env_preferred or "gemini-3-pro"
-        
-        # Try to create model - delay actual model creation to first use if needed
-        # 尝试创建模型 - 如果需要，延迟实际模型创建到首次使用时
-        try:
-            self.model = genai.GenerativeModel(self._model_name)
-        except Exception as e:
-            # Store error for better error message in generate() method
-            # 存储错误以便在 generate() 方法中提供更好的错误消息
-            self._init_error = e
-            self.model = None
-            logger.warning(f"Failed to initialize Gemini model '{self._model_name}': {e}")
+        # Use gemini-3-pro-preview as default (latest Gemini 3 model available)
+        # 使用 gemini-3-pro-preview 作为默认值（可用的最新 Gemini 3 模型）
+        self._model_name = model or env_preferred or "gemini-3-pro-preview"
+
+        # Use new SDK if available, otherwise fallback to old SDK
+        # 如果新 SDK 可用则使用，否则回退到旧 SDK
+        if _USE_NEW_SDK:
+            try:
+                # New SDK: genai.Client() with api_key parameter
+                # 新 SDK：使用 genai.Client() 并传入 api_key 参数
+                self.client = genai_new.Client(api_key=self.api_key)
+                self.model = None  # Model is specified per request in new SDK
+                logger.info(f"Using new Google GenAI SDK for model '{self._model_name}'")
+            except Exception as e:
+                raise ValueError(f"Failed to initialize Gemini client: {e}")
+        else:
+            # Fallback to old SDK
+            # 回退到旧 SDK
+            try:
+                import google.generativeai as genai_old
+                genai_old.configure(api_key=self.api_key)
+                self.client = None
+                try:
+                    self.model = genai_old.GenerativeModel(self._model_name)
+                    logger.info(f"Using old Google GenerativeAI SDK for model '{self._model_name}'")
+                except Exception as e:
+                    self._init_error = e
+                    self.model = None
+                    logger.warning(f"Failed to initialize Gemini model '{self._model_name}': {e}")
+            except ImportError:
+                raise ImportError(
+                    "Neither 'google-genai' nor 'google-generativeai' package is installed. "
+                    "Install with: pip install google-genai"
+                )
 
     @property
     def name(self) -> str:
         return f"Gemini ({self._model_name})"
 
     def generate(self, prompt: str) -> str:
-        # If model initialization failed, try to create it now or provide helpful error
-        # 如果模型初始化失败，现在尝试创建它或提供有用的错误
-        if self.model is None:
-            if hasattr(self, '_init_error'):
-                error_msg = str(self._init_error)
-                if "v1beta" in error_msg or "not found" in error_msg.lower():
-                    raise RuntimeError(
-                        f"Gemini model '{self._model_name}' is not available with the current API configuration. "
-                        f"Error: {error_msg}. "
-                        f"This may be due to API version mismatch. Please check: "
-                        f"1. The model name is correct (e.g., 'gemini-3-pro' or 'gemini-1.5-pro'), "
-                        f"2. Your API key has access to this model, "
-                        f"3. Try setting GEMINI_MODEL environment variable to a different model. / "
-                        f"Gemini 模型 '{self._model_name}' 在当前 API 配置下不可用。"
-                        f"错误: {error_msg}。"
-                        f"这可能是由于 API 版本不匹配。请检查："
-                        f"1. 模型名称是否正确（例如 'gemini-3-pro' 或 'gemini-1.5-pro'），"
-                        f"2. 您的 API 密钥是否有权访问此模型，"
-                        f"3. 尝试将 GEMINI_MODEL 环境变量设置为不同的模型。"
-                    )
-                raise RuntimeError(
-                    f"Failed to initialize Gemini model '{self._model_name}': {error_msg}"
-                )
-            # Try to create model now
-            # 现在尝试创建模型
+        """
+        Generate response from Gemini model
+
+        Uses new SDK (genai.Client) if available, otherwise falls back to old SDK
+        如果可用则使用新 SDK (genai.Client)，否则回退到旧 SDK
+        """
+        if _USE_NEW_SDK:
+            # New SDK: client.models.generate_content()
+            # 新 SDK：使用 client.models.generate_content()
             try:
-                self.model = genai.GenerativeModel(self._model_name)
+                response = self.client.models.generate_content(
+                    model=self._model_name,
+                    contents=prompt,
+                )
+                # Handle response.text which might be None
+                # 处理可能为 None 的 response.text
+                if response.text is None:
+                    # Try to get text from candidates if available
+                    # 如果可用，尝试从 candidates 获取文本
+                    if response.candidates and len(response.candidates) > 0:
+                        candidate = response.candidates[0]
+                        if hasattr(candidate, 'content') and candidate.content:
+                            # Extract text from content parts
+                            # 从 content parts 提取文本
+                            text_parts = []
+                            for part in candidate.content:
+                                if hasattr(part, 'text') and part.text:
+                                    text_parts.append(part.text)
+                            if text_parts:
+                                return "\n".join(text_parts)
+                    raise RuntimeError(
+                        f"Gemini API returned empty response for model '{self._model_name}'. "
+                        f"Please check the API response. / "
+                        f"Gemini API 为模型 '{self._model_name}' 返回了空响应。"
+                        f"请检查 API 响应。"
+                    )
+                return response.text
             except Exception as e:
+                # Directly raise error from API provider without fallback
+                # 直接抛出 API 提供方的错误，不使用回退
+                error_msg = str(e)
                 raise RuntimeError(
-                    f"Gemini model '{self._model_name}' initialization failed: {e}. "
-                    f"Please check the model name and API configuration. / "
-                    f"Gemini 模型 '{self._model_name}' 初始化失败: {e}。"
-                    f"请检查模型名称和 API 配置。"
-                )
-        
-        try:
-            response = self.model.generate_content(prompt)
-            return response.text
-        except Exception as e:
-            error_msg = str(e)
-            # Provide more helpful error messages for common issues
-            # 为常见问题提供更有用的错误消息
-            if "v1beta" in error_msg or "not found" in error_msg.lower():
-                raise RuntimeError(
-                    f"Gemini API error ({self._model_name}): {error_msg}. "
-                    f"The model may not be available with the current API version. "
-                    f"Please check the model name or try a different model. / "
+                    f"Gemini API error ({self._model_name}): {error_msg}. / "
                     f"Gemini API 错误 ({self._model_name}): {error_msg}。"
-                    f"该模型可能在当前 API 版本下不可用。"
-                    f"请检查模型名称或尝试其他模型。"
                 )
-            raise RuntimeError(
-                f"Gemini API error ({self._model_name}): {error_msg}. "
-                "Please ensure the requested model is available and your API key is valid. / "
-                "请确保请求的模型可用且您的 API 密钥有效。"
-            )
+        else:
+            # Old SDK: model.generate_content()
+            # 旧 SDK：使用 model.generate_content()
+            if self.model is None:
+                if hasattr(self, '_init_error'):
+                    error_msg = str(self._init_error)
+                    if "v1beta" in error_msg or "not found" in error_msg.lower():
+                        raise RuntimeError(
+                            f"Gemini model '{self._model_name}' is not available with the current API configuration. "
+                            f"Error: {error_msg}. "
+                            f"This may be due to API version mismatch. Please check: "
+                            f"1. The model name is correct (e.g., 'gemini-3-pro' or 'gemini-1.5-pro'), "
+                            f"2. Your API key has access to this model, "
+                            f"3. Try setting GEMINI_MODEL environment variable to a different model. / "
+                            f"Gemini 模型 '{self._model_name}' 在当前 API 配置下不可用。"
+                            f"错误: {error_msg}。"
+                            f"这可能是由于 API 版本不匹配。请检查："
+                            f"1. 模型名称是否正确（例如 'gemini-3-pro' 或 'gemini-1.5-pro'），"
+                            f"2. 您的 API 密钥是否有权访问此模型，"
+                            f"3. 尝试将 GEMINI_MODEL 环境变量设置为不同的模型。"
+                        )
+                    raise RuntimeError(
+                        f"Failed to initialize Gemini model '{self._model_name}': {error_msg}"
+                    )
+                # Try to create model now
+                # 现在尝试创建模型
+                try:
+                    import google.generativeai as genai_old
+                    self.model = genai_old.GenerativeModel(self._model_name)
+                except Exception as e:
+                    raise RuntimeError(
+                        f"Gemini model '{self._model_name}' initialization failed: {e}. "
+                        f"Please check the model name and API configuration. / "
+                        f"Gemini 模型 '{self._model_name}' 初始化失败: {e}。"
+                        f"请检查模型名称和 API 配置。"
+                    )
+
+            try:
+                response = self.model.generate_content(prompt)
+                return response.text
+            except Exception as e:
+                # Directly raise error from API provider without fallback
+                # 直接抛出 API 提供方的错误，不使用回退
+                error_msg = str(e)
+                raise RuntimeError(
+                    f"Gemini API error ({self._model_name}): {error_msg}. / "
+                    f"Gemini API 错误 ({self._model_name}): {error_msg}。"
+                )
 
 
 class OpenAIProvider(LLMProvider):
     """OpenAI GPT implementation of LLMProvider"""
 
-    def __init__(self, api_key: Optional[str] = None, model: str = "gpt-5"):
+    def __init__(
+        self,
+        api_key: Optional[str] = None,
+        model: Optional[str] = None,
+        base_url: Optional[str] = None,
+        timeout: Optional[float] = None,
+    ):
         """
         Initialize OpenAI Provider
 
         Args:
             api_key: OpenAI API key (optional, will use OPENAI_API_KEY env var if not provided)
-            model: Model name. Default: "gpt-5" (latest)
+            model: Model name. Default: "gpt-5.1" (or OPENAI_MODEL env var)
+            base_url: Base URL for API requests (optional, for custom endpoints)
+            timeout: Request timeout in seconds (optional)
         """
         self.api_key = api_key or os.getenv("OPENAI_API_KEY")
         if not self.api_key:
             raise ValueError("OPENAI_API_KEY is not set")
-        self._model_name = model
+
+        # Support OPENAI_MODEL environment variable
+        # 支持 OPENAI_MODEL 环境变量
+        env_model = os.getenv("OPENAI_MODEL")
+        self._model_name = model or env_model or "gpt-5.1"
+
         try:
             from openai import OpenAI
 
-            self.client = OpenAI(api_key=self.api_key)
+            # Initialize client with optional parameters
+            # 使用可选参数初始化客户端
+            client_kwargs = {"api_key": self.api_key}
+            if base_url:
+                client_kwargs["base_url"] = base_url
+            if timeout:
+                client_kwargs["timeout"] = timeout
+
+            self.client = OpenAI(**client_kwargs)
         except ImportError:
             raise ImportError(
                 "openai package is required. Install with: pip install openai"
@@ -158,53 +240,79 @@ class OpenAIProvider(LLMProvider):
         return f"OpenAI ({self._model_name})"
 
     def generate(self, prompt: str) -> str:
+        """
+        Generate response from OpenAI model
+
+        Args:
+            prompt: User prompt
+
+        Returns:
+            Generated text response
+
+        Raises:
+            RuntimeError: If API call fails
+        """
+        messages = [
+            {
+                "role": "system",
+                "content": "You are an expert quantitative trading analyst.",
+            },
+            {"role": "user", "content": prompt},
+        ]
+
         try:
             response = self.client.chat.completions.create(
                 model=self._model_name,
-                messages=[
-                    {
-                        "role": "system",
-                        "content": "You are an expert quantitative trading analyst.",
-                    },
-                    {"role": "user", "content": prompt},
-                ],
+                messages=messages,
                 temperature=0.7,
             )
+            if not response.choices or not response.choices[0].message.content:
+                raise RuntimeError("OpenAI API returned empty response")
             return response.choices[0].message.content
         except Exception as e:
-            if self._model_name == "gpt-5" and (
-                "not found" in str(e).lower() or "invalid" in str(e).lower()
-            ):
-                logger.warning(f"GPT-5 not available, falling back to gpt-4o: {e}")
-                self._model_name = "gpt-4o"
-                response = self.client.chat.completions.create(
-                    model=self._model_name,
-                    messages=[
-                        {
-                            "role": "system",
-                            "content": "You are an expert quantitative trading analyst.",
-                        },
-                        {"role": "user", "content": prompt},
-                    ],
-                    temperature=0.7,
-                )
-                return response.choices[0].message.content
-            raise RuntimeError(f"OpenAI API error: {e}")
+            # Directly raise error from API provider without fallback
+            # 直接抛出 API 提供方的错误，不使用回退
+            error_msg = str(e)
+            raise RuntimeError(
+                f"OpenAI API error ({self._model_name}): {error_msg}. / "
+                f"OpenAI API 错误 ({self._model_name}): {error_msg}。"
+            )
 
 
 class ClaudeProvider(LLMProvider):
     """Anthropic Claude implementation of LLMProvider"""
 
     def __init__(
-        self, api_key: Optional[str] = None, model: str = "claude-3-5-sonnet-20241022"
+        self,
+        api_key: Optional[str] = None,
+        model: Optional[str] = None,
+        max_tokens: Optional[int] = None,
     ):
+        """
+        Initialize Claude Provider
+
+        Args:
+            api_key: Anthropic API key (optional, will use ANTHROPIC_API_KEY env var if not provided)
+            model: Model name. Default: "claude-sonnet-4-5" (or ANTHROPIC_MODEL env var)
+            max_tokens: Maximum tokens for response. Default: 1024
+        """
         self.api_key = api_key or os.getenv("ANTHROPIC_API_KEY")
         if not self.api_key:
             raise ValueError("ANTHROPIC_API_KEY is not set")
-        self._model_name = model
+
+        # Support ANTHROPIC_MODEL environment variable
+        # 支持 ANTHROPIC_MODEL 环境变量
+        env_model = os.getenv("ANTHROPIC_MODEL")
+        # Use claude-sonnet-4-5 as default (latest Claude model available)
+        # 使用 claude-sonnet-4-5 作为默认值（可用的最新 Claude 模型）
+        self._model_name = model or env_model or "claude-sonnet-4-5"
+        self.max_tokens = max_tokens or 1024
+
         try:
             import anthropic
 
+            # Initialize client with API key
+            # 使用 API key 初始化客户端
             self.client = anthropic.Anthropic(api_key=self.api_key)
         except ImportError:
             raise ImportError(
@@ -216,16 +324,36 @@ class ClaudeProvider(LLMProvider):
         return f"Claude ({self._model_name})"
 
     def generate(self, prompt: str) -> str:
+        """
+        Generate response from Claude model
+
+        Args:
+            prompt: User prompt
+
+        Returns:
+            Generated text response
+
+        Raises:
+            RuntimeError: If API call fails
+        """
         try:
             message = self.client.messages.create(
                 model=self._model_name,
-                max_tokens=1024,
+                max_tokens=self.max_tokens,
                 messages=[{"role": "user", "content": prompt}],
                 system="You are an expert quantitative trading analyst.",
             )
+            if not message.content or not message.content[0].text:
+                raise RuntimeError("Claude API returned empty response")
             return message.content[0].text
         except Exception as e:
-            raise RuntimeError(f"Claude API error: {e}")
+            # Directly raise error from API provider without fallback
+            # 直接抛出 API 提供方的错误，不使用回退
+            error_msg = str(e)
+            raise RuntimeError(
+                f"Claude API error ({self._model_name}): {error_msg}. / "
+                f"Claude API 错误 ({self._model_name}): {error_msg}。"
+            )
 
 
 class LLMGateway:
@@ -289,6 +417,92 @@ def create_all_providers() -> List[LLMProvider]:
         )
 
     return providers
+
+
+def get_provider_availability() -> dict:
+    """
+    Check availability of all LLM providers and return detailed status.
+    Returns a dict with available and unavailable providers with reasons.
+    
+    检查所有 LLM 提供商的可用性并返回详细状态。
+    返回包含可用和不可用提供商及其原因的字典。
+    
+    Returns:
+        {
+            "available": [
+                {"name": "Gemini", "provider": GeminiProvider instance}
+            ],
+            "unavailable": [
+                {"name": "OpenAI", "reason": "OPENAI_API_KEY is not set", "api_key_name": "OPENAI_API_KEY"}
+            ]
+        }
+    """
+    result = {
+        "available": [],
+        "unavailable": []
+    }
+    
+    # Check Gemini
+    try:
+        provider = GeminiProvider()
+        result["available"].append({
+            "name": "Gemini",
+            "provider": provider
+        })
+    except (ValueError, ImportError) as e:
+        error_msg = str(e)
+        api_key_name = "GEMINI_API_KEY"
+        if "API_KEY" in error_msg or "not set" in error_msg.lower():
+            reason = f"{api_key_name} is not set / {api_key_name} 未设置"
+        else:
+            reason = error_msg
+        result["unavailable"].append({
+            "name": "Gemini",
+            "reason": reason,
+            "api_key_name": api_key_name
+        })
+    
+    # Check OpenAI
+    try:
+        provider = OpenAIProvider()
+        result["available"].append({
+            "name": "OpenAI",
+            "provider": provider
+        })
+    except (ValueError, ImportError) as e:
+        error_msg = str(e)
+        api_key_name = "OPENAI_API_KEY"
+        if "API_KEY" in error_msg or "not set" in error_msg.lower():
+            reason = f"{api_key_name} is not set / {api_key_name} 未设置"
+        else:
+            reason = error_msg
+        result["unavailable"].append({
+            "name": "OpenAI",
+            "reason": reason,
+            "api_key_name": api_key_name
+        })
+    
+    # Check Claude
+    try:
+        provider = ClaudeProvider()
+        result["available"].append({
+            "name": "Claude",
+            "provider": provider
+        })
+    except (ValueError, ImportError) as e:
+        error_msg = str(e)
+        api_key_name = "ANTHROPIC_API_KEY"
+        if "API_KEY" in error_msg or "not set" in error_msg.lower():
+            reason = f"{api_key_name} is not set / {api_key_name} 未设置"
+        else:
+            reason = error_msg
+        result["unavailable"].append({
+            "name": "Claude",
+            "reason": reason,
+            "api_key_name": api_key_name
+        })
+    
+    return result
 
 
 def create_provider(provider_name: str) -> LLMProvider:

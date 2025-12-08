@@ -57,7 +57,7 @@ class TestUSML001_GetMultiModelSuggestions:
         openai.generate.return_value = '{"recommended_strategy": "FixedSpread", "spread": 0.015, "skew_factor": 100, "confidence": 0.78, "reasoning": "High volatility"}'
 
         claude = Mock()
-        claude.name = "Claude (claude-sonnet-4-20250514)"
+        claude.name = "Claude (claude-sonnet-4-5)"
         claude.generate.return_value = '{"recommended_strategy": "FundingRate", "spread": 0.010, "skew_factor": 150, "confidence": 0.92, "reasoning": "Strong funding opportunity"}'
 
         return [gemini, openai, claude]

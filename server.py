@@ -2101,6 +2101,19 @@ async def run_evaluation(request: EvaluationRunRequest):
                 }
             )
         
+        logger.info(
+            f"Starting evaluation request / 开始评估请求",
+            extra={
+                "trace_id": trace_id,
+                "symbol": symbol,
+                "exchange": exchange_name,
+                "simulation_steps": request.simulation_steps,
+                "providers_count": len(providers),
+                "provider_names": [p.name for p in providers],
+                **request_context,
+            }
+        )
+        
         evaluator = MultiLLMEvaluator(
             providers=providers,
             simulation_steps=request.simulation_steps,
@@ -2109,15 +2122,59 @@ async def run_evaluation(request: EvaluationRunRequest):
         
         # Run evaluation (in thread to avoid blocking)
         import asyncio
+        import time as time_module
 
+        evaluation_start_time = time_module.time()
         results = await asyncio.to_thread(evaluator.evaluate, context)
+        evaluation_time = time_module.time() - evaluation_start_time
+        
+        logger.info(
+            f"Evaluation completed / 评估完成",
+            extra={
+                "trace_id": trace_id,
+                "symbol": symbol,
+                "exchange": exchange_name,
+                "evaluation_time_seconds": evaluation_time,
+                "results_count": len(results),
+                **request_context,
+            }
+        )
         
         # Aggregate results
+        aggregation_start_time = time_module.time()
         aggregated = evaluator.aggregate_results(results)
+        aggregation_time = time_module.time() - aggregation_start_time
+        
+        logger.info(
+            f"Results aggregated / 结果已聚合",
+            extra={
+                "trace_id": trace_id,
+                "symbol": symbol,
+                "exchange": exchange_name,
+                "aggregation_time_seconds": aggregation_time,
+                "consensus_strategy": aggregated.strategy_consensus.consensus_strategy,
+                "consensus_level": aggregated.strategy_consensus.consensus_level,
+                "consensus_confidence": aggregated.consensus_confidence,
+                **request_context,
+            }
+        )
         
         # Generate comparison table and consensus report
         comparison_table = MultiLLMEvaluator.generate_comparison_table(results)
         consensus_report = MultiLLMEvaluator.generate_consensus_summary(aggregated)
+        
+        logger.info(
+            f"Evaluation summary generated / 评估摘要已生成",
+            extra={
+                "trace_id": trace_id,
+                "symbol": symbol,
+                "exchange": exchange_name,
+                "total_time_seconds": evaluation_time + aggregation_time,
+                "comparison_table_length": len(comparison_table),
+                "consensus_report_length": len(consensus_report),
+                **request_context,
+            }
+        )
         
         # Store results for apply endpoint
         _last_evaluation_results = results
@@ -2220,6 +2277,18 @@ async def run_evaluation(request: EvaluationRunRequest):
                     **request_context,
                 }
             )
+        
+        logger.info(
+            f"Evaluation request completed successfully / 评估请求成功完成",
+            extra={
+                "trace_id": trace_id,
+                "symbol": symbol,
+                "exchange": exchange_name,
+                "response_size": len(str(response)),
+                "individual_results_count": len(response["individual_results"]),
+                **request_context,
+            }
+        )
         
         return response
         

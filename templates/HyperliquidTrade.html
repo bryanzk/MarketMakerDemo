@@ -1582,7 +1582,39 @@
                     }),
                 });
                 const data = await res.json();
-                if (data.error) throw new Error(data.error);
+                
+                // Check for error in response (standardized error format) / 检查响应中的错误（标准化错误格式）
+                if (data.error) {
+                    // Extract error message from standardized error response / 从标准化错误响应中提取错误消息
+                    let errorMsg = data.error;
+                    if (typeof data.error === 'object' && data.error.message) {
+                        errorMsg = data.error.message;
+                    } else if (typeof data.error === 'string') {
+                        errorMsg = data.error;
+                    }
+                    
+                    // Check if this is an API key missing error / 检查这是否是 API 密钥缺失错误
+                    const errorBox = document.getElementById('evaluationErrorBox');
+                    if ((data.error_code === 'LLM_API_KEY_MISSING' || 
+                         data.error_code === 'LLM_PROVIDER_NOT_AVAILABLE' ||
+                         data.error_code === 'NO_LLM_PROVIDERS' ||
+                         errorMsg.includes('API_KEY') || 
+                         errorMsg.includes('not available') || 
+                         errorMsg.includes('不可用')) &&
+                        errorBox && typeof handleApiError === 'function') {
+                        handleApiError({
+                            error_type: 'api_key_missing',
+                            message: errorMsg,
+                            message_zh: errorMsg,
+                            severity: 'error',
+                            suggestion: data.details?.suggestion || 'Please configure the required API keys in your .env file. See README.md for setup instructions. / 请在 .env 文件中配置所需的 API 密钥。查看 README.md 了解设置说明。',
+                            suggestion_zh: data.details?.suggestion || '请在 .env 文件中配置所需的 API 密钥。查看 README.md 了解设置说明。',
+                            details: data.details || {}
+                        }, errorBox, { showDetails: true });
+                    }
+                    
+                    throw new Error(errorMsg);
+                }
                 
                 // Mark all providers as completed / 标记所有提供商为已完成
                 evaluationState.providers.forEach(name => {
@@ -1655,7 +1687,50 @@
                     evaluationState.providerStatus[name].failedAt = Date.now();
                     evaluationState.providerStatus[name].error = err.message;
                 });
-                evaluationState.lastError = err.message || 'Failed to run evaluation / 运行评估失败';
+                
+                // Extract error message from response if available / 如果可用，从响应中提取错误消息
+                let errorMessage = err.message || 'Failed to run evaluation / 运行评估失败';
+                
+                // Check if error contains API key information / 检查错误是否包含 API 密钥信息
+                const errorBox = document.getElementById('evaluationErrorBox');
+                if (errorBox && typeof handleApiError === 'function') {
+                    // Check for API key missing errors / 检查 API 密钥缺失错误
+                    if (errorMessage.includes('API_KEY') || errorMessage.includes('API key') || 
+                        errorMessage.includes('not available') || errorMessage.includes('不可用')) {
+                        handleApiError({
+                            error_type: 'api_key_missing',
+                            message: errorMessage,
+                            message_zh: errorMessage,
+                            severity: 'error',
+                            suggestion: 'Please configure the required API keys in your .env file. See README.md for setup instructions. / 请在 .env 文件中配置所需的 API 密钥。查看 README.md 了解设置说明。',
+                            suggestion_zh: '请在 .env 文件中配置所需的 API 密钥。查看 README.md 了解设置说明。',
+                            details: {
+                                error: errorMessage,
+                                timestamp: new Date().toISOString()
+                            }
+                        }, errorBox, { showDetails: true });
+                    } else {
+                        // Use error handler for other errors / 对其他错误使用错误处理器
+                        handleApiError({
+                            error_type: 'evaluation_error',
+                            message: errorMessage,
+                            message_zh: errorMessage,
+                            severity: 'error',
+                            suggestion: 'Please check the error details and try again. / 请检查错误详情并重试。',
+                            suggestion_zh: '请检查错误详情并重试。',
+                            details: {
+                                error: errorMessage,
+                                timestamp: new Date().toISOString()
+                            }
+                        }, errorBox, { showDetails: true });
+                    }
+                } else if (errorBox) {
+                    // Fallback to simple display / 回退到简单显示
+                    errorBox.innerText = errorMessage;
+                    errorBox.style.display = 'block';
+                }
+                
+                evaluationState.lastError = errorMessage;
             } finally {
                 evaluationState.loading = false;
                 updateEvaluationUI();

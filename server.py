@@ -33,7 +33,7 @@ from src.trading.strategies.fixed_spread import FixedSpreadStrategy
 # Import evaluation modules
 from src.ai.evaluation.evaluator import MultiLLMEvaluator
 from src.ai.evaluation.schemas import MarketContext
-from src.ai import create_all_providers
+from src.ai import create_all_providers, get_provider_availability
 
 # Import tracing utilities / 导入追踪工具
 from src.shared.tracing import (
@@ -1926,7 +1926,15 @@ async def run_evaluation(request: EvaluationRunRequest):
         # Create evaluator with selected providers
         # 使用选中的提供商创建评估器
         try:
-            all_providers = create_all_providers()
+            # Get provider availability status
+            # 获取提供商可用性状态
+            availability = get_provider_availability()
+            all_providers = [item["provider"] for item in availability["available"]]
+            
+            # Track warnings for unavailable selected models
+            # 跟踪不可用的选中模型的警告
+            warnings = []
+            unavailable_selected = []
             
             # Filter providers based on selected_models if provided
             # 如果提供了 selected_models，则根据选中的模型过滤提供商
@@ -1946,56 +1954,53 @@ async def run_evaluation(request: EvaluationRunRequest):
                     for model in request.selected_models
                 ]
                 
-                # Filter providers by name
-                # 按名称过滤提供商
+                # Check which selected providers are available
+                # 检查哪些选中的提供商可用
+                available_provider_dict = {item["name"]: item["provider"] for item in availability["available"]}
+                unavailable_provider_dict = {item["name"]: item for item in availability["unavailable"]}
+                
+                # Filter providers by name (only use available ones)
+                # 按名称过滤提供商（仅使用可用的）
                 providers = [
-                    p for p in all_providers
-                    if any(p.name.startswith(name) for name in selected_provider_names)
+                    available_provider_dict[name]
+                    for name in selected_provider_names
+                    if name in available_provider_dict
                 ]
                 
+                # Check for unavailable selected models
+                # 检查不可用的选中模型
+                for selected_name in selected_provider_names:
+                    if selected_name not in available_provider_dict:
+                        unavailable_info = unavailable_provider_dict.get(selected_name, {})
+                        unavailable_selected.append({
+                            "model": selected_name.lower(),
+                            "provider": selected_name,
+                            "reason": unavailable_info.get("reason", "Provider not available / 提供商不可用"),
+                            "api_key_name": unavailable_info.get("api_key_name", f"{selected_name.upper()}_API_KEY")
+                        })
+                        warnings.append(
+                            f"{selected_name} skipped: {unavailable_info.get('reason', 'Provider not available')}. "
+                            f"{selected_name} 已跳过: {unavailable_info.get('reason', '提供商不可用')}。"
+                        )
+                
+                # If no providers are available after filtering, return error
+                # 如果过滤后没有可用的提供商，返回错误
                 if not providers:
-                    # Check which selected providers are missing / 检查哪些选中的提供商缺失
-                    available_provider_names = [p.name for p in all_providers]
-                    missing_providers = []
-                    for selected_name in selected_provider_names:
-                        if not any(p.name.startswith(selected_name) for p in all_providers):
-                            missing_providers.append(selected_name)
-                    
-                    # Map provider names to API key names / 将提供商名称映射到 API key 名称
-                    api_key_map = {
-                        "Gemini": "GEMINI_API_KEY",
-                        "OpenAI": "OPENAI_API_KEY",
-                        "Claude": "ANTHROPIC_API_KEY"
-                    }
-                    
-                    # Build detailed error message / 构建详细的错误消息
-                    if missing_providers:
-                        missing_keys = [api_key_map.get(p, f"{p.upper()}_API_KEY") for p in missing_providers]
-                        error_message = (
-                            f"Selected LLM providers not available: {', '.join(missing_providers)}. "
-                            f"Please configure the following API keys: {', '.join(missing_keys)}. "
-                            f"Available providers: {', '.join(available_provider_names) if available_provider_names else 'None'}. / "
-                            f"选中的 LLM 提供商不可用: {', '.join(missing_providers)}。"
-                            f"请配置以下 API 密钥: {', '.join(missing_keys)}。"
-                            f"可用提供商: {', '.join(available_provider_names) if available_provider_names else '无'}。"
-                        )
-                    else:
-                        error_message = (
-                            f"No matching providers found for selected models: {', '.join(request.selected_models)}. "
-                            f"Available providers: {', '.join(available_provider_names) if available_provider_names else 'None'}. / "
-                            f"未找到匹配的提供商，选中的模型: {', '.join(request.selected_models)}。"
-                            f"可用提供商: {', '.join(available_provider_names) if available_provider_names else '无'}。"
-                        )
-                    
-                    # Use standardized error response / 使用标准化错误响应
+                    error_message = (
+                        f"None of the selected LLM models are available. "
+                        f"Selected: {', '.join(request.selected_models)}. "
+                        f"Please configure the required API keys. / "
+                        f"选中的 LLM 模型都不可用。"
+                        f"已选中: {', '.join(request.selected_models)}。"
+                        f"请配置所需的 API 密钥。"
+                    )
                     return create_error_response(
                         ValueError(error_message),
                         error_code="LLM_PROVIDER_NOT_AVAILABLE",
                         details={
                             "selected_models": request.selected_models,
-                            "missing_providers": missing_providers,
-                            "available_providers": available_provider_names,
-                            "required_api_keys": [api_key_map.get(p, f"{p.upper()}_API_KEY") for p in missing_providers] if missing_providers else [],
+                            "unavailable_models": unavailable_selected,
+                            "available_providers": [item["name"] for item in availability["available"]],
                         }
                     )
             else:
@@ -2053,11 +2058,14 @@ async def run_evaluation(request: EvaluationRunRequest):
         
         # Convert results to dict for JSON response
         def result_to_dict(result):
+            # Ensure score is always a number, never None or undefined
+            # 确保 score 始终是数字，永远不是 None 或 undefined
+            score = result.score if result.score is not None else 0.0
             return {
                 "provider_name": result.provider_name,
-                "rank": result.rank,
-                "score": result.score,
-                "latency_ms": result.latency_ms,
+                "rank": result.rank if result.rank is not None else 0,
+                "score": float(score),  # Explicitly convert to float to ensure it's a number
+                "latency_ms": result.latency_ms if result.latency_ms is not None else 0.0,
                 "proposal": {
                     "recommended_strategy": result.proposal.recommended_strategy,
                     "spread": result.proposal.spread,
@@ -2119,7 +2127,7 @@ async def run_evaluation(request: EvaluationRunRequest):
             "spread_bps": spread_bps,
             }
         
-        return {
+        response = {
             "symbol": symbol,
             "exchange": exchange_name,
             "individual_results": [result_to_dict(r) for r in results],
@@ -2127,7 +2135,26 @@ async def run_evaluation(request: EvaluationRunRequest):
             "comparison_table": comparison_table,
             "consensus_report": {"summary": consensus_report},
             "market_data": response_market_data,
+            "ok": True,
+            "trace_id": trace_id,
         }
+        
+        # Add warnings if any models were skipped due to missing API keys
+        # 如果有模型因缺少 API 密钥而被跳过，添加警告
+        if warnings:
+            response["warnings"] = warnings
+            response["unavailable_models"] = unavailable_selected
+            logger.warning(
+                f"Some selected LLM models were skipped due to missing API keys: {', '.join([m['model'] for m in unavailable_selected])}. "
+                f"一些选中的 LLM 模型因缺少 API 密钥而被跳过: {', '.join([m['model'] for m in unavailable_selected])}。",
+                extra={
+                    "trace_id": trace_id,
+                    "unavailable_models": unavailable_selected,
+                    **request_context,
+                }
+            )
+        
+        return response
         
     except Exception as e:
         logger.error(f"Evaluation error: {e}", exc_info=True)

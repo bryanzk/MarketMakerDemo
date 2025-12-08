@@ -1476,6 +1476,9 @@
                         const disabledApply = !proposal.parse_success ? 'disabled' : '';
                         const providerSafe = (result.provider_name || '').replace(/"/g, '&quot;');
                         const highlight = result.rank === 1 ? 'style="background:#fef3c7;"' : '';
+                        // Ensure score is displayed - use result.score if available, otherwise calculate or show 0
+                        // 确保显示 score - 如果 result.score 可用则使用，否则计算或显示 0
+                        const score = result.score !== undefined && result.score !== null ? result.score : 0;
                         return `
                             <tr ${highlight}>
                                 <td>${result.rank ?? '--'}</td>
@@ -1488,7 +1491,7 @@
                                 <td>${formatCurrency(simulation.realized_pnl)}</td>
                                 <td>${formatNumber(simulation.sharpe_ratio || 0, 2)}</td>
                                 <td>${formatPercent(simulation.win_rate || 0, 1)}</td>
-                                <td>${formatNumber(result.score || 0, 1)}</td>
+                                <td>${formatNumber(score, 1)}</td>
                                 <td><button class="btn btn-secondary" style="font-size:11px;" ${disabledApply}
                                     onclick="applyEvaluation('individual', '${providerSafe}')">Apply</button></td>
                             </tr>`;
@@ -1629,8 +1632,43 @@
                 evaluationState.lastRunSymbol = data.symbol || getEvaluationSymbol();
                 evaluationState.lastRunAt = new Date().toISOString();
                 
-                // Check for parse errors in individual results / 检查单个结果中的解析错误
+                // Check for warnings about unavailable models / 检查关于不可用模型的警告
                 const errorBox = document.getElementById('evaluationErrorBox');
+                let hasWarnings = false;
+                
+                if (data.warnings && data.warnings.length > 0) {
+                    hasWarnings = true;
+                    const warningMessages = data.warnings.join('\n');
+                    const unavailableModels = data.unavailable_models || [];
+                    
+                    // Display warnings about missing API keys / 显示关于缺少 API 密钥的警告
+                    if (errorBox && typeof handleApiError === 'function') {
+                        const unavailableModelNames = unavailableModels.map(m => m.model).join(', ');
+                        const apiKeyNames = unavailableModels.map(m => m.api_key_name).join(', ');
+                        
+                        handleApiError({
+                            error_type: 'api_key_missing',
+                            message: `Some selected LLM models were skipped due to missing API keys: ${unavailableModelNames}. / 一些选中的 LLM 模型因缺少 API 密钥而被跳过: ${unavailableModelNames}。`,
+                            message_zh: `一些选中的 LLM 模型因缺少 API 密钥而被跳过: ${unavailableModelNames}。`,
+                            severity: 'warning',
+                            suggestion: `Please configure the following API keys in your .env file: ${apiKeyNames}. The evaluation will continue with available models. / 请在 .env 文件中配置以下 API 密钥: ${apiKeyNames}。评估将继续使用可用的模型。`,
+                            suggestion_zh: `请在 .env 文件中配置以下 API 密钥: ${apiKeyNames}。评估将继续使用可用的模型。`,
+                            details: {
+                                warnings: data.warnings,
+                                unavailable_models: unavailableModels,
+                                available_models: evaluationState.results.map(r => r.provider_name),
+                                total_warnings: data.warnings.length
+                            }
+                        }, errorBox, { showDetails: true });
+                    } else if (errorBox) {
+                        // Fallback to simple display / 回退到简单显示
+                        errorBox.innerText = warningMessages;
+                        errorBox.style.display = 'block';
+                        errorBox.style.backgroundColor = '#fef3c7'; // Yellow background for warnings / 黄色背景用于警告
+                    }
+                }
+                
+                // Check for parse errors in individual results / 检查单个结果中的解析错误
                 const parseErrors = [];
                 if (evaluationState.results && evaluationState.results.length > 0) {
                     evaluationState.results.forEach(result => {
@@ -1671,8 +1709,8 @@
                         errorBox.innerText = errorMessage;
                         errorBox.style.display = 'block';
                     }
-                } else {
-                    // Clear error if no parse errors / 如果没有解析错误则清除错误
+                } else if (!hasWarnings) {
+                    // Clear error if no parse errors and no warnings / 如果没有解析错误且没有警告则清除错误
                     evaluationState.lastError = null;
                     if (errorBox && typeof clearError === 'function') {
                         clearError(errorBox);

@@ -66,39 +66,51 @@ def main():
 
         print(f"\n✅ Query successful / 查询成功")
         print(f"✅ Response type: {type(response)}")
-        print(f"✅ Response keys: {list(response.keys()) if isinstance(response, dict) else 'N/A'}")
 
-        if isinstance(response, dict):
+        # Handle both list and dict response formats
+        # 处理列表和字典两种响应格式
+        if isinstance(response, list):
+            orders = response
+        elif isinstance(response, dict):
             orders = response.get("openOrders", [])
-            print(f"\n📊 Found {len(orders)} open order(s) / 找到 {len(orders)} 个未成交订单")
-
-            if len(orders) == 0:
-                print("\n✅ No open orders / 没有未成交订单")
-            else:
-                print("\n" + "=" * 80)
-                print(f"{'Coin':<10} {'Side':<6} {'Size':<15} {'Price':<15} {'Order ID':<20} {'Status':<10}")
-                print("=" * 80)
-
-                for order in orders:
-                    coin = order.get("coin", "N/A")
-                    side = "BUY" if order.get("side", {}).get("bids", []) else "SELL"
-                    size = order.get("sz", "0")
-                    price = order.get("limitPx", "N/A")
-                    order_id = order.get("oid", "N/A")
-                    status = order.get("status", "N/A")
-
-                    print(f"{coin:<10} {side:<6} {str(size):<15} {str(price):<15} {str(order_id):<20} {str(status):<10}")
-
-                print("=" * 80)
-
-                # Print detailed JSON for debugging
-                print("\n📄 Detailed order data / 详细订单数据:")
-                import json
-                print(json.dumps(response, indent=2, default=str))
-
         else:
-            print(f"\n⚠️  Unexpected response format / 意外的响应格式:")
-            print(f"Response: {response}")
+            orders = []
+
+        print(f"\n📊 Found {len(orders)} open order(s) / 找到 {len(orders)} 个未成交订单")
+
+        if len(orders) == 0:
+            print("\n✅ No open orders / 没有未成交订单")
+        else:
+            print("\n" + "=" * 100)
+            print(f"{'Coin':<10} {'Side':<6} {'Size':<15} {'Price':<15} {'Order ID':<20} {'Timestamp':<20} {'Orig Size':<15}")
+            print("=" * 100)
+
+            for order in orders:
+                coin = order.get("coin", "N/A")
+                # Handle side format: 'B' for buy, 'A' for sell, or dict with 'bids'/'asks'
+                # 处理方向格式：'B' 表示买入，'A' 表示卖出，或包含 'bids'/'asks' 的字典
+                side_raw = order.get("side", "")
+                if isinstance(side_raw, str):
+                    side = "BUY" if side_raw == "B" else "SELL" if side_raw == "A" else side_raw
+                elif isinstance(side_raw, dict):
+                    side = "BUY" if side_raw.get("bids") else "SELL"
+                else:
+                    side = str(side_raw)
+                
+                size = order.get("sz", "0")
+                price = order.get("limitPx", "N/A")
+                order_id = order.get("oid", "N/A")
+                timestamp = order.get("timestamp", "N/A")
+                orig_size = order.get("origSz", size)
+
+                print(f"{coin:<10} {side:<6} {str(size):<15} {str(price):<15} {str(order_id):<20} {str(timestamp):<20} {str(orig_size):<15}")
+
+            print("=" * 100)
+
+            # Print detailed JSON for debugging
+            print("\n📄 Detailed order data / 详细订单数据:")
+            import json
+            print(json.dumps(orders, indent=2, default=str))
 
     except Exception as e:
         print(f"\n❌ Error querying open orders / 查询未成交订单时出错:")

@@ -16,6 +16,7 @@ from src.ai.llm import (
     OpenAIProvider,
     create_all_providers,
     create_provider,
+    get_provider_availability,
 )
 
 __all__ = [
@@ -26,4 +27,5 @@ __all__ = [
     "LLMGateway",
     "create_all_providers",
     "create_provider",
+    "get_provider_availability",
 ]

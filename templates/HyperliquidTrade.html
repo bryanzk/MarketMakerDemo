@@ -474,7 +474,19 @@
                     </div>
                 </div>
                 <div id="evaluationConsensusStats" style="margin-top:6px; font-size:12px; color:#4b5563;">--</div>
-                <div id="evaluationConsensusReasoning" style="margin-top:8px; font-size:12px; color:#6b7280;">--</div>
+                
+                <!-- Summary reasoning (always visible) / 总结性建议（始终可见） -->
+                <div id="evaluationConsensusSummary" style="margin-top:8px; font-size:12px; color:#6b7280; font-weight:500;">--</div>
+                
+                <!-- Detailed reasoning (collapsible) / 详细解释（可折叠） -->
+                <div id="evaluationConsensusDetailsWrapper" style="margin-top:8px; display:none;">
+                    <button id="toggleConsensusDetails" onclick="toggleConsensusDetails()" 
+                        style="background:none; border:none; color:#6d28d9; cursor:pointer; font-size:12px; padding:4px 0; text-decoration:underline;">
+                        <span id="toggleConsensusDetailsText">Show Details / 显示详情</span> <span id="toggleConsensusDetailsIcon">▼</span>
+                    </button>
+                    <div id="evaluationConsensusReasoning" style="margin-top:6px; font-size:12px; color:#6b7280; display:none; white-space:pre-wrap; line-height:1.5;"></div>
+                </div>
+                
                 <div style="display:flex; gap:8px; margin-top:12px;">
                     <button class="btn btn-success" style="flex:1;"
                         onclick="applyEvaluation('consensus')">Apply Consensus / 应用共识</button>
@@ -613,6 +625,7 @@
                     let msg;
                     try {
                         msg = JSON.parse(event.data);
+                        console.log('WebSocket message received:', msg.type, msg); // Debug log / 调试日志
                     } catch (err) {
                         console.warn('Failed to parse WS message', err);
                         return;
@@ -624,6 +637,7 @@
                                 completed: 0,
                                 total: msg.total || payload.selected_models.length || evaluationState.providers.length
                             };
+                            console.log('Evaluation started, total providers:', evaluationState.progress.total); // Debug log / 调试日志
                             updateEvaluationUI();
                             break;
                         case 'progress':
@@ -631,6 +645,35 @@
                                 completed: msg.completed || 0,
                                 total: msg.total || evaluationState.progress.total || 0
                             };
+                            // Update provider status if provider name is provided
+                            // 如果提供了提供商名称，更新提供商状态
+                            if (msg.provider) {
+                                const providerName = msg.provider;
+                                // Try exact match first / 先尝试精确匹配
+                                if (evaluationState.providerStatus[providerName]) {
+                                    evaluationState.providerStatus[providerName].status = 'in_progress';
+                                    evaluationState.providerStatus[providerName].step = msg.step || 0;
+                                    evaluationState.providerStatus[providerName].stepProgress = msg.stepProgress || 0;
+                                    if (msg.message) {
+                                        evaluationState.providerStatus[providerName].message = msg.message;
+                                    }
+                                } else {
+                                    // Try partial match (e.g., "Gemini" matches "Gemini (gemini-3-pro-preview)")
+                                    // 尝试部分匹配（例如，"Gemini" 匹配 "Gemini (gemini-3-pro-preview)"）
+                                    for (const key in evaluationState.providerStatus) {
+                                        if (providerName.startsWith(key) || key.startsWith(providerName.split(' ')[0])) {
+                                            evaluationState.providerStatus[key].status = 'in_progress';
+                                            evaluationState.providerStatus[key].step = msg.step || 0;
+                                            evaluationState.providerStatus[key].stepProgress = msg.stepProgress || 0;
+                                            if (msg.message) {
+                                                evaluationState.providerStatus[key].message = msg.message;
+                                            }
+                                            break;
+                                        }
+                                    }
+                                }
+                            }
+                            updateProgressDisplay();
                             updateEvaluationUI();
                             break;
                         case 'model_done':
@@ -638,16 +681,39 @@
                                 upsertEvaluationResult(msg.result);
                                 evaluationState.lastRunSymbol = payload.symbol;
                                 evaluationState.lastRunAt = new Date().toISOString();
+                                // Immediately show results table when first result arrives / 第一个结果到达时立即显示结果表格
+                                const resultsWrapper = document.getElementById('evaluationResultsWrapper');
+                                if (resultsWrapper && evaluationState.results.length > 0) {
+                                    resultsWrapper.style.display = 'block';
+                                }
                             }
                             evaluationState.progress = {
                                 completed: msg.completed || evaluationState.progress.completed,
                                 total: msg.total || evaluationState.progress.total
                             };
-                            if (msg.provider && evaluationState.providerStatus[msg.provider]) {
-                                evaluationState.providerStatus[msg.provider].status = 'completed';
-                                evaluationState.providerStatus[msg.provider].completedAt = Date.now();
+                            // Match provider name (backend may send full name like "Gemini (gemini-3-pro-preview)")
+                            // 匹配提供商名称（后端可能发送完整名称如 "Gemini (gemini-3-pro-preview)"）
+                            if (msg.provider) {
+                                const providerName = msg.provider;
+                                // Try exact match first / 先尝试精确匹配
+                                if (evaluationState.providerStatus[providerName]) {
+                                    evaluationState.providerStatus[providerName].status = 'completed';
+                                    evaluationState.providerStatus[providerName].completedAt = Date.now();
+                                } else {
+                                    // Try partial match (e.g., "Gemini" matches "Gemini (gemini-3-pro-preview)")
+                                    // 尝试部分匹配（例如，"Gemini" 匹配 "Gemini (gemini-3-pro-preview)"）
+                                    for (const key in evaluationState.providerStatus) {
+                                        if (providerName.startsWith(key) || key.startsWith(providerName.split(' ')[0])) {
+                                            evaluationState.providerStatus[key].status = 'completed';
+                                            evaluationState.providerStatus[key].completedAt = Date.now();
+                                            break;
+                                        }
+                                    }
+                                }
                             }
+                            // Update UI immediately to show new result / 立即更新 UI 以显示新结果
                             updateEvaluationUI();
+                            updateProgressDisplay();
                             break;
                         case 'finished':
                             if (msg.results) evaluationState.results = msg.results;
@@ -1570,12 +1636,99 @@
                     document.getElementById('evaluationConsensusParams').innerText =
                         `${formatPercent(proposal.spread || 0, 2)} · Qty ${formatNumber(proposal.quantity || 0, 3)} · Lev ${formatNumber(proposal.leverage || 0, 1)}x`;
                     
-                    // Display reasoning, or show default message if empty
-                    // 显示推理，如果为空则显示默认消息
+                    // Display reasoning, split into summary and details
+                    // 显示推理，分为总结和详细说明
                     const reasoning = proposal.reasoning && proposal.reasoning.trim() 
                         ? proposal.reasoning 
                         : 'Consensus reasoning unavailable. / 共识推理不可用。';
-                    document.getElementById('evaluationConsensusReasoning').innerText = reasoning;
+                    
+                    // Extract summary (first 1-2 sentences or before first numbered point)
+                    // 提取总结（前1-2句或第一个编号点之前）
+                    let summary = '';
+                    let details = '';
+                    
+                    if (reasoning && reasoning.trim()) {
+                        // Strategy: Extract summary from "Overall" section or before numbered points
+                        // 策略：从"Overall"部分或编号点之前提取总结
+                        
+                        // First, try to find "Overall" section (usually at the end, contains summary)
+                        // 首先，尝试找到"Overall"部分（通常在末尾，包含总结）
+                        const overallMatch = reasoning.match(/(?:Overall|总结)[:：]?\s*([^]*?)(?:\n\n|$|\(1\)|【|Market Summary|Key Metrics)/im);
+                        if (overallMatch && overallMatch[1] && overallMatch[1].trim().length > 30) {
+                            summary = overallMatch[1].trim();
+                            // Remove the overall section from details
+                            details = reasoning.replace(/(?:Overall|总结)[:：]?\s*[^]*?$/im, '').trim();
+                        } else {
+                            // Try to find content before first numbered point (1), (2), etc.
+                            // 尝试找到第一个编号点 (1), (2) 之前的内容
+                            const beforeNumberedMatch = reasoning.match(/^([^]*?)(?:\n\s*\(1\)|\(1\)|【|Market Summary|Key Metrics)/m);
+                            if (beforeNumberedMatch && beforeNumberedMatch[1] && beforeNumberedMatch[1].trim().length > 30) {
+                                summary = beforeNumberedMatch[1].trim();
+                                details = reasoning.substring(beforeNumberedMatch[0].length).trim();
+                            } else {
+                                // Use first paragraph as summary (up to first double newline or 250 chars)
+                                // 使用第一段作为总结（直到第一个双换行或250个字符）
+                                const firstParagraph = reasoning.split('\n\n')[0] || reasoning.split('\n')[0] || reasoning;
+                                if (firstParagraph.length > 250) {
+                                    // Try to break at sentence boundary
+                                    // 尝试在句子边界处断开
+                                    const sentenceEnd = firstParagraph.substring(0, 250).lastIndexOf('.');
+                                    if (sentenceEnd > 100) {
+                                        summary = firstParagraph.substring(0, sentenceEnd + 1).trim();
+                                        details = reasoning.substring(sentenceEnd + 1).trim();
+                                    } else {
+                                        summary = firstParagraph.substring(0, 250).trim() + '...';
+                                        details = reasoning.substring(250).trim();
+                                    }
+                                } else {
+                                    summary = firstParagraph;
+                                    details = reasoning.substring(firstParagraph.length).trim();
+                                }
+                            }
+                        }
+                        
+                        // Clean up summary: remove leading/trailing whitespace and ensure it ends properly
+                        // 清理总结：删除前导/尾随空白并确保正确结束
+                        summary = summary.trim();
+                        if (summary && !summary.endsWith('.') && !summary.endsWith('。') && !summary.endsWith('...')) {
+                            // Add ellipsis if cut off mid-sentence
+                            if (details.length > 0) {
+                                summary += '...';
+                            }
+                        }
+                    } else {
+                        summary = 'Consensus reasoning unavailable. / 共识推理不可用。';
+                        details = '';
+                    }
+                    
+                    // Display summary (always visible) / 显示总结（始终可见）
+                    const summaryEl = document.getElementById('evaluationConsensusSummary');
+                    if (summaryEl) {
+                        summaryEl.innerText = summary;
+                    }
+                    
+                    // Display details (collapsible) / 显示详细说明（可折叠）
+                    const detailsWrapper = document.getElementById('evaluationConsensusDetailsWrapper');
+                    const reasoningEl = document.getElementById('evaluationConsensusReasoning');
+                    if (details && details.length > 50) {
+                        // Only show details toggle if there's substantial detail content
+                        // 只有在有大量详细内容时才显示详情切换按钮
+                        if (detailsWrapper) {
+                            detailsWrapper.style.display = 'block';
+                        }
+                        if (reasoningEl) {
+                            reasoningEl.innerText = details;
+                        }
+                    } else {
+                        // Hide details wrapper if no substantial details
+                        // 如果没有大量详细内容，隐藏详情包装器
+                        if (detailsWrapper) {
+                            detailsWrapper.style.display = 'none';
+                        }
+                        if (reasoningEl) {
+                            reasoningEl.innerText = '';
+                        }
+                    }
                     
                     // Display stats in bilingual format / 以双语格式显示统计信息
                     document.getElementById('evaluationConsensusStats').innerText =
@@ -1744,166 +1897,16 @@
 
             updateEvaluationUI();
 
-            try {
-                // Use longer timeout for evaluation API (120 seconds) as it may take time to call multiple LLMs and run simulations
-                // 为评估 API 使用更长的超时时间（120 秒），因为调用多个 LLM 和运行模拟可能需要时间
-                const res = await diagnosticFetch('/api/evaluation/run', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    timeout: 120000, // 120 seconds timeout for evaluation / 评估 120 秒超时
-                    body: JSON.stringify({ 
-                        symbol: getEvaluationSymbol(),
-                        exchange: 'hyperliquid',  // Always use hyperliquid exchange
-                        simulation_steps: 100, // Use fewer simulation steps to return faster / 使用更少的模拟步数以更快返回
-                        selected_models: selectedModels  // Send selected models to backend / 发送选中的模型到后端
-                    }),
-                });
-                const data = await res.json();
-                
-                // Check for error in response (standardized error format) / 检查响应中的错误（标准化错误格式）
-                if (data.error) {
-                    // Extract error message from standardized error response / 从标准化错误响应中提取错误消息
-                    let errorMsg = data.error;
-                    if (typeof data.error === 'object' && data.error.message) {
-                        errorMsg = data.error.message;
-                    } else if (typeof data.error === 'string') {
-                        errorMsg = data.error;
-                    }
-                    
-                    // Check if this is an API key missing error / 检查这是否是 API 密钥缺失错误
-                    const errorBox = document.getElementById('evaluationErrorBox');
-                    if ((data.error_code === 'LLM_API_KEY_MISSING' || 
-                         data.error_code === 'LLM_PROVIDER_NOT_AVAILABLE' ||
-                         data.error_code === 'NO_LLM_PROVIDERS' ||
-                         errorMsg.includes('API_KEY') || 
-                         errorMsg.includes('not available') || 
-                         errorMsg.includes('不可用')) &&
-                        errorBox && typeof handleApiError === 'function') {
-                        handleApiError({
-                            error_type: 'api_key_missing',
-                            message: errorMsg,
-                            message_zh: errorMsg,
-                            severity: 'error',
-                            suggestion: data.details?.suggestion || 'Please configure the required API keys in your .env file. See README.md for setup instructions. / 请在 .env 文件中配置所需的 API 密钥。查看 README.md 了解设置说明。',
-                            suggestion_zh: data.details?.suggestion || '请在 .env 文件中配置所需的 API 密钥。查看 README.md 了解设置说明。',
-                            details: data.details || {}
-                        }, errorBox, { showDetails: true });
-                    }
-                    
-                    throw new Error(errorMsg);
-                }
-                
-                // Mark all providers as completed / 标记所有提供商为已完成
-                evaluationState.providers.forEach(name => {
-                    if (evaluationState.providerStatus[name].status !== 'failed') {
-                        evaluationState.providerStatus[name].status = 'completed';
-                        evaluationState.providerStatus[name].completedAt = Date.now();
-                    }
-                });
+            // Use WebSocket streaming for real-time evaluation results / 使用 WebSocket 流式传输实时评估结果
+            const payload = {
+                symbol: getEvaluationSymbol(),
+                exchange: 'hyperliquid',
+                simulation_steps: 100,
+                selected_models: selectedModels
+            };
 
-                evaluationState.results = data.individual_results || [];
-                evaluationState.aggregated = data.aggregated || null;
-                evaluationState.lastRunSymbol = data.symbol || getEvaluationSymbol();
-                evaluationState.lastRunAt = new Date().toISOString();
-                
-                // Debug: Log results to verify score field is present / 调试：记录结果以验证 score 字段存在
-                if (evaluationState.results.length > 0) {
-                    console.log('Evaluation results received:', evaluationState.results.map(r => ({
-                        provider: r.provider_name,
-                        score: r.score,
-                        rank: r.rank
-                    })));
-                }
-                
-                // Check for warnings about unavailable models / 检查关于不可用模型的警告
-                const errorBox = document.getElementById('evaluationErrorBox');
-                let hasWarnings = false;
-                
-                if (data.warnings && data.warnings.length > 0) {
-                    hasWarnings = true;
-                    const warningMessages = data.warnings.join('\n');
-                    const unavailableModels = data.unavailable_models || [];
-                    
-                    // Display warnings about missing API keys / 显示关于缺少 API 密钥的警告
-                    if (errorBox && typeof handleApiError === 'function') {
-                        const unavailableModelNames = unavailableModels.map(m => m.model).join(', ');
-                        const apiKeyNames = unavailableModels.map(m => m.api_key_name).join(', ');
-                        
-                        handleApiError({
-                            error_type: 'api_key_missing',
-                            message: `Some selected LLM models were skipped due to missing API keys: ${unavailableModelNames}. / 一些选中的 LLM 模型因缺少 API 密钥而被跳过: ${unavailableModelNames}。`,
-                            message_zh: `一些选中的 LLM 模型因缺少 API 密钥而被跳过: ${unavailableModelNames}。`,
-                            severity: 'warning',
-                            suggestion: `Please configure the following API keys in your .env file: ${apiKeyNames}. The evaluation will continue with available models. / 请在 .env 文件中配置以下 API 密钥: ${apiKeyNames}。评估将继续使用可用的模型。`,
-                            suggestion_zh: `请在 .env 文件中配置以下 API 密钥: ${apiKeyNames}。评估将继续使用可用的模型。`,
-                            details: {
-                                warnings: data.warnings,
-                                unavailable_models: unavailableModels,
-                                available_models: evaluationState.results.map(r => r.provider_name),
-                                total_warnings: data.warnings.length
-                            }
-                        }, errorBox, { showDetails: true });
-                    } else if (errorBox) {
-                        // Fallback to simple display / 回退到简单显示
-                        errorBox.innerText = warningMessages;
-                        errorBox.style.display = 'block';
-                        errorBox.style.backgroundColor = '#fef3c7'; // Yellow background for warnings / 黄色背景用于警告
-                    }
-                }
-                
-                // Check for parse errors in individual results / 检查单个结果中的解析错误
-                const parseErrors = [];
-                if (evaluationState.results && evaluationState.results.length > 0) {
-                    evaluationState.results.forEach(result => {
-                        if (result.proposal && result.proposal.parse_error && result.proposal.parse_error.trim()) {
-                            parseErrors.push({
-                                provider: result.provider_name || 'Unknown',
-                                error: result.proposal.parse_error
-                            });
-                        }
-                    });
-                }
-                
-                // Display parse errors if any / 如果有解析错误则显示
-                if (parseErrors.length > 0) {
-                    const errorMessages = parseErrors.map(err => 
-                        `${err.provider}: ${err.error}`
-                    ).join('\n');
-                    const errorMessage = `LLM Parse Errors / LLM 解析错误:\n${errorMessages}`;
-                    evaluationState.lastError = errorMessage;
-                    
-                    // Use error handler to display formatted error / 使用错误处理器显示格式化的错误
-                    if (errorBox && typeof handleApiError === 'function') {
-                        handleApiError({
-                            error_type: 'llm_parse_error',
-                            message: `LLM parsing failed for ${parseErrors.length} model(s) / ${parseErrors.length} 个模型解析失败`,
-                            message_zh: `${parseErrors.length} 个模型解析失败`,
-                            severity: 'warning',
-                            suggestion: 'The evaluation completed but some models failed to parse their responses. You can still use the successfully parsed results. / 评估已完成，但某些模型未能解析其响应。您仍可以使用成功解析的结果。',
-                            suggestion_zh: '评估已完成，但某些模型未能解析其响应。您仍可以使用成功解析的结果。',
-                            details: {
-                                parse_errors: parseErrors,
-                                total_errors: parseErrors.length,
-                                total_results: evaluationState.results.length
-                            }
-                        }, errorBox, { showDetails: true });
-                    } else if (errorBox) {
-                        // Fallback to simple display / 回退到简单显示
-                        errorBox.innerText = errorMessage;
-                        errorBox.style.display = 'block';
-                    }
-                } else if (!hasWarnings) {
-                    // Clear error if no parse errors and no warnings / 如果没有解析错误且没有警告则清除错误
-                    evaluationState.lastError = null;
-                    if (errorBox && typeof clearError === 'function') {
-                        clearError(errorBox);
-                    } else if (errorBox) {
-                        errorBox.style.display = 'none';
-                    }
-                }
-                
-                // Update UI immediately after successful evaluation / 评估成功后立即更新 UI
-                updateEvaluationUI();
+            try {
+                await startEvaluationWebSocket(payload);
             } catch (err) {
                 // Mark all providers as failed / 标记所有提供商为失败
                 evaluationState.providers.forEach(name => {
@@ -1912,7 +1915,7 @@
                     evaluationState.providerStatus[name].error = err.message;
                 });
                 
-                // Extract error message from response if available / 如果可用，从响应中提取错误消息
+                // Extract error message / 提取错误消息
                 let errorMessage = err.message || 'Failed to run evaluation / 运行评估失败';
                 
                 // Check if error contains API key information / 检查错误是否包含 API 密钥信息
@@ -1955,14 +1958,29 @@
                 }
                 
                 evaluationState.lastError = errorMessage;
-            } finally {
                 evaluationState.loading = false;
                 updateEvaluationUI();
+            } finally {
+                // Note: loading state and interval are managed by startEvaluationWebSocket / 注意：loading 状态和 interval 由 startEvaluationWebSocket 管理
                 if (evaluationState.elapsedInterval) {
                     clearInterval(evaluationState.elapsedInterval);
                     evaluationState.elapsedInterval = null;
                 }
             }
+        }
+
+        // Toggle consensus details visibility / 切换共识详情可见性
+        function toggleConsensusDetails() {
+            const reasoningEl = document.getElementById('evaluationConsensusReasoning');
+            const toggleText = document.getElementById('toggleConsensusDetailsText');
+            const toggleIcon = document.getElementById('toggleConsensusDetailsIcon');
+            
+            if (!reasoningEl || !toggleText || !toggleIcon) return;
+            
+            const isVisible = reasoningEl.style.display !== 'none';
+            reasoningEl.style.display = isVisible ? 'none' : 'block';
+            toggleText.innerText = isVisible ? 'Show Details / 显示详情' : 'Hide Details / 隐藏详情';
+            toggleIcon.innerText = isVisible ? '▼' : '▲';
         }
 
         async function applyEvaluation(source, providerName = null) {

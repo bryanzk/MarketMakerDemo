@@ -2067,31 +2067,86 @@ async def ws_evaluation(websocket: WebSocket):
 
     results: List[Any] = []
 
-    async def evaluate_provider(provider):
-        def _run_single():
-            evaluator = MultiLLMEvaluator(
-                providers=[provider], simulation_steps=simulation_steps, parallel=False
+    async def evaluate_single_provider(provider):
+        """
+        Evaluate a single provider and send progress updates.
+        Returns the result when done.
+        评估单个提供商并发送进度更新。
+        完成后返回结果。
+        """
+        provider_name = getattr(provider, "name", "unknown")
+        
+        async def send_progress(step: int, step_progress: int = 0, message: str = ""):
+            """Helper to send progress updates / 发送进度更新的辅助函数"""
+            await websocket.send_json(
+                {
+                    "type": "progress",
+                    "provider": provider_name,
+                    "step": step,
+                    "stepProgress": step_progress,
+                    "message": message,
+                    "completed": len(results),
+                    "total": total,
+                    "trace_id": trace_id,
+                }
             )
-            res = evaluator.evaluate(context)
-            return res[0] if res else None
-
-        return await asyncio.to_thread(_run_single)
-
-    try:
-        for provider in providers:
-            try:
-                result = await evaluate_provider(provider)
-                if not result:
-                    raise ValueError("Empty evaluation result")
-            except Exception as e:
+        
+        try:
+            # Step 0: Collecting Data / 步骤 0: 收集数据
+            await send_progress(0, 0, f"Collecting market data for {provider_name}... / 正在为 {provider_name} 收集市场数据...")
+            await asyncio.sleep(0.1)
+            
+            # Step 1: Building Prompt / 步骤 1: 整理 Prompt
+            await send_progress(1, 0, f"Building prompt for {provider_name}... / 正在为 {provider_name} 整理 Prompt...")
+            await asyncio.sleep(0.1)
+            
+            def _run_single():
                 evaluator = MultiLLMEvaluator(
                     providers=[provider], simulation_steps=simulation_steps, parallel=False
                 )
-                result = evaluator._create_error_result(getattr(provider, "name", "unknown"), str(e))
+                res = evaluator.evaluate(context)
+                return res[0] if res else None
+            
+            # Step 2: Inferring (LLM call) / 步骤 2: 推理中（LLM 调用）
+            await send_progress(2, 0, f"Calling LLM for {provider_name}... / 正在为 {provider_name} 调用 LLM...")
+            
+            # Run evaluation in thread / 在线程中运行评估
+            result = await asyncio.to_thread(_run_single)
+            
+            if not result:
+                raise ValueError("Empty evaluation result")
+            
+            # Step 5: Scoring (done after evaluation) / 步骤 5: 打分中（评估后完成）
+            await send_progress(5, 0, f"Scoring results for {provider_name}... / 正在为 {provider_name} 打分...")
+            await asyncio.sleep(0.1)
+            
+            return result
+        except Exception as e:
+            evaluator = MultiLLMEvaluator(
+                providers=[provider], simulation_steps=simulation_steps, parallel=False
+            )
+            return evaluator._create_error_result(provider_name, str(e))
 
+    try:
+        # Run all providers in parallel / 并行运行所有提供商
+        evaluation_tasks = [evaluate_single_provider(provider) for provider in providers]
+        provider_results = await asyncio.gather(*evaluation_tasks, return_exceptions=True)
+        
+        # Process results and send model_done messages / 处理结果并发送 model_done 消息
+        for i, result_or_exception in enumerate(provider_results):
+            if isinstance(result_or_exception, Exception):
+                provider_name = getattr(providers[i], "name", "unknown")
+                evaluator = MultiLLMEvaluator(
+                    providers=[providers[i]], simulation_steps=simulation_steps, parallel=False
+                )
+                result = evaluator._create_error_result(provider_name, str(result_or_exception))
+            else:
+                result = result_or_exception
+            
             results.append(result)
-
-            # Re-score and rank with all completed results
+            
+            # Re-score and rank with all completed results so far
+            # 使用所有已完成的结果重新评分和排名
             scorer = MultiLLMEvaluator(
                 providers=providers, simulation_steps=simulation_steps, parallel=False
             )
@@ -2124,6 +2179,12 @@ async def ws_evaluation(websocket: WebSocket):
         aggregated = scorer.aggregate_results(final_ranked)
         comparison_table = MultiLLMEvaluator.generate_comparison_table(final_ranked)
         consensus_report = MultiLLMEvaluator.generate_consensus_summary(aggregated)
+
+        # Update global evaluation results for /api/evaluation/apply endpoint
+        # 更新全局评估结果，供 /api/evaluation/apply 端点使用
+        global _last_evaluation_results, _last_evaluation_aggregated
+        _last_evaluation_results = final_ranked
+        _last_evaluation_aggregated = aggregated
 
         await websocket.send_json(
             {

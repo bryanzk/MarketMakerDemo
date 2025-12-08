@@ -1268,18 +1268,30 @@ async def update_hyperliquid_pair(pair: PairUpdate):
 
         exchange = get_exchange_by_name("hyperliquid")
 
+        # Update strategy instance symbol first, then update exchange if connected
+        # 首先更新策略实例交易对，然后如果已连接则更新交易所
+        hyperliquid_instance = None
+        for instance_id, instance in bot_engine.strategy_instances.items():
+            if isinstance(instance.exchange, HyperliquidClient):
+                hyperliquid_instance = instance
+                # Always update instance symbol first
+                # 始终首先更新实例交易对
+                instance.symbol = pair.symbol
+                break
+        
         # If exchange is connected, update it immediately
         # 如果交易所已连接，立即更新
         if exchange and exchange.is_connected:
             success = exchange.set_symbol(pair.symbol)
             if success:
-                # Also update strategy instance if exists
-                # 如果存在，也更新策略实例
-                for instance_id, instance in bot_engine.strategy_instances.items():
-                    if isinstance(instance.exchange, HyperliquidClient):
-                        instance.symbol = pair.symbol
-                        instance.refresh_data()
-                        break
+                # Ensure instance symbol is synced (already updated above, but refresh data)
+                # 确保实例交易对已同步（上面已更新，但刷新数据）
+                if hyperliquid_instance:
+                    hyperliquid_instance.refresh_data()
+                    logger.info(
+                        f"✅ Updated Hyperliquid symbol to {pair.symbol} / "
+                        f"✅ 已更新 Hyperliquid 交易对到 {pair.symbol}"
+                    )
 
                 return {"status": "updated", "symbol": pair.symbol}
             else:
@@ -1292,10 +1304,11 @@ async def update_hyperliquid_pair(pair: PairUpdate):
             # Store the symbol preference for when connection is established
             # 交易所未连接，但我们仍然允许更新交易对以用于 UI
             # 存储交易对偏好，以便连接建立时使用
-            for instance_id, instance in bot_engine.strategy_instances.items():
-                if isinstance(instance.exchange, HyperliquidClient):
-                    instance.symbol = pair.symbol
-                    break
+            if hyperliquid_instance:
+                logger.info(
+                    f"✅ Updated Hyperliquid instance symbol to {pair.symbol} (exchange not connected) / "
+                    f"✅ 已更新 Hyperliquid 实例交易对到 {pair.symbol}（交易所未连接）"
+                )
 
             # Return success with a warning that connection is needed for actual trading
             # 返回成功，但警告需要连接才能进行实际交易
@@ -1400,9 +1413,60 @@ async def control_bot(action: str):
             exchange = get_default_exchange()
             if exchange and hasattr(exchange, "last_order_error"):
                 exchange.last_order_error = None
+            
+            # Ensure Hyperliquid instance is running and has correct symbol
+            # 确保 Hyperliquid 实例正在运行并具有正确的交易对
+            from src.trading.hyperliquid_client import HyperliquidClient
+            from src.trading.exchange import BinanceClient
+            
+            hyperliquid_instance = None
+            for instance_id, instance in bot_engine.strategy_instances.items():
+                if isinstance(instance.exchange, HyperliquidClient):
+                    hyperliquid_instance = instance
+                    break
+            
+            # If Hyperliquid instance exists, ensure it's running and symbol is synced
+            # 如果 Hyperliquid 实例存在，确保它正在运行且交易对已同步
+            if hyperliquid_instance:
+                hyperliquid_instance.running = True
+                hyperliquid_instance.use_real_exchange = True
+                # Ensure exchange symbol matches instance symbol
+                # 确保交易所交易对与实例交易对匹配
+                if hyperliquid_instance.exchange and hyperliquid_instance.exchange.is_connected:
+                    if hasattr(hyperliquid_instance.exchange, 'symbol') and hyperliquid_instance.symbol:
+                        if hyperliquid_instance.exchange.symbol != hyperliquid_instance.symbol:
+                            logger.info(
+                                f"Syncing exchange symbol to instance symbol: {hyperliquid_instance.symbol} / "
+                                f"同步交易所交易对到实例交易对: {hyperliquid_instance.symbol}"
+                            )
+                            hyperliquid_instance.exchange.set_symbol(hyperliquid_instance.symbol)
+                logger.info(
+                    f"✅ Hyperliquid instance ready: symbol={hyperliquid_instance.symbol}, "
+                    f"running={hyperliquid_instance.running}, use_real_exchange={hyperliquid_instance.use_real_exchange} / "
+                    f"✅ Hyperliquid 实例就绪: symbol={hyperliquid_instance.symbol}, "
+                    f"running={hyperliquid_instance.running}, use_real_exchange={hyperliquid_instance.use_real_exchange}"
+                )
+            
+            # Stop default Binance instance if it exists to prevent orders from going to Binance
+            # 如果存在默认 Binance 实例，则停止它以防止订单发送到 Binance
+            default_instance = bot_engine.strategy_instances.get("default")
+            if default_instance and isinstance(default_instance.exchange, BinanceClient):
+                default_instance.running = False
+                logger.info(
+                    "✅ Stopped default Binance instance to ensure orders go to Hyperliquid / "
+                    "✅ 已停止默认 Binance 实例，确保订单发送到 Hyperliquid"
+                )
+            
             # Ensure every strategy instance is marked as running when global start is issued
-            for instance in bot_engine.strategy_instances.values():
-                instance.running = True
+            # But prioritize Hyperliquid instance if it exists
+            # 当全局启动时，确保每个策略实例都标记为运行
+            # 但如果存在 Hyperliquid 实例，则优先使用它
+            if not hyperliquid_instance:
+                # If no Hyperliquid instance, start all instances (backward compatibility)
+                # 如果没有 Hyperliquid 实例，启动所有实例（向后兼容）
+                for instance in bot_engine.strategy_instances.values():
+                    instance.running = True
+            
             is_running = True
             bot_thread = threading.Thread(target=run_bot_loop)
             bot_thread.daemon = True

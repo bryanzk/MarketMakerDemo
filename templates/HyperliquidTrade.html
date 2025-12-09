@@ -614,6 +614,7 @@
     <script>
         const controlMessage = document.getElementById('controlMessage');
         let currentEvalSymbol = 'ETHUSDC';
+        let currentEvaluationWS = null; // Track current WebSocket connection for cancellation / 跟踪当前 WebSocket 连接以便取消
         let evaluationState = {
             loading: false,
             results: [],
@@ -650,6 +651,8 @@
                 let ws;
                 try {
                     ws = new WebSocket(getWebSocketUrl('/ws/evaluation'));
+                    // Store WebSocket reference for cancellation / 存储 WebSocket 引用以便取消
+                    currentEvaluationWS = ws;
                 } catch (err) {
                     return reject(err);
                 }
@@ -762,6 +765,7 @@
                                 total: msg.total || evaluationState.progress.total
                             };
                             evaluationState.loading = false;
+                            currentEvaluationWS = null; // Clear reference on completion / 完成时清除引用
                             updateEvaluationUI();
                             finished = true;
                             ws.close();
@@ -770,6 +774,7 @@
                         case 'error':
                             evaluationState.lastError = msg.message || 'Evaluation error';
                             evaluationState.loading = false;
+                            currentEvaluationWS = null; // Clear reference on error / 错误时清除引用
                             updateEvaluationUI();
                             finished = true;
                             ws.close();
@@ -784,6 +789,7 @@
                     if (finished) return;
                     evaluationState.lastError = 'WebSocket error / WebSocket错误';
                     evaluationState.loading = false;
+                    currentEvaluationWS = null; // Clear reference on error / 错误时清除引用
                     updateEvaluationUI();
                     finished = true;
                     reject(new Error('WebSocket error'));
@@ -792,8 +798,12 @@
                 ws.onclose = () => {
                     if (finished) return;
                     evaluationState.loading = false;
+                    currentEvaluationWS = null; // Clear reference on close / 关闭时清除引用
                     updateEvaluationUI();
-                    reject(new Error('WebSocket closed'));
+                    // Only reject if not finished (e.g., cancelled) / 仅在未完成时拒绝（例如，已取消）
+                    if (!finished) {
+                        reject(new Error('WebSocket closed'));
+                    }
                 };
             });
         }
@@ -1418,6 +1428,31 @@
             isCheckingConnection = false;
             // Mark that user manually switched pair / 标记用户手动切换了交易对
             userManuallySwitchedPair = true;
+            
+            // Cancel ongoing evaluation if any / 如果有正在进行的评估，取消它
+            if (currentEvaluationWS) {
+                try {
+                    currentEvaluationWS.close();
+                    currentEvaluationWS = null;
+                    // Reset evaluation state / 重置评估状态
+                    evaluationState.loading = false;
+                    evaluationState.lastError = 'Evaluation cancelled due to pair switch / 由于切换交易对，评估已取消';
+                    if (evaluationState.elapsedInterval) {
+                        clearInterval(evaluationState.elapsedInterval);
+                        evaluationState.elapsedInterval = null;
+                    }
+                    updateEvaluationUI();
+                    console.log('Cancelled ongoing evaluation due to pair switch / 由于切换交易对，已取消正在进行的评估');
+                } catch (err) {
+                    console.warn('Error cancelling evaluation:', err);
+                }
+            }
+            
+            // Store previous symbol for rollback on error / 存储之前的 symbol 以便错误时回滚
+            const pairSelect = document.getElementById('pairSelect');
+            const previousSymbol = pairSelect ? pairSelect.value : null;
+            const previousEvalSymbol = currentEvalSymbol;
+            
             try {
                 const symbol = document.getElementById('pairSelect').value;
                 
@@ -1432,16 +1467,30 @@
                 });
                 const data = await res.json();
                 
-                // Check for error
-                if (data.error) {
-                    throw new Error(data.error);
+                // Check for error BEFORE updating UI / 在更新 UI 之前检查错误
+                if (data.error || !data.ok) {
+                    // Revert pairSelect to previous value on error / 错误时回滚 pairSelect 到之前的值
+                    if (pairSelect && previousSymbol) {
+                        pairSelect.value = previousSymbol;
+                    }
+                    throw new Error(data.error || 'Failed to update pair / 更新交易对失败');
                 }
                 
-                // Update symbol
+                // Only update UI after successful response / 仅在成功响应后更新 UI
                 currentEvalSymbol = normalizeSymbol(symbol);
+                
+                // Update current params display with new symbol / 使用新 symbol 更新当前参数显示
+                const currentPairEl = document.getElementById('currentPair');
+                if (currentPairEl) {
+                    currentPairEl.innerText = symbol || '--';
+                }
                 
                 // Reload status to update current params display / 重新加载状态以更新当前参数显示
                 await loadStatus();
+                
+                // Re-check provider availability after switching pair / 切换币对后重新检查提供商可用性
+                // This ensures checkboxes are correctly enabled/disabled / 这确保复选框正确启用/禁用
+                await checkProviderAvailability();
                 
                 // Show success message, with warning if connection is needed
                 if (data.warning) {
@@ -1460,7 +1509,17 @@
                     refreshOrders();
                 }
             } catch (err) {
+                // Revert to previous symbol on error / 错误时回滚到之前的 symbol
+                if (pairSelect && previousSymbol) {
+                    pairSelect.value = previousSymbol;
+                }
+                currentEvalSymbol = previousEvalSymbol;
+                
+                // Show error message / 显示错误消息
                 showMessage(controlMessage, err.message || 'Failed to switch pair / 切换交易对失败', true);
+                
+                // Log error for debugging / 记录错误以便调试
+                console.error('Pair switch failed:', err);
             }
         }
 
@@ -1934,8 +1993,21 @@
                 'openai': 'OpenAI',
                 'claude': 'Claude'
             };
+            
+            // Helper function to extract base name (e.g., "Gemini" from "Gemini (gemini-3-pro-preview)")
+            // 辅助函数：提取基础名称（例如，从 "Gemini (gemini-3-pro-preview)" 提取 "Gemini"）
+            function extractBaseName(providerName) {
+                if (!providerName) return '';
+                // Remove model suffix in parentheses if present / 如果存在，移除括号中的模型后缀
+                if (providerName.includes('(')) {
+                    return providerName.split('(')[0].trim();
+                }
+                return providerName.trim();
+            }
+            
+            // Build set of unavailable provider base names / 构建不可用提供商基础名称的集合
             const unavailableNames = new Set(
-                providerAvailability.unavailable.map(p => p.name)
+                (providerAvailability.unavailable || []).map(p => extractBaseName(p.name))
             );
             const unavailableSelected = selectedModels.filter(model => {
                 const providerName = modelMap[model];
@@ -1946,7 +2018,8 @@
                 const errorBox = document.getElementById('evaluationErrorBox');
                 const unavailableProviders = unavailableSelected.map(model => {
                     const providerName = modelMap[model];
-                    const info = providerAvailability.unavailable.find(p => p.name === providerName);
+                    // Use extractBaseName to match provider names / 使用 extractBaseName 匹配提供商名称
+                    const info = (providerAvailability.unavailable || []).find(p => extractBaseName(p.name) === providerName);
                     return {
                         name: providerName,
                         api_key: info ? info.api_key_name : '',
@@ -2559,10 +2632,29 @@
                 return;
             }
             
+            // Extract base provider names from available and unavailable lists
+            // 从可用和不可用列表中提取基础提供商名称
+            // Helper function to extract base name (e.g., "Gemini" from "Gemini (gemini-3-pro-preview)")
+            // 辅助函数：提取基础名称（例如，从 "Gemini (gemini-3-pro-preview)" 提取 "Gemini"）
+            function extractBaseName(providerName) {
+                if (!providerName) return '';
+                // Remove model suffix in parentheses if present / 如果存在，移除括号中的模型后缀
+                if (providerName.includes('(')) {
+                    return providerName.split('(')[0].trim();
+                }
+                return providerName.trim();
+            }
+            
+            // Build sets of available and unavailable provider base names
+            // 构建可用和不可用提供商基础名称的集合
+            const availableNames = new Set(
+                (providerAvailability.available || []).map(p => extractBaseName(p.name))
+            );
             const unavailableNames = new Set(
-                (providerAvailability.unavailable || []).map(p => p.name)
+                (providerAvailability.unavailable || []).map(p => extractBaseName(p.name))
             );
             
+            console.log('Available providers:', Array.from(availableNames)); // Debug log / 调试日志
             console.log('Unavailable providers:', Array.from(unavailableNames)); // Debug log / 调试日志
             
             Object.keys(modelMap).forEach(modelKey => {
@@ -2573,23 +2665,38 @@
                 }
                 
                 const providerName = modelMap[modelKey];
+                // Check if provider is explicitly unavailable / 检查提供商是否明确不可用
                 const isUnavailable = unavailableNames.has(providerName);
+                // Check if provider is explicitly available / 检查提供商是否明确可用
+                const isAvailable = availableNames.has(providerName);
                 
-                console.log(`Provider ${providerName}: ${isUnavailable ? 'unavailable' : 'available'}`); // Debug log / 调试日志
+                console.log(`Provider ${providerName}: available=${isAvailable}, unavailable=${isUnavailable}`); // Debug log / 调试日志
                 
                 if (isUnavailable) {
+                    // Provider is explicitly unavailable - disable checkbox / 提供商明确不可用 - 禁用复选框
                     checkbox.disabled = true;
                     checkbox.checked = false;
                     const label = checkbox.closest('label');
                     if (label) {
                         label.style.opacity = '0.5';
                         label.style.cursor = 'not-allowed';
-                        const unavailableInfo = (providerAvailability.unavailable || []).find(p => p.name === providerName);
+                        const unavailableInfo = (providerAvailability.unavailable || []).find(p => extractBaseName(p.name) === providerName);
                         if (unavailableInfo) {
                             label.title = `${unavailableInfo.reason}. Please configure ${unavailableInfo.api_key_name} in .env file. / ${unavailableInfo.reason}。请在 .env 文件中配置 ${unavailableInfo.api_key_name}。`;
                         }
                     }
+                } else if (isAvailable) {
+                    // Provider is explicitly available - enable checkbox / 提供商明确可用 - 启用复选框
+                    checkbox.disabled = false;
+                    const label = checkbox.closest('label');
+                    if (label) {
+                        label.style.opacity = '1';
+                        label.style.cursor = 'pointer';
+                        label.title = '';
+                    }
                 } else {
+                    // Provider status unknown - enable checkbox but log warning / 提供商状态未知 - 启用复选框但记录警告
+                    console.warn(`Provider ${providerName} status unknown, enabling checkbox by default / 提供商 ${providerName} 状态未知，默认启用复选框`);
                     checkbox.disabled = false;
                     const label = checkbox.closest('label');
                     if (label) {
@@ -2615,7 +2722,16 @@
                         'claude': 'Claude'
                     };
                     const providerName = modelMap[cb.value];
-                    const unavailableInfo = providerAvailability.unavailable.find(p => p.name === providerName);
+                    // Helper function to extract base name / 辅助函数：提取基础名称
+                    function extractBaseName(providerName) {
+                        if (!providerName) return '';
+                        if (providerName.includes('(')) {
+                            return providerName.split('(')[0].trim();
+                        }
+                        return providerName.trim();
+                    }
+                    // Use extractBaseName to match provider names / 使用 extractBaseName 匹配提供商名称
+                    const unavailableInfo = (providerAvailability.unavailable || []).find(p => extractBaseName(p.name) === providerName);
                     
                     if (cb.checked && unavailableInfo) {
                         // Uncheck if no API key / 如果没有 API 密钥则取消选中

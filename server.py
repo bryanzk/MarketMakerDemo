@@ -171,15 +171,21 @@ async def _prepare_market_context_for_evaluation(symbol: str, exchange_name: str
         return None, connection_error, status_code
 
     try:
-        original_symbol = getattr(exchange, "symbol", None)
-        if hasattr(exchange, "set_symbol"):
-            exchange.set_symbol(symbol)
+        # For Hyperliquid, fetch the requested symbol without mutating the live client state
+        # 对于 Hyperliquid，在不修改实时客户端状态的情况下获取目标交易对
+        if exchange_name == "hyperliquid" and hasattr(exchange, "fetch_market_data"):
+            market_data = exchange.fetch_market_data(symbol=symbol)
+            account_data = exchange.fetch_account_data()
+        else:
+            original_symbol = getattr(exchange, "symbol", None)
+            if hasattr(exchange, "set_symbol"):
+                exchange.set_symbol(symbol)
 
-        market_data = exchange.fetch_market_data()
-        account_data = exchange.fetch_account_data()
+            market_data = exchange.fetch_market_data()
+            account_data = exchange.fetch_account_data()
 
-        if original_symbol and hasattr(exchange, "set_symbol"):
-            exchange.set_symbol(original_symbol)
+            if original_symbol and hasattr(exchange, "set_symbol"):
+                exchange.set_symbol(original_symbol)
     except Exception as e:
         error_msg = f"Failed to fetch market data: {str(e)} / 获取市场数据失败：{str(e)}"
         logger.error(
@@ -1308,9 +1314,18 @@ async def update_hyperliquid_pair(pair: PairUpdate):
                 # Always update instance symbol first
                 # 始终首先更新实例交易对
                 instance.symbol = pair.symbol
-                # Also update exchange symbol even if not connected (for consistency)
-                # 即使未连接也更新交易所交易对（保持一致性）
-                if hasattr(instance.exchange, 'symbol'):
+                # Always call set_symbol to ensure internal state is updated
+                # 始终调用 set_symbol 以确保内部状态已更新
+                if hasattr(instance.exchange, 'set_symbol'):
+                    success = instance.exchange.set_symbol(pair.symbol)
+                    if not success:
+                        logger.warning(
+                            f"Failed to set symbol on exchange, but instance symbol updated. "
+                            f"在交易所上设置交易对失败，但实例交易对已更新。"
+                        )
+                elif hasattr(instance.exchange, 'symbol'):
+                    # Fallback: direct assignment if set_symbol not available
+                    # 回退：如果 set_symbol 不可用，直接赋值
                     instance.exchange.symbol = pair.symbol
                 break
         
@@ -2447,18 +2462,24 @@ async def run_evaluation(request: EvaluationRunRequest):
         # Fetch market data
         # 获取市场数据
         try:
-            # Temporarily set symbol if needed (use original format)
-            # 如果需要，临时设置 symbol（使用原始格式）
-            original_symbol = getattr(exchange, "symbol", None)
-            if hasattr(exchange, "set_symbol"):
-                exchange.set_symbol(symbol)
-            
-            market_data = exchange.fetch_market_data()
-            account_data = exchange.fetch_account_data()
-            
-            # Restore original symbol
-            if original_symbol and hasattr(exchange, "set_symbol"):
-                exchange.set_symbol(original_symbol)
+            # For Hyperliquid, fetch the requested symbol without mutating the live client state
+            # 对于 Hyperliquid，在不修改实时客户端状态的情况下获取目标交易对
+            if exchange_name == "hyperliquid" and hasattr(exchange, "fetch_market_data"):
+                market_data = exchange.fetch_market_data(symbol=symbol)
+                account_data = exchange.fetch_account_data()
+            else:
+                # Temporarily set symbol if needed (use original format)
+                # 如果需要，临时设置 symbol（使用原始格式）
+                original_symbol = getattr(exchange, "symbol", None)
+                if hasattr(exchange, "set_symbol"):
+                    exchange.set_symbol(symbol)
+                
+                market_data = exchange.fetch_market_data()
+                account_data = exchange.fetch_account_data()
+                
+                # Restore original symbol
+                if original_symbol and hasattr(exchange, "set_symbol"):
+                    exchange.set_symbol(original_symbol)
         except Exception as e:
             error_msg = (
                 f"Failed to fetch market data: {str(e)} / 获取市场数据失败：{str(e)}"
@@ -2536,8 +2557,12 @@ async def run_evaluation(request: EvaluationRunRequest):
             metrics = bot_engine.data.calculate_metrics()
             sharpe_ratio = metrics.get("sharpe_ratio", 0.0) or 0.0
             # Calculate win rate from trade history
-            trades = bot_engine.data.trade_history
-            if trades:
+            # Ensure trade_history is iterable (list), not a Mock object
+            # 确保 trade_history 是可迭代的（列表），而不是 Mock 对象
+            trades = getattr(bot_engine.data, "trade_history", [])
+            # Check if trades is actually a list/iterable, not a Mock
+            # 检查 trades 是否实际上是列表/可迭代对象，而不是 Mock
+            if isinstance(trades, (list, tuple)) and trades:
                 winning = len([t for t in trades if t.get("pnl", 0) > 0])
                 win_rate = winning / len(trades) if len(trades) > 0 else 0.0
                 recent_pnl = sum(
@@ -3561,11 +3586,20 @@ async def get_hyperliquid_prices(request: Request):
             if not hasattr(exchange, "fetch_multiple_prices"):
                 # Fallback: fetch prices one by one / 回退：逐个获取价格
                 original_symbol = getattr(exchange, "symbol", None)
+                symbol_was_changed = False
                 for symbol in symbols:
                     try:
-                        if hasattr(exchange, "set_symbol"):
-                            exchange.set_symbol(symbol)
-                        market_data = exchange.fetch_market_data()
+                        try:
+                            # Prefer symbol-specific fetch to avoid mutating live trading symbol
+                            # 优先使用带 symbol 的行情获取，避免修改正在交易的交易对
+                            market_data = exchange.fetch_market_data(symbol=symbol)
+                        except TypeError:
+                            # Fallback for clients without symbol parameter support
+                            # 对不支持 symbol 参数的客户端使用回退
+                            if hasattr(exchange, "set_symbol"):
+                                exchange.set_symbol(symbol)
+                                symbol_was_changed = True
+                            market_data = exchange.fetch_market_data()
                         if market_data and market_data.get("mid_price"):
                             fresh_prices[symbol] = market_data["mid_price"]
                     except Exception as e:
@@ -3576,7 +3610,7 @@ async def get_hyperliquid_prices(request: Request):
                         else:
                             logger.warning(f"Error fetching price for {symbol}: {e}")
                 # Restore original symbol / 恢复原始交易对
-                if original_symbol and hasattr(exchange, "set_symbol"):
+                if symbol_was_changed and original_symbol and hasattr(exchange, "set_symbol"):
                     exchange.set_symbol(original_symbol)
             else:
                 # Use efficient batch method / 使用高效的批量方法

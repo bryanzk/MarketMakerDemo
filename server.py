@@ -1277,6 +1277,10 @@ async def update_hyperliquid_pair(pair: PairUpdate):
                 # Always update instance symbol first
                 # 始终首先更新实例交易对
                 instance.symbol = pair.symbol
+                # Also update exchange symbol even if not connected (for consistency)
+                # 即使未连接也更新交易所交易对（保持一致性）
+                if hasattr(instance.exchange, 'symbol'):
+                    instance.exchange.symbol = pair.symbol
                 break
         
         # If exchange is connected, update it immediately

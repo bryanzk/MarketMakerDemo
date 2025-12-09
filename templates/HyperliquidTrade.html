@@ -2399,10 +2399,11 @@
                 }
                 
                 // Use Hyperliquid-specific cancel order endpoint / 使用 Hyperliquid 特定取消订单端点
+                // Backend expects {"order_id": "..."} format / 后端期望 {"order_id": "..."} 格式
                 const res = await diagnosticFetch('/api/hyperliquid/cancel-order', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(orderId),
+                    body: JSON.stringify({ order_id: orderId }),
                 });
                 const data = await res.json();
                 

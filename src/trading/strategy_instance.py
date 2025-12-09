@@ -199,6 +199,15 @@ class StrategyInstance:
             return False
 
         try:
+            # Ensure exchange symbol matches instance symbol before fetching data
+            # 在获取数据前确保交易所交易对与实例交易对匹配
+            if hasattr(self.exchange, 'set_symbol') and hasattr(self.exchange, 'symbol'):
+                if self.symbol and self.exchange.symbol != self.symbol:
+                    logger.info(
+                        f"Strategy '{self.strategy_id}': Syncing exchange symbol to instance symbol: {self.symbol}"
+                    )
+                    self.exchange.set_symbol(self.symbol)
+            
             # Fetch current market data
             market_data = self.exchange.fetch_market_data()
             if not market_data or not market_data.get("mid_price"):

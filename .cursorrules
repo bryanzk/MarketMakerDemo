@@ -359,7 +359,51 @@ Spec → Story → AC → Contract → Plan Approval → Test → Code → Revie
 | 11 | `integration_passed` | Agent QA | 运行集成测试套件 |
 | 12 | `docs_updated` | Agent QA | `docs/user_guide/{module}/...` |
 | 13 | `progress_logged` | Agent PM | `status/roadmap.json` |
-| 14 | `ci_cd_passed` | Human | 查看 GitHub Actions 结果 |
+| 14 | `ci_cd_passed` | Human | 查看 GitHub Actions 结果（可选：使用 `[skip ci]` 跳过） |
+
+### Step 14: CI/CD Passed / CI/CD 通过
+
+**负责**: Human Reviewer  
+**状态字段**: `ci_cd_passed`  
+**产出物**: GitHub Actions CI/CD 结果
+
+**说明 / Description**:
+- Step 14 是 14 步开发流程的最后一步，需要人工审查 GitHub Actions 的 CI/CD 结果
+- Step 14 is the final step of the 14-step development pipeline, requiring human review of GitHub Actions CI/CD results
+
+**CI/CD 检查项 / CI/CD Checks**:
+- ✅ Test Job: 所有单元测试通过，测试覆盖率 ≥ 70%
+- ✅ Lint Job: Flake8、Black、Isort 检查通过
+- ✅ Docs Job: API 文档生成（仅在 main 分支）
+
+**可选 CI/CD / Optional CI/CD**:
+对于单人开发者或小改动，可以使用 `[skip ci]` 或 `[ci skip]` 跳过 CI/CD：
+For single developers or minor changes, CI/CD can be skipped using `[skip ci]` or `[ci skip]`:
+
+```bash
+# 跳过 CI/CD 的提交示例 / Example commit skipping CI/CD
+git commit -m "docs: update README [skip ci]"
+git commit -m "chore: format code [ci skip]"
+
+# 正常提交（CI/CD 会运行）/ Normal commit (CI/CD will run)
+git commit -m "feat: add new feature"
+```
+
+**何时跳过 / When to Skip**:
+- ✅ 文档更新、格式调整等小改动
+- ✅ 本地测试已全面通过
+- ✅ 确定不需要环境验证
+
+**何时运行 / When to Run**:
+- ✅ 新功能开发完成
+- ✅ 合并到 main/develop 分支前
+- ✅ 需要环境一致性验证时
+
+**完成条件 / Completion Criteria**:
+- 如果 CI/CD 运行：所有检查项通过后，更新 `status/roadmap.json` 为 `ci_cd_passed`
+- If CI/CD runs: After all checks pass, update `status/roadmap.json` to `ci_cd_passed`
+- 如果使用 `[skip ci]`：可直接标记为 `ci_cd_passed`（假设本地测试已通过）
+- If using `[skip ci]`: Can directly mark as `ci_cd_passed` (assuming local tests passed)
 
 ---
 
@@ -384,7 +428,7 @@ Spec → Story → AC → Contract → Plan Approval → Test → Code → Revie
 | 11 | Agent QA | Agent QA | 集成测试决策 | 运行集成测试套件 |
 | 12 | Agent QA | Agent QA | 文档更新决策 | 编写 `docs/user_guide/{module}/...` |
 | 13 | Agent PM | Agent PM | 进度更新决策 | 更新 `status/roadmap.json` |
-| 14 | Human | Human | CI/CD 审查决策 | 查看 GitHub Actions 结果 |
+| 14 | Human | Human | CI/CD 审查决策 | 查看 GitHub Actions 结果（可选：使用 `[skip ci]` 跳过） |
 
 **说明**：
 - **决策 Agent**：负责分析、设计、制定方案

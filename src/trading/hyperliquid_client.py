@@ -249,9 +249,10 @@ class RateLimiter:
         """
         with self.lock:
             current_time = time.time()
+            # Clean up old weights first to ensure accurate tracking / 首先清理旧权重以确保准确跟踪
+            self._cleanup_old_weights(current_time)
             weight = self.get_endpoint_weight(endpoint)
             self.weight_history.append((current_time, weight))
-            self._cleanup_old_weights(current_time)
 
 
 class HyperliquidClient:
@@ -282,8 +283,8 @@ class HyperliquidClient:
         # Note: os.getenv returns None if not set, so we check both env and config
         # API key should be the user's wallet address on Hyperliquid
         # API key 应该是用户在 Hyperliquid 上的钱包地址
-        # Priority: HYPERLIQUID_WALLET_ADDRESS > HYPERLIQUID_API_KEY > default
-        # 优先级：HYPERLIQUID_WALLET_ADDRESS > HYPERLIQUID_API_KEY > 默认值
+        # Priority: explicit api_key > HYPERLIQUID_WALLET_ADDRESS > HYPERLIQUID_API_KEY > default
+        # 优先级：显式 api_key > HYPERLIQUID_WALLET_ADDRESS > HYPERLIQUID_API_KEY > 默认值
         if api_key is None:
             # Check for new wallet address variable first / 首先检查新的钱包地址变量
             wallet_address = os.getenv("HYPERLIQUID_WALLET_ADDRESS")
@@ -297,10 +298,16 @@ class HyperliquidClient:
                 env_key = os.getenv("HYPERLIQUID_API_KEY")
                 self.api_key = env_key if env_key is not None else HYPERLIQUID_API_KEY
         else:
+            # Use explicit api_key parameter (for testing or explicit configuration)
+            # 使用显式 api_key 参数（用于测试或显式配置）
             self.api_key = api_key
         
         # Store the user address (from API key or account)
         # 存储用户地址（来自 API key 或账户）
+        # For API wallet mode, user_address should be the wallet address
+        # For testing, user_address may be the same as api_key
+        # 对于 API 钱包模式，user_address 应该是钱包地址
+        # 对于测试，user_address 可能与 api_key 相同
         # Initialize to API key, will be updated after account initialization if needed
         # 初始化为 API key，如果需要，将在账户初始化后更新
         self.user_address = self.api_key if self.api_key else None
@@ -575,17 +582,36 @@ class HyperliquidClient:
                     exc_info=True,
                 )
         else:
+            # Log reason for SDK not being initialized / 记录 SDK 未初始化的原因
+            reasons = []
             if not HYPERLIQUID_SDK_AVAILABLE:
-                logger.warning(
-                    "Hyperliquid SDK not available. Will use manual implementation. "
-                    "Hyperliquid SDK 不可用。将使用手动实现。"
-                )
-            elif not self._account:
-                logger.warning(
-                    "Ethereum account not initialized. Cannot use Hyperliquid SDK Exchange. "
-                    "Will use manual implementation. "
-                    "以太坊账户未初始化。无法使用 Hyperliquid SDK Exchange。将使用手动实现。"
-                )
+                reasons.append("SDK not available")
+            if not HyperliquidExchange:
+                reasons.append("HyperliquidExchange not available")
+            if not HyperliquidInfo:
+                reasons.append("HyperliquidInfo not available")
+            if not self._account:
+                reasons.append("Ethereum account not available")
+            
+            reason_str = ", ".join(reasons) if reasons else "Unknown reason"
+            logger.warning(
+                f"Hyperliquid SDK not initialized. Reason: {reason_str}. "
+                f"Will use manual implementation for some operations. "
+                f"Hyperliquid SDK 未初始化。原因: {reason_str}。"
+                f"某些操作将使用手动实现。"
+            )
+            
+            # For testing: try to initialize Info even without Exchange
+            # 对于测试：即使没有 Exchange，也尝试初始化 Info
+            if HYPERLIQUID_SDK_AVAILABLE and HyperliquidInfo:
+                try:
+                    self._info = HyperliquidInfo(self.base_url, skip_ws=True, timeout=self.request_timeout)
+                    logger.info(
+                        "Initialized Hyperliquid SDK Info instance (without Exchange). "
+                        "初始化 Hyperliquid SDK Info 实例（无 Exchange）。"
+                    )
+                except Exception as e:
+                    logger.debug(f"Failed to initialize Info instance: {e}")
 
         # Connect and authenticate
         # Note: Use requests module directly for test compatibility
@@ -1095,21 +1121,39 @@ class HyperliquidClient:
                         "response_body": response_body[:500] if response_body else None,
                     }
 
+                    # Include request_data in extra for debugging / 在 extra 中包含 request_data 以便调试
+                    extra_data = {
+                        **request_meta,
+                        "status_code": status_code,
+                        "latency_ms": latency_ms,
+                        "attempt": attempt,
+                        "error_detail": error_detail,
+                        "request_summary": request_summary,
+                        "response_body": response_body[:500] if response_body else None,
+                    }
+                    # Add request_data field for debugging (sanitized) / 添加 request_data 字段以便调试（已清理）
+                    if data:
+                        try:
+                            # Create sanitized copy of request data / 创建请求数据的清理副本
+                            sanitized_data = {}
+                            if isinstance(data, dict):
+                                sanitized_data = {
+                                    k: v for k, v in data.items()
+                                    if k not in ["signature", "vaultAddress"]  # Hide sensitive fields / 隐藏敏感字段
+                                }
+                            else:
+                                sanitized_data = {"raw_data_preview": str(data)[:200]}
+                            extra_data["request_data"] = sanitized_data
+                        except Exception:
+                            extra_data["request_data"] = {"error": "Failed to sanitize request data"}
+                    
                     logger.error(
                         f"Hyperliquid invalid request (422) for {endpoint}. "
                         f"Request summary: {request_summary}, "
                         f"Response: {error_detail[:200]}. "
                         f"Hyperliquid无效请求 (422) {endpoint}。"
                         f"请求摘要: {request_summary}。",
-                        extra={
-                            **request_meta,
-                            "status_code": status_code,
-                            "latency_ms": latency_ms,
-                            "attempt": attempt,
-                            "error_detail": error_detail,
-                            "request_summary": request_summary,
-                            "response_body": response_body[:500] if response_body else None,
-                        },
+                        extra=extra_data,
                     )
 
                     # Don't retry 422 errors as they indicate a problem with the request itself
@@ -1867,6 +1911,254 @@ class HyperliquidClient:
         except Exception as e:
             logger.error(f"Error fetching bulk funding rates: {e}")
             return {symbol: 0.0 for symbol in symbols}
+
+    def fetch_historical_prices(
+        self, 
+        symbol: Optional[str] = None, 
+        hours: int = 24,
+        interval_minutes: int = 1
+    ) -> List[float]:
+        """
+        Fetch historical prices using official Hyperliquid REST API /info endpoint.
+        使用官方 Hyperliquid REST API /info 端点获取历史价格。
+        
+        According to official API documentation:
+        - Endpoint: POST https://api.hyperliquid.xyz/info
+        - Maximum: 5000 candles
+        - Supported intervals: "1m", "3m", "5m", "15m", "30m", "1h", "2h", "4h", "8h", "12h", "1d", "3d", "1w", "1M"
+        - Reference: https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/info-endpoint
+        
+        根据官方 API 文档：
+        - 端点: POST https://api.hyperliquid.xyz/info
+        - 最大: 5000 根 K 线
+        - 支持的时间间隔: "1m", "3m", "5m", "15m", "30m", "1h", "2h", "4h", "8h", "12h", "1d", "3d", "1w", "1M"
+        - 参考: https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/info-endpoint
+        
+        Implementation strategy:
+        1. First try official Hyperliquid SDK Info class methods (if available)
+        2. Fallback to direct REST API call to /info endpoint with candleSnapshot type
+        3. Final fallback: use current price from allMids
+        
+        实现策略：
+        1. 首先尝试官方 Hyperliquid SDK Info 类方法（如果可用）
+        2. 回退到直接 REST API 调用 /info 端点，类型为 candleSnapshot
+        3. 最终回退：使用 allMids 的当前价格
+        
+        Args:
+            symbol: Trading symbol (optional, uses self.symbol if not provided)
+            hours: Number of hours of history to fetch
+            interval_minutes: Interval between price points in minutes (default: 1)
+            
+        Returns:
+            List of prices in chronological order (oldest to newest)
+        """
+        try:
+            # Use provided symbol or default to self.symbol / 使用提供的交易对或默认使用 self.symbol
+            target_symbol = symbol or self.symbol
+            
+            # Extract coin name / 提取币种名称
+            # According to official docs: For perpetuals, coin is the name from meta response
+            # 根据官方文档：对于永续合约，coin 是 meta 响应中的名称
+            symbol_base = (
+                target_symbol.split("/")[0]
+                if "/" in target_symbol
+                else target_symbol.split(":")[0] if ":" in target_symbol else target_symbol
+            )
+            coin = symbol_base.replace("USDT", "").replace("/", "").replace(":", "").upper()
+            
+            # Map interval_minutes to official interval format
+            # 将 interval_minutes 映射到官方间隔格式
+            # Supported intervals: "1m", "3m", "5m", "15m", "30m", "1h", "2h", "4h", "8h", "12h", "1d", "3d", "1w", "1M"
+            interval_map = {
+                1: "1m", 3: "3m", 5: "5m", 15: "15m", 30: "30m",
+                60: "1h", 120: "2h", 240: "4h", 480: "8h", 720: "12h",
+                1440: "1d", 4320: "3d", 10080: "1w", 43200: "1M"
+            }
+            
+            # Find closest supported interval / 找到最接近的支持间隔
+            official_interval = interval_map.get(interval_minutes)
+            if not official_interval:
+                # Find closest match / 找到最接近的匹配
+                closest = min(interval_map.keys(), key=lambda x: abs(x - interval_minutes))
+                official_interval = interval_map[closest]
+                logger.warning(
+                    f"Interval {interval_minutes}m not supported. Using {official_interval} instead. "
+                    f"不支持 {interval_minutes} 分钟间隔。改用 {official_interval}。"
+                )
+            
+            # Calculate number of candles needed (max 5000 according to official docs)
+            # 计算需要的 K 线数量（根据官方文档，最大 5000）
+            num_candles = (hours * 60) // interval_minutes
+            if num_candles > 5000:
+                num_candles = 5000
+                logger.warning(
+                    f"Requested {hours} hours exceeds 5000 candle limit. Using 5000 candles. "
+                    f"请求的 {hours} 小时超过 5000 根 K 线限制。使用 5000 根 K 线。"
+                )
+            
+            # Strategy 1: Try official Hyperliquid SDK Info class methods first
+            # 策略 1：首先尝试官方 Hyperliquid SDK Info 类方法
+            if HYPERLIQUID_SDK_AVAILABLE and hasattr(self, '_info') and self._info:
+                try:
+                    # Check for candle_snapshot method in SDK / 检查 SDK 中的 candle_snapshot 方法
+                    if hasattr(self._info, 'candle_snapshot'):
+                        try:
+                            # Try SDK method with official interval format / 尝试使用官方间隔格式的 SDK 方法
+                            candles = self._info.candle_snapshot(coin, official_interval, num_candles)
+                            if candles and isinstance(candles, list) and len(candles) > 0:
+                                prices = self._extract_close_prices_from_candles(candles)
+                                if len(prices) >= 2:
+                                    logger.info(
+                                        f"Fetched {len(prices)} historical prices for {coin} using SDK candle_snapshot "
+                                        f"(interval: {official_interval}, candles: {num_candles}). "
+                                        f"使用 SDK candle_snapshot 获取了 {coin} 的 {len(prices)} 个历史价格 "
+                                        f"（间隔: {official_interval}, K 线数: {num_candles}）。"
+                                    )
+                                    return prices
+                        except Exception as sdk_error:
+                            logger.debug(
+                                f"SDK candle_snapshot failed: {sdk_error}. Trying REST API. "
+                                f"SDK candle_snapshot 失败: {sdk_error}。尝试 REST API。"
+                            )
+                except Exception as e:
+                    logger.debug(
+                        f"SDK Info class not available or failed: {e}. Using REST API. "
+                        f"SDK Info 类不可用或失败: {e}。使用 REST API。"
+                    )
+            
+            # Strategy 2: Use official REST API /info endpoint with candleSnapshot type
+            # 策略 2：使用官方 REST API /info 端点，类型为 candleSnapshot
+            # Request format based on official API documentation
+            # 根据官方 API 文档的请求格式
+            candle_payload = {
+                "type": "candleSnapshot",
+                "req": {
+                    "coin": coin,
+                    "interval": official_interval,
+                    "n": num_candles
+                }
+            }
+            
+            logger.debug(
+                f"Fetching historical candles via REST API: coin={coin}, interval={official_interval}, n={num_candles}. "
+                f"通过 REST API 获取历史 K 线: coin={coin}, interval={official_interval}, n={num_candles}。"
+            )
+            
+            response = self._make_request(
+                method="POST",
+                endpoint="/info",
+                data=candle_payload,
+                public=True,  # Candle data is public according to docs
+            )
+            
+            if response and isinstance(response, list) and len(response) > 0:
+                # Extract close prices from candles
+                # Response format: [[timestamp, open, high, low, close, volume], ...]
+                # 从 K 线中提取收盘价
+                # 响应格式: [[时间戳, 开盘, 最高, 最低, 收盘, 成交量], ...]
+                prices = self._extract_close_prices_from_candles(response)
+                
+                if len(prices) >= 2:
+                    logger.info(
+                        f"Fetched {len(prices)} historical prices for {coin} using official REST API "
+                        f"(interval: {official_interval}, candles: {num_candles}). "
+                        f"使用官方 REST API 获取了 {coin} 的 {len(prices)} 个历史价格 "
+                        f"（间隔: {official_interval}, K 线数: {num_candles}）。"
+                    )
+                    return prices
+            elif response:
+                logger.warning(
+                    f"Unexpected response format from candleSnapshot: {type(response)}. "
+                    f"candleSnapshot 的响应格式意外: {type(response)}。"
+                )
+            
+            # Strategy 3: Fallback to current price from allMids endpoint
+            # 策略 3：回退到 allMids 端点的当前价格
+            logger.warning(
+                f"Historical candle data not available for {coin}. "
+                f"Using current price from allMids endpoint as fallback. "
+                f"{coin} 的历史 K 线数据不可用。使用 allMids 端点的当前价格作为回退。"
+            )
+            
+            mids_payload = {"type": "allMids"}
+            mids_response = self._make_request(
+                method="POST",
+                endpoint="/info",
+                data=mids_payload,
+                public=True,
+            )
+            
+            if mids_response and isinstance(mids_response, dict):
+                mid_prices = mids_response.get("mid_prices", mids_response)
+                if isinstance(mid_prices, dict):
+                    current_price = mid_prices.get(coin)
+                    if current_price:
+                        current_price = float(current_price)
+                        num_points = min(num_candles, 100)
+                        logger.debug(
+                            f"Using current price {current_price} from allMids for {coin} "
+                            f"(repeated {num_points} times as fallback). "
+                            f"使用 allMids 的当前价格 {current_price} 作为 {coin} 的回退（重复 {num_points} 次）。"
+                        )
+                        return [current_price] * num_points
+            
+            # Final fallback: use fetch_market_data / 最终回退：使用 fetch_market_data
+            market_data = self.fetch_market_data()
+            if market_data and market_data.get("mid_price"):
+                current_price = market_data.get("mid_price")
+                num_points = min(num_candles, 100)
+                return [current_price] * num_points
+            
+            return []
+            
+        except Exception as e:
+            logger.error(
+                f"Error fetching historical prices for {symbol or self.symbol}: {e}. "
+                f"获取 {symbol or self.symbol} 的历史价格时出错: {e}。",
+                exc_info=True
+            )
+            return []
+    
+    def _extract_close_prices_from_candles(self, candles: List) -> List[float]:
+        """
+        Extract close prices from candle data / 从 K 线数据中提取收盘价
+        
+        Supports multiple candle formats:
+        - [timestamp, open, high, low, close, volume]
+        - [open, high, low, close, volume]
+        - {"close": ...} or {"c": ...}
+        
+        支持多种 K 线格式：
+        - [时间戳, 开盘, 最高, 最低, 收盘, 成交量]
+        - [开盘, 最高, 最低, 收盘, 成交量]
+        - {"close": ...} 或 {"c": ...}
+        
+        Args:
+            candles: List of candle data
+            
+        Returns:
+            List of close prices
+        """
+        prices = []
+        for candle in candles:
+            try:
+                if isinstance(candle, (list, tuple)):
+                    if len(candle) >= 6:
+                        # Format: [timestamp, open, high, low, close, volume]
+                        prices.append(float(candle[4]))  # Close at index 4
+                    elif len(candle) >= 5:
+                        # Format: [open, high, low, close, volume]
+                        prices.append(float(candle[3]))  # Close at index 3
+                elif isinstance(candle, dict):
+                    # Try common field names / 尝试常见字段名
+                    close_price = candle.get("close") or candle.get("c") or candle.get("closePrice")
+                    if close_price is not None:
+                        prices.append(float(close_price))
+            except (ValueError, TypeError, IndexError) as e:
+                logger.debug(f"Error extracting close price from candle: {candle}, error: {e}")
+                continue
+        
+        return prices
 
     def fetch_ticker_stats(self) -> Optional[Dict]:
         """Fetches 24h ticker statistics / 获取 24 小时行情统计"""

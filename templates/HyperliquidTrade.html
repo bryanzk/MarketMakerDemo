@@ -394,6 +394,14 @@
                         <div style="font-size: 11px; color: #6b7280; margin-bottom: 4px;">Leverage / 杠杆</div>
                         <div id="currentLeverage" style="font-size: 14px; font-weight: 600; color: #1f2937;">--</div>
                     </div>
+                    <div>
+                        <div style="font-size: 11px; color: #6b7280; margin-bottom: 4px;">Volatility (24h) / 波动率 (24小时)</div>
+                        <div id="currentVolatility24h" style="font-size: 14px; font-weight: 600; color: #1f2937;">--</div>
+                    </div>
+                    <div>
+                        <div style="font-size: 11px; color: #6b7280; margin-bottom: 4px;">Volatility (1h) / 波动率 (1小时)</div>
+                        <div id="currentVolatility1h" style="font-size: 14px; font-weight: 600; color: #1f2937;">--</div>
+                    </div>
                 </div>
             </div>
             
@@ -1222,6 +1230,8 @@
             const currentSpreadEl = document.getElementById('currentSpread');
             const currentQuantityEl = document.getElementById('currentQuantity');
             const currentLeverageEl = document.getElementById('currentLeverage');
+            const currentVolatility24hEl = document.getElementById('currentVolatility24h');
+            const currentVolatility1hEl = document.getElementById('currentVolatility1h');
             
             if (currentPairEl) {
                 currentPairEl.innerText = data.symbol || '--';
@@ -1248,6 +1258,23 @@
                     currentLeverageEl.innerText = `${data.leverage}x`;
                 } else {
                     currentLeverageEl.innerText = '--';
+                }
+            }
+            
+            // Display volatility (LLM input parameters) / 显示波动率（LLM 输入参数）
+            if (currentVolatility24hEl) {
+                if (data.volatility_24h !== undefined && data.volatility_24h !== null) {
+                    currentVolatility24hEl.innerText = `${(data.volatility_24h * 100).toFixed(2)}%`;
+                } else {
+                    currentVolatility24hEl.innerText = '--';
+                }
+            }
+            
+            if (currentVolatility1hEl) {
+                if (data.volatility_1h !== undefined && data.volatility_1h !== null) {
+                    currentVolatility1hEl.innerText = `${(data.volatility_1h * 100).toFixed(2)}%`;
+                } else {
+                    currentVolatility1hEl.innerText = '--';
                 }
             }
         }

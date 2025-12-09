@@ -9,7 +9,7 @@ Owner: Agent TRADING
 
 from collections import deque
 from datetime import datetime
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 
 class PerformanceTracker:
@@ -102,3 +102,81 @@ class PerformanceTracker:
         self.pnl_history.clear()
         self.last_position = 0.0
         self.avg_entry_price = 0.0
+
+
+def calculate_trade_performance(
+    trades: List[Dict[str, Any]],
+    start_time_ms: Optional[int] = None,
+) -> Dict[str, Any]:
+    """
+    Calculate aggregate performance statistics from a list of trade dicts.
+
+    Designed to mirror the logic used by /api/performance so it can be reused
+    for strategy-specific performance calculations.
+    """
+    start_time_sec: Optional[float] = None
+    if start_time_ms is not None:
+        start_time_sec = start_time_ms / 1000.0
+
+    if start_time_sec is not None:
+        filtered_trades = [
+            t for t in trades if t.get("timestamp", 0) >= start_time_sec
+        ]
+    else:
+        filtered_trades = list(trades)
+
+    total_trades = len(filtered_trades)
+    winning_trades = len([t for t in filtered_trades if t.get("pnl", 0) > 0])
+    losing_trades = len([t for t in filtered_trades if t.get("pnl", 0) <= 0])
+    realized_pnl = sum(float(t.get("pnl", 0.0)) for t in filtered_trades)
+
+    win_rate = (
+        (winning_trades / total_trades) * 100 if total_trades > 0 else 0.0
+    )
+
+    pnl_history: List[List[float]] = []
+    cumulative_pnl = 0.0
+
+    # Add initial point at session start if provided
+    if start_time_ms is not None:
+        pnl_history.append([int(start_time_ms), 0])
+
+    for trade in filtered_trades:
+        cumulative_pnl += float(trade.get("pnl", 0.0))
+        ts_ms = int(float(trade.get("timestamp", 0)) * 1000)
+        pnl_history.append([ts_ms, cumulative_pnl])
+
+    return {
+        "realized_pnl": realized_pnl,
+        "total_trades": total_trades,
+        "winning_trades": winning_trades,
+        "losing_trades": losing_trades,
+        "win_rate": win_rate,
+        "pnl_history": pnl_history,
+    }
+
+
+def calculate_strategy_performance(
+    trades: List[Dict[str, Any]],
+    start_time_ms: Optional[int] = None,
+    strategy_type: Optional[str] = None,
+    strategy_id: Optional[str] = None,
+    symbol: Optional[str] = None,
+) -> Dict[str, Any]:
+    """
+    Calculate performance statistics for a specific strategy subset.
+
+    Filters trades by strategy_type/strategy_id/symbol first, then delegates to
+    calculate_trade_performance for aggregate stats.
+    """
+    filtered: List[Dict[str, Any]] = []
+    for trade in trades:
+        if strategy_type and trade.get("strategy_type") != strategy_type:
+            continue
+        if strategy_id and trade.get("strategy_id") != strategy_id:
+            continue
+        if symbol and trade.get("symbol") != symbol:
+            continue
+        filtered.append(trade)
+
+    return calculate_trade_performance(filtered, start_time_ms=start_time_ms)

@@ -1,6 +1,10 @@
 import pytest
 
-from src.trading.performance import PerformanceTracker
+from src.trading.performance import (
+    PerformanceTracker,
+    calculate_strategy_performance,
+    calculate_trade_performance,
+)
 
 
 class TestPerformanceTracker:
@@ -123,7 +127,7 @@ class TestPerformanceTracker:
         tracker = PerformanceTracker(max_history=3)
 
         # Make 5 trades
-        for i in range(5):
+        for _ in range(5):
             tracker.update_position(0.1, 3000.0)
             tracker.update_position(0.0, 3100.0)
 
@@ -162,3 +166,77 @@ class TestPerformanceTracker:
         assert len(self.tracker.pnl_history) == 0
         assert self.tracker.last_position == 0.0
         assert self.tracker.avg_entry_price == 0.0
+
+
+class TestTradeHistoryPerformance:
+    """Unit tests for trade-history-based performance helpers."""
+
+    def test_calculate_trade_performance_basic(self):
+        trades = [
+            {"pnl": 10.0, "timestamp": 1000.0},
+            {"pnl": -5.0, "timestamp": 1010.0},
+            {"pnl": 20.0, "timestamp": 1020.0},
+        ]
+
+        start_time_ms = 900 * 1000
+        stats = calculate_trade_performance(trades, start_time_ms=start_time_ms)
+
+        assert stats["realized_pnl"] == 25.0
+        assert stats["total_trades"] == 3
+        assert stats["winning_trades"] == 2
+        assert stats["losing_trades"] == 1
+        assert abs(stats["win_rate"] - 66.66) < 0.1
+
+        # PnL history: initial point + 3 trades
+        assert len(stats["pnl_history"]) == 4
+        assert stats["pnl_history"][0][1] == 0
+        assert stats["pnl_history"][-1][1] == 25.0
+
+    def test_calculate_trade_performance_respects_start_time(self):
+        trades = [
+            {"pnl": 10.0, "timestamp": 1000.0},
+            {"pnl": -5.0, "timestamp": 1100.0},
+        ]
+
+        # Filter out first trade by using later session start
+        start_time_ms = int(1050.0 * 1000)
+        stats = calculate_trade_performance(trades, start_time_ms=start_time_ms)
+
+        # Only second trade should be counted
+        assert stats["realized_pnl"] == -5.0
+        assert stats["total_trades"] == 1
+        assert stats["winning_trades"] == 0
+        assert stats["losing_trades"] == 1
+        assert stats["win_rate"] == 0.0
+
+        # History: initial point + one trade
+        assert len(stats["pnl_history"]) == 2
+        assert stats["pnl_history"][0][0] == start_time_ms
+
+    def test_calculate_strategy_performance_filters_by_strategy_type(self):
+        trades = [
+            {
+                "pnl": 10.0,
+                "timestamp": 1000.0,
+                "strategy_type": "fixed_spread",
+                "strategy_id": "fixed_spread",
+            },
+            {
+                "pnl": -5.0,
+                "timestamp": 1010.0,
+                "strategy_type": "funding_rate",
+                "strategy_id": "funding_rate",
+            },
+        ]
+
+        start_time_ms = 900 * 1000
+        stats = calculate_strategy_performance(
+            trades,
+            start_time_ms=start_time_ms,
+            strategy_type="fixed_spread",
+        )
+
+        assert stats["realized_pnl"] == 10.0
+        assert stats["total_trades"] == 1
+        assert stats["winning_trades"] == 1
+        assert stats["losing_trades"] == 0

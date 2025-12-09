@@ -158,7 +158,10 @@ class StrategyInstance:
             return self.strategy.calculate_target_orders(market_data)
 
     def sync_orders(
-        self, current_orders: List[Dict[str, Any]], target_orders: List[Dict[str, Any]]
+        self, 
+        current_orders: List[Dict[str, Any]], 
+        target_orders: List[Dict[str, Any]],
+        mid_price: float = None
     ) -> Tuple[List[str], List[Dict[str, Any]]]:
         """
         Sync orders for this strategy instance.
@@ -166,6 +169,7 @@ class StrategyInstance:
         Args:
             current_orders: Current open orders for this strategy
             target_orders: Target orders to place
+            mid_price: Current mid price for adaptive threshold (optional)
 
         Returns:
             Tuple of (order_ids_to_cancel, orders_to_place)
@@ -174,7 +178,10 @@ class StrategyInstance:
         filtered_orders = [
             o for o in current_orders if o.get("id") in self.tracked_order_ids
         ]
-        return self.order_manager.sync_orders(filtered_orders, target_orders)
+        # Use mid_price from latest market data if available / 如果可用，使用最新市场数据的中间价
+        if mid_price is None and self.latest_market_data:
+            mid_price = self.latest_market_data.get("mid_price")
+        return self.order_manager.sync_orders(filtered_orders, target_orders, mid_price)
 
     def add_tracked_order(self, order_id: str) -> None:
         """Add an order ID to the tracked set for this strategy."""

@@ -429,8 +429,11 @@ class AlphaLoop:
                     o for o in all_orders if o.get("id") in instance.tracked_order_ids
                 ]
 
+            # Get mid_price for adaptive threshold calculation / 获取中间价用于自适应阈值计算
+            mid_price = market_data.get("mid_price") if market_data else None
+            
             to_cancel_ids, to_place = instance.sync_orders(
-                current_orders, target_orders
+                current_orders, target_orders, mid_price
             )
 
             if to_cancel_ids:

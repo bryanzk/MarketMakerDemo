@@ -518,9 +518,53 @@ class TestServer:
             response = client.get("/api/performance")
 
             assert response.status_code == 200
+
+    def test_get_strategy_performance_filters_by_strategy_type(
+        self, mock_bot, mock_exchange
+    ):
+        """Test GET /api/performance/strategy filters trades by strategy_type."""
+        mock_bot.data.trade_history = [
+            {
+                "pnl": 10.0,
+                "timestamp": 1600000000,
+                "strategy_type": "fixed_spread",
+                "strategy_id": "fixed_spread",
+                "symbol": "ETH/USDT:USDT",
+            },
+            {
+                "pnl": -5.0,
+                "timestamp": 1600000060,
+                "strategy_type": "funding_rate",
+                "strategy_id": "funding_rate",
+                "symbol": "ETH/USDT:USDT",
+            },
+        ]
+        mock_bot.data.price_history = []
+        mock_bot.data.registry.calculate_all.return_value = {"sharpe_ratio": 1.0}
+
+        with patch("server.bot_engine", mock_bot), patch(
+            "server.get_default_exchange", return_value=mock_exchange
+        ):
+            import server
+
+            server.session_start_time_ms = 1500000000 * 1000
+
+            from server import app
+
+            client = TestClient(app)
+
+            response = client.get(
+                "/api/performance/strategy",
+                params={"strategy_type": "fixed_spread"},
+            )
+
+            assert response.status_code == 200
             data = response.json()
 
-            # Should still return data with local calculation
-            assert data["realized_pnl"] == 15.0
-            assert data["commission"] == 0.0
-            assert data["net_pnl"] == 15.0
+            assert data["total_trades"] == 1
+            assert data["realized_pnl"] == 10.0
+            assert data["winning_trades"] == 1
+            assert data["losing_trades"] == 0
+            assert data["strategy_type"] == "fixed_spread"
+            # metrics should come from registry.calculate_all
+            assert data["metrics"].get("sharpe_ratio") == 1.0

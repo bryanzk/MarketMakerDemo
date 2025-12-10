@@ -40,7 +40,8 @@ class TestPairUpdateConsistency:
         mock_instance.exchange = mock_exchange
         mock_instance.symbol = "ETH/USDC:USDC"
         mock_instance.refresh_data = MagicMock()
-        mock_bot_engine.strategy_instances = {"hyperliquid": mock_instance}
+        # Endpoint uses "default" as default strategy_id / 端点使用 "default" 作为默认 strategy_id
+        mock_bot_engine.strategy_instances = {"default": mock_instance}
         mock_bot_engine.set_symbol.return_value = True
 
         client = TestClient(server.app)
@@ -172,7 +173,8 @@ class TestPairUpdateConsistency:
         mock_instance = MagicMock()
         mock_instance.exchange = mock_exchange
         mock_instance.symbol = "ETH/USDC:USDC"
-        mock_bot_engine.strategy_instances = {"hyperliquid": mock_instance}
+        # Endpoint uses "default" as default strategy_id / 端点使用 "default" 作为默认 strategy_id
+        mock_bot_engine.strategy_instances = {"default": mock_instance}
         mock_bot_engine.set_symbol.return_value = True
 
         client = TestClient(server.app)

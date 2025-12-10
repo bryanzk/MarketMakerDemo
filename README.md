@@ -401,7 +401,34 @@ This project uses Cursor IDE with a multi-agent development workflow. The config
 - Each developer's Cursor environment will automatically adapt to the project rules
   每个开发者的 Cursor 环境会自动适配项目规则
 
-#### 6. Verify Installation / 验证安装
+#### 6. One-Click Build / 一键构建
+
+**Recommended: Use the build script for complete setup / 推荐：使用构建脚本进行完整设置**
+
+```bash
+# Full build: environment, dependencies, tests, linting, and docs
+# 完整构建：环境、依赖、测试、代码检查和文档
+./build.sh
+
+# Build with options / 使用选项构建
+./build.sh --skip-tests    # Skip tests / 跳过测试
+./build.sh --skip-lint     # Skip linting / 跳过代码检查
+./build.sh --skip-docs     # Skip documentation / 跳过文档
+./build.sh --verbose       # Verbose output / 详细输出
+./build.sh --help          # Show help / 显示帮助
+```
+
+The build script automatically:
+构建脚本自动执行：
+- ✓ Sets up virtual environment / 设置虚拟环境
+- ✓ Installs all dependencies / 安装所有依赖
+- ✓ Verifies environment configuration / 验证环境配置
+- ✓ Installs Playwright browsers / 安装 Playwright 浏览器
+- ✓ Runs unit tests with coverage / 运行单元测试（含覆盖率）
+- ✓ Performs linting checks / 执行代码检查
+- ✓ Builds API documentation / 构建 API 文档
+
+#### 7. Verify Installation / 验证安装
 ```bash
 # Check Python version / 检查 Python 版本
 python3 --version  # Should be 3.11+

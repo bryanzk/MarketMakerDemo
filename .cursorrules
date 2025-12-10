@@ -485,7 +485,7 @@ If any agent violates this rule (manually starts the server), you must:
 
 ---
 
-## 🤖 Agent 体系 (9 Agents)
+## 🤖 Agent 体系 (10 Agents)
 
 ### 管理层 / Management Layer
 | Agent | 角色 | 职责 | 上下文文档 |
@@ -507,6 +507,11 @@ If any agent violates this rule (manually starts the server), you must:
 |-------|------|------|-----------|
 | **Agent QA** | 质量保证 | 集成测试、冒烟测试、用户文档、测试审查 | `docs/agents/AGENT_QA.md` |
 | **Agent REVIEW** | 代码审查 | 代码质量、最佳实践、安全审查 | `docs/agents/AGENT_REVIEW.md` |
+
+### 运维层 / Operations Layer
+| Agent | 角色 | 职责 | 上下文文档 |
+|-------|------|------|-----------|
+| **Agent DevOps** | DevOps 工程师 | CI/CD 管道、环境管理、基础设施脚本、日志监控 | `docs/agents/AGENT_DEVOPS.md` |
 
 ---
 
@@ -531,17 +536,17 @@ Spec → Story → AC → Contract → Plan Approval → Test → Code → Revie
 | 11 | `integration_passed` | Agent QA | 运行集成测试套件 |
 | 12 | `docs_updated` | Agent QA | `docs/user_guide/{module}/...` |
 | 13 | `progress_logged` | Agent PM | `status/roadmap.json` |
-| 14 | `ci_cd_passed` | Human | 查看 GitHub Actions 结果（可选：使用 `[skip ci]` 跳过） |
+| 14 | `ci_cd_passed` | Agent DevOps | 查看 GitHub Actions 结果（可选：使用 `[skip ci]` 跳过） |
 
 ### Step 14: CI/CD Passed / CI/CD 通过
 
-**负责**: Human Reviewer  
+**负责**: Agent DevOps  
 **状态字段**: `ci_cd_passed`  
 **产出物**: GitHub Actions CI/CD 结果
 
 **说明 / Description**:
-- Step 14 是 14 步开发流程的最后一步，需要人工审查 GitHub Actions 的 CI/CD 结果
-- Step 14 is the final step of the 14-step development pipeline, requiring human review of GitHub Actions CI/CD results
+- Step 14 是 14 步开发流程的最后一步，由 Agent DevOps 负责监控和管理 CI/CD 管道
+- Step 14 is the final step of the 14-step development pipeline, managed by Agent DevOps for CI/CD pipeline monitoring and management
 
 **CI/CD 检查项 / CI/CD Checks**:
 - ✅ Test Job: 所有单元测试通过，测试覆盖率 ≥ 70%
@@ -600,7 +605,7 @@ git commit -m "feat: add new feature"
 | 11 | Agent QA | Agent QA | 集成测试决策 | 运行集成测试套件 |
 | 12 | Agent QA | Agent QA | 文档更新决策 | 编写 `docs/user_guide/{module}/...` |
 | 13 | Agent PM | Agent PM | 进度更新决策 | 更新 `status/roadmap.json` |
-| 14 | Human | Human | CI/CD 审查决策 | 查看 GitHub Actions 结果（可选：使用 `[skip ci]` 跳过） |
+| 14 | Agent DevOps | Agent DevOps | CI/CD 审查决策 | 查看 GitHub Actions 结果（可选：使用 `[skip ci]` 跳过） |
 
 **说明**：
 - **决策 Agent**：负责分析、设计、制定方案
@@ -625,7 +630,7 @@ git commit -m "feat: add new feature"
 | 10 | Dev Agent (Step 9) | 单元测试状态 | Agent QA (Step 11) | 冒烟测试结果 |
 | 11 | Agent QA (Step 10) | 冒烟测试结果 | Agent QA (Step 12) | 集成测试结果 |
 | 12 | Agent QA (Step 11) | 集成测试结果 | Agent PM (Step 13) | `docs/user_guide/{module}/...` |
-| 13 | Agent QA (Step 12) | 文档 | Human (Step 14) | `status/roadmap.json` 更新 |
+| 13 | Agent QA (Step 12) | 文档 | Agent DevOps (Step 14) | `status/roadmap.json` 更新 |
 | 14 | Agent PM (Step 13) | 进度状态 | - | CI/CD 结果 |
 
 ### 跨 Agent 数据传递规则 / Cross-Agent Data Transfer Rules
@@ -686,6 +691,7 @@ current_step: smoke_test_passed  → Agent QA
 current_step: integration_passed → Agent QA
 current_step: docs_updated       → Agent QA
 current_step: progress_logged    → Agent PM
+current_step: ci_cd_passed       → Agent DevOps
 
 Dev Agent 按 owner 字段映射:
   owner: "trading"   → Agent TRADING
@@ -751,6 +757,9 @@ Dev Agent 按 owner 字段映射:
 | `status/` | Agent PM |
 | `logs/audit_trail.json` | Agent PM |
 | `docs/agents/` | Agent PM |
+| `.github/workflows/` | Agent DevOps |
+| `.env.example` | Agent DevOps |
+| `docs/devops/` | Agent DevOps |
 
 ### 🟡 COORDINATED (需协调) - 修改需发起请求
 
@@ -759,6 +768,8 @@ Dev Agent 按 owner 字段映射:
 | `requirements.txt` | 在 `status/agent_requests.json` 发起 CONFIG 请求 |
 | `pyproject.toml` | 在 `status/agent_requests.json` 发起 CONFIG 请求 |
 | `.cursorrules` | 仅 Agent PM 可修改 |
+| `scripts/` (基础设施相关) | Agent DevOps 协调 |
+| `logs/` (日志管理) | Agent DevOps 协调 |
 
 ### 🟢 SHARED-APPEND (共享追加)
 

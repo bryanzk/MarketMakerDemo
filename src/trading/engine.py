@@ -228,6 +228,49 @@ class AlphaLoop:
         timestamp = time.strftime("%H:%M:%S")
         self.system_logs.append({"timestamp": timestamp, "stage": stage_name})
 
+    def _get_default_eth_symbol(self) -> str:
+        """
+        Get default ETH symbol from Hyperliquid exchange if available.
+        如果可用，从 Hyperliquid 交易所获取默认 ETH 交易对。
+        
+        Returns:
+            Default ETH symbol (e.g., "ETH/USDC:USDC") or fallback
+            默认 ETH 交易对（例如 "ETH/USDC:USDC"）或回退值
+        """
+        try:
+            # Try to get from Hyperliquid exchange / 尝试从 Hyperliquid 交易所获取
+            for instance in self.strategy_instances.values():
+                if (
+                    hasattr(instance, "exchange")
+                    and instance.exchange is not None
+                ):
+                    from src.trading.hyperliquid_client import HyperliquidClient
+                    if isinstance(instance.exchange, HyperliquidClient):
+                        if hasattr(instance.exchange, "get_default_eth_symbol"):
+                            return instance.exchange.get_default_eth_symbol()
+            
+            # If no Hyperliquid exchange found, try to create one / 如果未找到 Hyperliquid 交易所，尝试创建一个
+            try:
+                from src.trading.hyperliquid_client import HyperliquidClient
+                hyperliquid_client = HyperliquidClient()
+                if hasattr(hyperliquid_client, "get_default_eth_symbol"):
+                    return hyperliquid_client.get_default_eth_symbol()
+            except Exception:
+                pass
+            
+            # Final fallback / 最终回退
+            logger.warning(
+                "Could not get default ETH symbol from Hyperliquid. Using fallback. "
+                "无法从 Hyperliquid 获取默认 ETH 交易对。使用回退值。"
+            )
+            return "ETH/USDC:USDC"
+        except Exception as e:
+            logger.warning(
+                f"Error getting default ETH symbol: {e}. Using fallback. "
+                f"获取默认 ETH 交易对时出错: {e}。使用回退值。"
+            )
+            return "ETH/USDC:USDC"
+
     def get_status(self) -> dict:
         """Get current status of all strategy instances."""
         strategy_statuses = {}
@@ -237,7 +280,10 @@ class AlphaLoop:
         default_instance = self.strategy_instances.get("default")
         if default_instance:
             default_status = default_instance.get_status()
-            current_symbol = default_status.get("symbol", "ETH/USDT:USDT")
+            current_symbol = default_status.get("symbol")
+            if not current_symbol:
+                # Try to get default ETH symbol from exchange / 尝试从交易所获取默认 ETH 交易对
+                current_symbol = self._get_default_eth_symbol()
             # Use 0.0 as fallback instead of 2000.0 to indicate missing data
             # 使用 0.0 作为回退值而不是 2000.0，以表示数据缺失
             mid_price = default_status.get("mid_price", 0.0)
@@ -246,7 +292,7 @@ class AlphaLoop:
             pnl = default_status.get("pnl", 0.0)
             default_strategy_type = default_instance.strategy_type
         else:
-            current_symbol = "ETH/USDT:USDT"
+            current_symbol = self._get_default_eth_symbol()
             # Use 0.0 as fallback instead of 2000.0 to indicate missing data
             # 使用 0.0 作为回退值而不是 2000.0，以表示数据缺失
             mid_price = 0.0

@@ -7,8 +7,8 @@ This document describes how to use multiple Cursor Chat sessions as independent 
 
 ## 📋 Agent Overview / Agent 概览
 
-MarketMakerDemo uses a **9-Agent system** organized into three layers: Management, Development, and Quality.
-MarketMakerDemo 使用 **9 个 Agent 系统**，分为三层：管理层、开发层和质量层。
+MarketMakerDemo uses a **10-Agent system** organized into four layers: Management, Development, Quality, and Operations.
+MarketMakerDemo 使用 **10 个 Agent 系统**，分为四层：管理层、开发层、质量层和运维层。
 
 ### Management Layer / 管理层
 
@@ -33,6 +33,12 @@ MarketMakerDemo 使用 **9 个 Agent 系统**，分为三层：管理层、开�
 |-------|------------|------------------------|---------------|
 | **[Agent QA](AGENT_5_DOCS_QA.md)** | Quality Assurance / 质量保证 | Integration tests, smoke tests, user docs, test review / 集成测试、冒烟测试、用户文档、测试审查 | `AGENT_5_DOCS_QA.md` |
 | **[Agent REVIEW](AGENT_REVIEW.md)** | Code Reviewer / 代码审查 | Code quality, best practices, security review / 代码质量、最佳实践、安全审查 | `AGENT_REVIEW.md` |
+
+### Operations Layer / 运维层
+
+| Agent | Role / 角色 | Responsibilities / 职责 | Documentation |
+|-------|------------|------------------------|---------------|
+| **[Agent DevOps](AGENT_DEVOPS.md)** | DevOps Engineer / DevOps 工程师 | CI/CD pipeline, environment management, infrastructure scripts, logging and monitoring / CI/CD 管道、环境管理、基础设施脚本、日志和监控 | `AGENT_DEVOPS.md` |
 
 ---
 
@@ -67,6 +73,7 @@ Replace `AGENT_XXX` with the specific Agent document name:
 - `AGENT_4_AI_AGENTS.md` - AI/LLM (or `AGENT_AI.md`)
 - `AGENT_5_DOCS_QA.md` - Quality Assurance (or `AGENT_QA.md`)
 - `AGENT_REVIEW.md` - Code Reviewer
+- `AGENT_DEVOPS.md` - DevOps Engineer
 
 ### Step 3: Start Working / 步骤 3：开始工作
 
@@ -93,7 +100,7 @@ Each Agent can work independently on their assigned modules.
 | 10 | `integration_passed` | Agent QA | `tests/integration/` reports |
 | 11 | `docs_updated` | Agent QA | `docs/user_guide/{module}/...` |
 | 12 | `progress_logged` | Agent PM | `status/roadmap.json` |
-| 13 | `ci_cd_passed` | Human | GitHub Actions results |
+| 13 | `ci_cd_passed` | Agent DevOps | GitHub Actions results |
 
 ### File Ownership / 文件所有权
 
@@ -112,6 +119,9 @@ Each Agent can work independently on their assigned modules.
 | `logs/reviews/` | Agent REVIEW |
 | `status/` | Agent PM |
 | `docs/agents/` | Agent PM |
+| `.github/workflows/` | Agent DevOps |
+| `.env.example` | Agent DevOps |
+| `docs/devops/` | Agent DevOps |
 
 ---
 
@@ -138,6 +148,9 @@ Only the specified Agent can modify these files:
 | `logs/reviews/` | Agent REVIEW |
 | `status/` | Agent PM |
 | `docs/agents/` | Agent PM |
+| `.github/workflows/` | Agent DevOps |
+| `.env.example` | Agent DevOps |
+| `docs/devops/` | Agent DevOps |
 
 ### 🟡 COORDINATED (Requires Coordination) / 需协调
 
@@ -149,6 +162,10 @@ Modify these files only after coordination:
 | `requirements.txt` | Request in `status/agent_requests.json` |
 | `pyproject.toml` | Request in `status/agent_requests.json` |
 | `.cursorrules` | Only Agent PM can modify |
+| `scripts/` (infrastructure-related) | Coordinate with Agent DevOps |
+| `logs/` (log management) | Coordinate with Agent DevOps |
+| `scripts/` (infrastructure-related) | Coordinate with Agent DevOps |
+| `logs/` (log management) | Coordinate with Agent DevOps |
 
 ### 🟢 SHARED-APPEND (Shared Append) / 共享追加
 
@@ -313,7 +330,7 @@ Record requests in:
 
 ## 📚 Related Documents / 相关文档
 
-- [Development Workflow](../development_workflow.md) - Complete 13-step pipeline
+- [Development Workflow](../development_workflow.md) - Complete 14-step pipeline
 - [Modules Overview](../modules_overview.md) - Module structure and responsibilities
 - [Development Protocol](../development_protocol.md) - Coding standards
 - [Project Manifest](../../project_manifest.json) - Project structure map
@@ -334,6 +351,7 @@ Record requests in:
 | Agent AI | 5, 6, 8 | `src/ai/` |
 | Agent QA | 5, 9, 10, 11 | `tests/`, `docs/user_guide/` |
 | Agent REVIEW | 7 | `logs/reviews/` |
+| Agent DevOps | 13 | `.github/workflows/`, `.env.example`, `docs/devops/` |
 
 ---
 

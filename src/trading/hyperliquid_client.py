@@ -1591,6 +1591,68 @@ class HyperliquidClient:
         
         return asset_index
 
+    def get_default_eth_symbol(self) -> str:
+        """
+        Get default ETH trading pair with highest volume from Hyperliquid.
+        Returns ETH perpetual (USDC-settled) if available, otherwise falls back to spot.
+        从 Hyperliquid 获取交易量最大的默认 ETH 交易对。
+        如果可用，返回 ETH 永续合约（USDC 结算），否则回退到现货。
+        
+        Returns:
+            Default ETH symbol in format "ETH/USDC:USDC" or "ETH/USDC:USDC" (spot)
+            默认 ETH 交易对，格式为 "ETH/USDC:USDC" 或 "ETH/USDC:USDC"（现货）
+        """
+        try:
+            meta_data = self._fetch_meta_data()
+            if not meta_data:
+                logger.warning(
+                    "Failed to fetch meta data for default ETH symbol. Using fallback. "
+                    "获取默认 ETH 交易对的 meta 数据失败。使用回退值。"
+                )
+                return "ETH/USDC:USDC"  # Fallback to perpetual format / 回退到永续合约格式
+            
+            # Check perpetual universe first (usually has highest volume) / 首先检查永续合约 universe（通常交易量最大）
+            universe = meta_data.get("universe", [])
+            for asset_info in universe:
+                if isinstance(asset_info, dict):
+                    coin_name = asset_info.get("name", "").upper()
+                    if coin_name == "ETH":
+                        # Perpetual contracts use USDC as settlement / 永续合约使用 USDC 作为结算货币
+                        logger.info(
+                            "Found ETH perpetual contract. Using ETH/USDC:USDC as default symbol. "
+                            "找到 ETH 永续合约。使用 ETH/USDC:USDC 作为默认交易对。"
+                        )
+                        return "ETH/USDC:USDC"
+            
+            # If not found in perpetual, check spot universe / 如果在永续合约中未找到，检查现货 universe
+            spot_meta = meta_data.get("spotMeta", {})
+            spot_universe = spot_meta.get("universe", []) if isinstance(spot_meta, dict) else []
+            for asset_info in spot_universe:
+                if isinstance(asset_info, dict):
+                    coin_name = asset_info.get("name", "").upper()
+                    if coin_name == "ETH":
+                        # Spot contracts also typically use USDC / 现货合约通常也使用 USDC
+                        logger.info(
+                            "Found ETH spot contract. Using ETH/USDC:USDC as default symbol. "
+                            "找到 ETH 现货合约。使用 ETH/USDC:USDC 作为默认交易对。"
+                        )
+                        return "ETH/USDC:USDC"
+            
+            # If ETH not found in either universe, log warning and use fallback / 如果在两个 universe 中都未找到 ETH，记录警告并使用回退值
+            logger.warning(
+                "ETH not found in Hyperliquid universe. Using fallback symbol ETH/USDC:USDC. "
+                "在 Hyperliquid universe 中未找到 ETH。使用回退交易对 ETH/USDC:USDC。"
+            )
+            return "ETH/USDC:USDC"
+            
+        except Exception as e:
+            logger.error(
+                f"Error getting default ETH symbol: {e}. Using fallback. "
+                f"获取默认 ETH 交易对时出错: {e}。使用回退值。",
+                exc_info=True
+            )
+            return "ETH/USDC:USDC"  # Fallback / 回退值
+
     def _initialize_symbol(self):
         """Initialize symbol-specific data / 初始化交易对特定数据"""
         # Fetch meta data to build asset index mapping / 获取 meta 数据以构建资产索引映射

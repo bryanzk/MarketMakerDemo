@@ -184,3 +184,8 @@ class TestDynamicSpreadSmoke:
         assert status["volatility_level"] == "medium"
 
 
+
+
+
+
+

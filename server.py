@@ -976,8 +976,24 @@ async def get_status(request: Request, exchange: Optional[str] = Query(None)):
             if default_instance and hasattr(default_instance, "symbol"):
                 status["symbol"] = default_instance.symbol
             else:
-                # Fallback to a default symbol / 回退到默认 symbol
-                status["symbol"] = "ETH/USDT:USDT"
+                # Try to get default ETH symbol from Hyperliquid exchange / 尝试从 Hyperliquid 交易所获取默认 ETH 交易对
+                try:
+                    hyperliquid_exchange = get_exchange_by_name("hyperliquid")
+                    if hyperliquid_exchange and hasattr(hyperliquid_exchange, "get_default_eth_symbol"):
+                        status["symbol"] = hyperliquid_exchange.get_default_eth_symbol()
+                        logger.info(
+                            f"Using default ETH symbol from Hyperliquid: {status['symbol']}. "
+                            f"使用 Hyperliquid 的默认 ETH 交易对: {status['symbol']}。"
+                        )
+                    else:
+                        # Fallback to default symbol / 回退到默认 symbol
+                        status["symbol"] = "ETH/USDC:USDC"
+                except Exception as e:
+                    logger.warning(
+                        f"Failed to get default ETH symbol from Hyperliquid: {e}. Using fallback. "
+                        f"从 Hyperliquid 获取默认 ETH 交易对失败: {e}。使用回退值。"
+                    )
+                    status["symbol"] = "ETH/USDC:USDC"
 
         # Preserve error field from get_status if present (for backward compatibility) / 如果存在，保留 get_status 中的 error 字段（向后兼容）
         if "error" in status and status["error"] is not None:
@@ -1135,7 +1151,24 @@ async def get_status(request: Request, exchange: Optional[str] = Query(None)):
 
         # Ensure required fields are present for backward compatibility / 确保必需字段存在以保持向后兼容
         if "symbol" not in status:
-            status["symbol"] = "ETH/USDT:USDT"
+            # Try to get default ETH symbol from Hyperliquid exchange / 尝试从 Hyperliquid 交易所获取默认 ETH 交易对
+            try:
+                hyperliquid_exchange = get_exchange_by_name("hyperliquid")
+                if hyperliquid_exchange and hasattr(hyperliquid_exchange, "get_default_eth_symbol"):
+                    status["symbol"] = hyperliquid_exchange.get_default_eth_symbol()
+                    logger.info(
+                        f"Using default ETH symbol from Hyperliquid (fallback): {status['symbol']}. "
+                        f"使用 Hyperliquid 的默认 ETH 交易对（回退）: {status['symbol']}。"
+                    )
+                else:
+                    # Fallback to default symbol / 回退到默认 symbol
+                    status["symbol"] = "ETH/USDC:USDC"
+            except Exception as e:
+                logger.warning(
+                    f"Failed to get default ETH symbol from Hyperliquid (fallback): {e}. Using fallback. "
+                    f"从 Hyperliquid 获取默认 ETH 交易对失败（回退）: {e}。使用回退值。"
+                )
+                status["symbol"] = "ETH/USDC:USDC"
         if "active" not in status:
             status["active"] = is_running
 

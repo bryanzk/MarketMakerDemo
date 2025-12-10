@@ -8,7 +8,6 @@ Owner: Agent QA
 """
 
 import pytest
-from unittest.mock import patch
 from fastapi.testclient import TestClient
 
 from server import app
@@ -75,11 +74,9 @@ class TestErrorEnvelopeStructure:
 
     def test_error_response_has_trace_id_in_body(self):
         """Test that error responses include trace_id in body / 测试错误响应在响应体中包含 trace_id"""
-        # Try to trigger an error by accessing an invalid endpoint
-        # 尝试通过访问无效端点来触发错误
-        # Use /api/nonexistent instead of /api/hyperliquid/status to avoid slow network calls
-        # 使用 /api/nonexistent 而不是 /api/hyperliquid/status 以避免慢速网络调用
-        response = client.get("/api/nonexistent")
+        # Try to trigger an error
+        # 尝试触发错误
+        response = client.get("/api/hyperliquid/status")
         
         if response.headers.get("content-type", "").startswith("application/json"):
             data = response.json()
@@ -135,13 +132,8 @@ class TestErrorEnvelopeStructure:
                     isinstance(data["error_type"], str)
                 ), "Error type should be a string / 错误类型应为字符串"
 
-    @patch("server.get_exchange_by_name")
-    def test_hyperliquid_status_endpoint_format(self, mock_get_exchange):
+    def test_hyperliquid_status_endpoint_format(self):
         """Test /api/hyperliquid/status endpoint response format / 测试 /api/hyperliquid/status 端点响应格式"""
-        # Mock exchange to return None to trigger error path (faster than real network calls)
-        # Mock 交易所返回 None 以触发错误路径（比真实网络调用更快）
-        mock_get_exchange.return_value = None
-        
         response = client.get("/api/hyperliquid/status")
         
         assert response.status_code in [

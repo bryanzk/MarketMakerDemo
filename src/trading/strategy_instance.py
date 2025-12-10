@@ -14,8 +14,6 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 from src.shared.config import SYMBOL
 from src.shared.logger import setup_logger
 from src.trading.exchange import BinanceClient
-from src.trading.exchange_client import ExchangeClient
-from src.trading.order_fill_tracker import OrderFillTracker
 from src.trading.order_manager import OrderManager
 from src.trading.strategies.fixed_spread import FixedSpreadStrategy
 from src.trading.strategies.funding_rate import FundingRateStrategy
@@ -37,7 +35,7 @@ class StrategyInstance:
         strategy_id: str,
         strategy_type: str = "fixed_spread",
         symbol: str = None,
-        exchange: Optional[ExchangeClient] = None,
+        exchange: Optional[Any] = None,
     ):
         """
         Initialize a strategy instance with its own exchange connection.
@@ -46,8 +44,7 @@ class StrategyInstance:
             strategy_id: Unique identifier for this strategy instance
             strategy_type: "fixed_spread" or "funding_rate"
             symbol: Trading symbol for this instance (defaults to SYMBOL from config)
-            exchange: Optional exchange client instance implementing ExchangeClient Protocol.
-                     If not provided and strategy_id is not "hyperliquid",
+            exchange: Optional exchange client instance. If not provided and strategy_id is not "hyperliquid",
                      will attempt to create a BinanceClient. For "hyperliquid" strategy_id, exchange must be provided.
         """
         self.strategy_id = strategy_id
@@ -66,9 +63,7 @@ class StrategyInstance:
         # Independent exchange connection for this strategy instance
         # If exchange is provided, use it; otherwise, only create BinanceClient for non-hyperliquid instances
         # 如果提供了 exchange，使用它；否则，仅对非 hyperliquid 实例创建 BinanceClient
-        # Type: ExchangeClient Protocol (BinanceClient, HyperliquidClient, etc.)
-        # 类型：ExchangeClient Protocol（BinanceClient、HyperliquidClient 等）
-        self.exchange: Optional[ExchangeClient] = None
+        self.exchange: Optional[Any] = None
         self.use_real_exchange = False
 
         if exchange is not None:
@@ -118,9 +113,6 @@ class StrategyInstance:
         self.error_history: deque = deque(maxlen=200)
         # Track order IDs for this strategy instance
         self.tracked_order_ids: Set[str] = set()
-        # Order fill tracking
-        # 订单填充跟踪
-        self.fill_tracker = OrderFillTracker(max_history=500)
         # Running state for this strategy instance
         self.running = False
 
@@ -165,57 +157,8 @@ class StrategyInstance:
         else:
             return self.strategy.calculate_target_orders(market_data)
 
-    def _requires_both_side_orders(self, target_orders: List[Dict[str, Any]]) -> bool:
-        """
-        Determine if this strategy requires both-side orders (buy and sell).
-        This method is extensible for future strategies.
-        判断此策略是否需要双边订单（买入和卖出）。
-        此方法可扩展以支持未来的策略。
-
-        Args:
-            target_orders: List of target orders from strategy
-
-        Returns:
-            True if strategy requires both buy and sell orders, False otherwise
-        """
-        # Check if target_orders contains both buy and sell orders
-        # 检查 target_orders 是否包含买入和卖出订单
-        has_buy = any(o.get("side") == "buy" for o in target_orders)
-        has_sell = any(o.get("side") == "sell" for o in target_orders)
-        
-        # Only enforce both-side if:
-        # 1. Strategy type is market making (fixed_spread, funding_rate) AND
-        # 2. Target orders actually contain both sides
-        # 只有当以下条件都满足时才强制双边：
-        # 1. 策略类型是做市策略（fixed_spread, funding_rate）且
-        # 2. 目标订单实际包含双边
-        if self.strategy_type in ["fixed_spread", "funding_rate"]:
-            # Market making strategies should return both-side orders
-            # If target_orders has both sides, enforce both-side placement
-            # 做市策略应该返回双边订单
-            # 如果 target_orders 包含双边，强制双边下单
-            if has_buy and has_sell:
-                return True
-            # If strategy type is market making but target_orders is single-sided,
-            # it might be due to risk limits or other constraints - don't enforce
-            # 如果策略类型是做市但 target_orders 是单边，
-            # 可能是由于风险限制或其他约束 - 不强制
-            return False
-        
-        # For other strategies, check if target_orders contains both sides
-        # 对于其他策略，检查 target_orders 是否包含双边
-        if has_buy and has_sell:
-            return True
-        
-        # Future strategies can override this method or add their type here
-        # 未来的策略可以重写此方法或在此处添加其类型
-        return False
-
     def sync_orders(
-        self, 
-        current_orders: List[Dict[str, Any]], 
-        target_orders: List[Dict[str, Any]],
-        mid_price: float = None
+        self, current_orders: List[Dict[str, Any]], target_orders: List[Dict[str, Any]]
     ) -> Tuple[List[str], List[Dict[str, Any]]]:
         """
         Sync orders for this strategy instance.
@@ -223,7 +166,6 @@ class StrategyInstance:
         Args:
             current_orders: Current open orders for this strategy
             target_orders: Target orders to place
-            mid_price: Current mid price for adaptive threshold (optional)
 
         Returns:
             Tuple of (order_ids_to_cancel, orders_to_place)
@@ -232,17 +174,7 @@ class StrategyInstance:
         filtered_orders = [
             o for o in current_orders if o.get("id") in self.tracked_order_ids
         ]
-        # Use mid_price from latest market data if available / 如果可用，使用最新市场数据的中间价
-        if mid_price is None and self.latest_market_data:
-            mid_price = self.latest_market_data.get("mid_price")
-        
-        # Determine if this strategy requires both-side orders
-        # 判断此策略是否需要双边订单
-        enforce_both_side = self._requires_both_side_orders(target_orders)
-        
-        return self.order_manager.sync_orders(
-            filtered_orders, target_orders, mid_price, enforce_both_side=enforce_both_side
-        )
+        return self.order_manager.sync_orders(filtered_orders, target_orders)
 
     def add_tracked_order(self, order_id: str) -> None:
         """Add an order ID to the tracked set for this strategy."""
@@ -267,15 +199,6 @@ class StrategyInstance:
             return False
 
         try:
-            # Ensure exchange symbol matches instance symbol before fetching data
-            # 在获取数据前确保交易所交易对与实例交易对匹配
-            if hasattr(self.exchange, 'set_symbol') and hasattr(self.exchange, 'symbol'):
-                if self.symbol and self.exchange.symbol != self.symbol:
-                    logger.info(
-                        f"Strategy '{self.strategy_id}': Syncing exchange symbol to instance symbol: {self.symbol}"
-                    )
-                    self.exchange.set_symbol(self.symbol)
-            
             # Fetch current market data
             market_data = self.exchange.fetch_market_data()
             if not market_data or not market_data.get("mid_price"):
@@ -293,38 +216,6 @@ class StrategyInstance:
                 logger.warning(
                     f"Strategy '{self.strategy_id}': Market data is stale ({data_age_seconds:.1f}s old)"
                 )
-
-            # Calculate volatility if exchange supports it / 如果交易所支持，计算波动率
-            try:
-                from src.trading.volatility import calculate_volatility_1h_24h, VolatilityCalculator
-                
-                # Use a shared calculator instance for caching / 使用共享计算器实例进行缓存
-                if not hasattr(self, "_volatility_calculator"):
-                    self._volatility_calculator = VolatilityCalculator(cache_ttl=300)  # 5 min cache
-                
-                volatility_1h, volatility_24h = calculate_volatility_1h_24h(
-                    self.exchange,
-                    self.symbol,
-                    calculator=self._volatility_calculator
-                )
-                
-                # Add volatility to market_data / 将波动率添加到 market_data
-                market_data["volatility_1h"] = volatility_1h
-                market_data["volatility_24h"] = volatility_24h
-                
-                # Calculate market spread if best_bid and best_ask are available / 如果 best_bid 和 best_ask 可用，计算市场价差
-                best_bid = market_data.get("best_bid")
-                best_ask = market_data.get("best_ask")
-                if best_bid and best_ask and best_bid > 0:
-                    market_spread = (best_ask - best_bid) / best_bid  # Market spread as percentage
-                    market_data["market_spread"] = market_spread
-            except Exception as e:
-                logger.warning(
-                    f"Strategy '{self.strategy_id}': Failed to calculate volatility for {self.symbol}: {e}. "
-                    f"Continuing without volatility data. "
-                    f"策略 '{self.strategy_id}'：计算 {self.symbol} 的波动率失败: {e}。继续但不使用波动率数据。"
-                )
-                # Continue without volatility data / 继续但不使用波动率数据
 
             # Fetch funding rate
             funding_rate = self.exchange.fetch_funding_rate()
@@ -370,111 +261,28 @@ class StrategyInstance:
                 return False
         return False
 
-    def update_fill_tracking(self, exchange_orders: List[Dict[str, Any]]) -> None:
-        """
-        Update order fill tracking based on exchange orders.
-        基于交易所订单更新订单填充跟踪。
-        
-        Args:
-            exchange_orders: List of orders from exchange.fetch_open_orders()
-        """
-        if not self.exchange:
-            return
-        
-        try:
-            # Update order status from exchange
-            # 从交易所更新订单状态
-            self.fill_tracker.update_order_status_from_exchange(exchange_orders)
-        except Exception as e:
-            logger.warning(
-                f"Strategy '{self.strategy_id}': Error updating fill tracking: {e}. "
-                f"策略 '{self.strategy_id}'：更新填充跟踪时出错：{e}。"
-            )
-
-    def get_fill_statistics(self) -> Dict[str, Any]:
-        """
-        Get order fill rate statistics.
-        获取订单成交率统计。
-        
-        Returns:
-            Dictionary with fill rate metrics
-        """
-        return self.fill_tracker.get_statistics()
-
     def get_status(self) -> Dict[str, Any]:
         """Get status information for this strategy instance."""
         # Use cached data for status
-        mid_price = None
+        mid_price = 2000.0
         position = 0.0
         pnl = 0.0
         funding_rate = 0.0
 
         if self.use_real_exchange and self.exchange:
-            # Try to get mid_price from cached data first
-            # 首先尝试从缓存数据获取 mid_price
             if self.latest_market_data and self.latest_market_data.get("mid_price"):
                 mid_price = self.latest_market_data["mid_price"]
-            else:
-                # If cache is empty or missing mid_price, try to fetch fresh data
-                # 如果缓存为空或缺少 mid_price，尝试获取新数据
-                try:
-                    market_data = self.exchange.fetch_market_data()
-                    if market_data and market_data.get("mid_price"):
-                        mid_price = market_data["mid_price"]
-                        # Update cache for next time
-                        # 更新缓存以供下次使用
-                        self.latest_market_data = market_data
-                except Exception as e:
-                    logger.warning(
-                        f"Strategy '{self.strategy_id}': Failed to fetch market data for status: {e}. "
-                        f"策略 '{self.strategy_id}'：获取状态的市场数据失败：{e}。"
-                    )
-            
-            # Fallback to 0.0 if still no mid_price (instead of 2000.0)
-            # 如果仍然没有 mid_price，回退到 0.0（而不是 2000.0）
-            if mid_price is None:
-                mid_price = 0.0
-                logger.warning(
-                    f"Strategy '{self.strategy_id}': No mid_price available, using 0.0. "
-                    f"策略 '{self.strategy_id}'：没有可用的 mid_price，使用 0.0。"
-                )
-            
             funding_rate = self.latest_funding_rate
             if self.latest_account_data:
                 position = self.latest_account_data.get("position_amt", 0.0)
                 if (
                     position != 0
                     and self.latest_account_data.get("entry_price", 0) != 0
-                    and mid_price > 0
                 ):
                     pnl = (
                         mid_price - self.latest_account_data["entry_price"]
                     ) * position
 
-        # Get volatility from latest market data / 从最新市场数据获取波动率
-        volatility_1h = None
-        volatility_24h = None
-        volatility_level = None  # "low", "medium", "high", "very_high"
-        
-        if self.latest_market_data:
-            volatility_1h = self.latest_market_data.get("volatility_1h")
-            volatility_24h = self.latest_market_data.get("volatility_24h")
-            
-            # Determine volatility level for display / 确定波动率级别用于显示
-            volatility = volatility_1h if volatility_1h is not None else volatility_24h
-            if volatility is not None:
-                if volatility < 0.02:
-                    volatility_level = "low"
-                elif volatility < 0.05:
-                    volatility_level = "medium"
-                elif volatility < 0.10:
-                    volatility_level = "high"
-                else:
-                    volatility_level = "very_high"
-        
-        # Get fill rate statistics / 获取成交率统计
-        fill_stats = self.fill_tracker.get_statistics()
-        
         return {
             "strategy_id": self.strategy_id,
             "strategy_type": self.strategy_type,
@@ -487,23 +295,8 @@ class StrategyInstance:
             "spread": getattr(self.strategy, "spread", None),
             "quantity": getattr(self.strategy, "quantity", None),
             "leverage": getattr(self.strategy, "leverage", None),
-            "volatility_1h": volatility_1h,
-            "volatility_24h": volatility_24h,
-            "volatility_level": volatility_level,  # For frontend display / 用于前端显示
             "alert": self.alert,
             "active_orders": self.active_orders,
             "order_count": len(self.active_orders),
             "use_real_exchange": self.use_real_exchange,
-            # Fill rate statistics / 成交率统计
-            "fill_rate": fill_stats.get("fill_rate", 0.0),
-            "fill_rate_pct": fill_stats.get("fill_rate_pct", 0.0),
-            "recent_fill_rate": fill_stats.get("recent_fill_rate", 0.0),
-            "recent_fill_rate_pct": fill_stats.get("recent_fill_rate_pct", 0.0),
-            "cancellation_rate": fill_stats.get("cancellation_rate", 0.0),
-            "cancellation_rate_pct": fill_stats.get("cancellation_rate_pct", 0.0),
-            "total_orders_placed": fill_stats.get("total_orders_placed", 0),
-            "total_orders_filled": fill_stats.get("total_orders_filled", 0),
-            "total_orders_cancelled": fill_stats.get("total_orders_cancelled", 0),
-            "average_fill_age_seconds": fill_stats.get("average_fill_age_seconds", 0.0),
-            "average_cancel_age_seconds": fill_stats.get("average_cancel_age_seconds", 0.0),
         }

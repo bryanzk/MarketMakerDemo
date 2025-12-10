@@ -44,10 +44,6 @@ from src.portfolio.manager import PortfolioManager, StrategyStatus
 from src.portfolio.risk import RiskIndicators
 from src.trading.strategies.funding_rate import FundingRateStrategy
 from src.trading.strategies.fixed_spread import FixedSpreadStrategy
-from src.trading.performance import (
-    calculate_strategy_performance,
-    calculate_trade_performance,
-)
 
 # Import evaluation modules
 from src.ai.evaluation.evaluator import MultiLLMEvaluator
@@ -69,92 +65,65 @@ from src.shared.exchange_metrics import metrics_collector, ExchangeName
 
 def _result_to_dict(result):
     """Normalize EvaluationResult to JSON serializable dict / 规范化结果为 JSON 可序列化字典"""
-    try:
-        score = result.score if result.score is not None else 0.0
-        return {
-            "provider_name": result.provider_name,
-            "rank": result.rank if result.rank is not None else 0,
-            "score": float(score),
-            "latency_ms": result.latency_ms if result.latency_ms is not None else 0.0,
-            "proposal": {
-                "recommended_strategy": result.proposal.recommended_strategy,
-                "spread": result.proposal.spread,
-                "skew_factor": result.proposal.skew_factor,
-                "quantity": result.proposal.quantity,
-                "leverage": result.proposal.leverage,
-                "confidence": result.proposal.confidence,
-                "risk_level": result.proposal.risk_level,
-                "reasoning": result.proposal.reasoning,
-                "parse_success": result.proposal.parse_success,
-                "parse_error": result.proposal.parse_error or "",
-            },
-            "simulation": {
-                "realized_pnl": result.simulation.realized_pnl,
-                "total_trades": result.simulation.total_trades,
-                "win_rate": result.simulation.win_rate,
-                "sharpe_ratio": result.simulation.sharpe_ratio,
-                "simulation_steps": result.simulation.simulation_steps,
-            },
-        }
-    except RecursionError:
-        # Handle circular references / 处理循环引用
-        logger.error("RecursionError in _result_to_dict, returning minimal dict")
-        return {
-            "provider_name": getattr(result, "provider_name", "unknown"),
-            "rank": 0,
-            "score": 0.0,
-            "latency_ms": 0.0,
-            "proposal": {},
-            "simulation": {},
-        }
+    score = result.score if result.score is not None else 0.0
+    return {
+        "provider_name": result.provider_name,
+        "rank": result.rank if result.rank is not None else 0,
+        "score": float(score),
+        "latency_ms": result.latency_ms if result.latency_ms is not None else 0.0,
+        "proposal": {
+            "recommended_strategy": result.proposal.recommended_strategy,
+            "spread": result.proposal.spread,
+            "skew_factor": result.proposal.skew_factor,
+            "quantity": result.proposal.quantity,
+            "leverage": result.proposal.leverage,
+            "confidence": result.proposal.confidence,
+            "risk_level": result.proposal.risk_level,
+            "reasoning": result.proposal.reasoning,
+            "parse_success": result.proposal.parse_success,
+            "parse_error": result.proposal.parse_error or "",
+        },
+        "simulation": {
+            "realized_pnl": result.simulation.realized_pnl,
+            "total_trades": result.simulation.total_trades,
+            "win_rate": result.simulation.win_rate,
+            "sharpe_ratio": result.simulation.sharpe_ratio,
+            "simulation_steps": result.simulation.simulation_steps,
+        },
+    }
 
 
 def _aggregated_to_dict(agg):
     """Normalize AggregatedResult to dict / 规范化汇总结果为字典"""
-    try:
-        return {
-            "strategy_consensus": {
-                "consensus_strategy": agg.strategy_consensus.consensus_strategy,
-                "consensus_level": agg.strategy_consensus.consensus_level,
-                "consensus_ratio": agg.strategy_consensus.consensus_ratio,
-                "consensus_count": agg.strategy_consensus.consensus_count,
-                "total_models": agg.strategy_consensus.total_models,
-                "strategy_votes": agg.strategy_consensus.strategy_votes,
-                "strategy_percentages": agg.strategy_consensus.strategy_percentages,
-            },
-            "consensus_confidence": agg.consensus_confidence,
-            "consensus_proposal": {
-                "recommended_strategy": agg.consensus_proposal.recommended_strategy,
-                "spread": agg.consensus_proposal.spread,
-                "skew_factor": agg.consensus_proposal.skew_factor,
-                "quantity": agg.consensus_proposal.quantity,
-                "leverage": agg.consensus_proposal.leverage,
-                "confidence": agg.consensus_proposal.confidence,
-                "reasoning": agg.consensus_proposal.reasoning,
-            }
-            if agg.consensus_proposal
-            else None,
-            "avg_pnl": agg.avg_pnl,
-            "avg_sharpe": agg.avg_sharpe,
-            "avg_win_rate": agg.avg_win_rate,
-            "avg_latency_ms": agg.avg_latency_ms,
-            "successful_evaluations": agg.successful_evaluations,
-            "failed_evaluations": agg.failed_evaluations,
+    return {
+        "strategy_consensus": {
+            "consensus_strategy": agg.strategy_consensus.consensus_strategy,
+            "consensus_level": agg.strategy_consensus.consensus_level,
+            "consensus_ratio": agg.strategy_consensus.consensus_ratio,
+            "consensus_count": agg.strategy_consensus.consensus_count,
+            "total_models": agg.strategy_consensus.total_models,
+            "strategy_votes": agg.strategy_consensus.strategy_votes,
+            "strategy_percentages": agg.strategy_consensus.strategy_percentages,
+        },
+        "consensus_confidence": agg.consensus_confidence,
+        "consensus_proposal": {
+            "recommended_strategy": agg.consensus_proposal.recommended_strategy,
+            "spread": agg.consensus_proposal.spread,
+            "skew_factor": agg.consensus_proposal.skew_factor,
+            "quantity": agg.consensus_proposal.quantity,
+            "leverage": agg.consensus_proposal.leverage,
+            "confidence": agg.consensus_proposal.confidence,
+            "reasoning": agg.consensus_proposal.reasoning,
         }
-    except RecursionError:
-        # Handle circular references / 处理循环引用
-        logger.error("RecursionError in _aggregated_to_dict, returning minimal dict")
-        return {
-            "strategy_consensus": {},
-            "consensus_confidence": 0.0,
-            "consensus_proposal": None,
-            "avg_pnl": 0.0,
-            "avg_sharpe": 0.0,
-            "avg_win_rate": 0.0,
-            "avg_latency_ms": 0.0,
-            "successful_evaluations": 0,
-            "failed_evaluations": 0,
-        }
+        if agg.consensus_proposal
+        else None,
+        "avg_pnl": agg.avg_pnl,
+        "avg_sharpe": agg.avg_sharpe,
+        "avg_win_rate": agg.avg_win_rate,
+        "avg_latency_ms": agg.avg_latency_ms,
+        "successful_evaluations": agg.successful_evaluations,
+        "failed_evaluations": agg.failed_evaluations,
+    }
 
 
 async def _prepare_market_context_for_evaluation(symbol: str, exchange_name: str, trace_id: str):
@@ -171,21 +140,15 @@ async def _prepare_market_context_for_evaluation(symbol: str, exchange_name: str
         return None, connection_error, status_code
 
     try:
-        # For Hyperliquid, fetch the requested symbol without mutating the live client state
-        # 对于 Hyperliquid，在不修改实时客户端状态的情况下获取目标交易对
-        if exchange_name == "hyperliquid" and hasattr(exchange, "fetch_market_data"):
-            market_data = exchange.fetch_market_data(symbol=symbol)
-            account_data = exchange.fetch_account_data()
-        else:
-            original_symbol = getattr(exchange, "symbol", None)
-            if hasattr(exchange, "set_symbol"):
-                exchange.set_symbol(symbol)
+        original_symbol = getattr(exchange, "symbol", None)
+        if hasattr(exchange, "set_symbol"):
+            exchange.set_symbol(symbol)
 
-            market_data = exchange.fetch_market_data()
-            account_data = exchange.fetch_account_data()
+        market_data = exchange.fetch_market_data()
+        account_data = exchange.fetch_account_data()
 
-            if original_symbol and hasattr(exchange, "set_symbol"):
-                exchange.set_symbol(original_symbol)
+        if original_symbol and hasattr(exchange, "set_symbol"):
+            exchange.set_symbol(original_symbol)
     except Exception as e:
         error_msg = f"Failed to fetch market data: {str(e)} / 获取市场数据失败：{str(e)}"
         logger.error(
@@ -397,7 +360,7 @@ def get_exchange_by_name(exchange_name: str):
                             if isinstance(instance.exchange, HyperliquidClient):
                                 if (
                                     hasattr(instance.exchange, "is_connected")
-                                    and getattr(instance.exchange, "is_connected", False)
+                                    and instance.exchange.is_connected
                                 ):
                                     # Cache the connected client for reuse
                                     _hyperliquid_client_cache = instance.exchange
@@ -616,7 +579,7 @@ def _check_exchange_connection(
         # Check if exchange is HyperliquidClient instance or has is_connected attribute
         # 检查 exchange 是否是 HyperliquidClient 实例或具有 is_connected 属性
         if isinstance(exchange, HyperliquidClient):
-            if not getattr(exchange, "is_connected", False):
+            if not exchange.is_connected:
                 error_msg = (
                     "Hyperliquid exchange not connected. "
                     "Please connect to Hyperliquid first. / "
@@ -629,7 +592,7 @@ def _check_exchange_connection(
         elif hasattr(exchange, "is_connected"):
             # For mock objects in tests, check is_connected attribute
             # 对于测试中的 mock 对象，检查 is_connected 属性
-            if not getattr(exchange, "is_connected", False):
+            if not exchange.is_connected:
                 error_msg = (
                     "Hyperliquid exchange not connected. "
                     "Please connect to Hyperliquid first. / "
@@ -914,14 +877,6 @@ async def hyperliquid_trade_page(request: Request):
     """Render dedicated Hyperliquid Trading page / 渲染专用 Hyperliquid 交易页面"""
     return templates.TemplateResponse(request, "HyperliquidTrade.html")
 
-@app.get("/hyperliquid-trade-http", response_class=HTMLResponse)
-async def hyperliquid_trade_http(request: Request):
-    """
-    Hyperliquid trading page using HTTP evaluation (no WebSocket).
-    Hyperliquid 交易页面，使用 HTTP 评估（无 WebSocket）。
-    """
-    return templates.TemplateResponse(request, "HyperliquidTradeHTTP.html")
-
 
 @app.get("/api/debug/balance")
 async def debug_balance():
@@ -976,24 +931,8 @@ async def get_status(request: Request, exchange: Optional[str] = Query(None)):
             if default_instance and hasattr(default_instance, "symbol"):
                 status["symbol"] = default_instance.symbol
             else:
-                # Try to get default ETH symbol from Hyperliquid exchange / 尝试从 Hyperliquid 交易所获取默认 ETH 交易对
-                try:
-                    hyperliquid_exchange = get_exchange_by_name("hyperliquid")
-                    if hyperliquid_exchange and hasattr(hyperliquid_exchange, "get_default_eth_symbol"):
-                        status["symbol"] = hyperliquid_exchange.get_default_eth_symbol()
-                        logger.info(
-                            f"Using default ETH symbol from Hyperliquid: {status['symbol']}. "
-                            f"使用 Hyperliquid 的默认 ETH 交易对: {status['symbol']}。"
-                        )
-                    else:
-                        # Fallback to default symbol / 回退到默认 symbol
-                        status["symbol"] = "ETH/USDC:USDC"
-                except Exception as e:
-                    logger.warning(
-                        f"Failed to get default ETH symbol from Hyperliquid: {e}. Using fallback. "
-                        f"从 Hyperliquid 获取默认 ETH 交易对失败: {e}。使用回退值。"
-                    )
-                    status["symbol"] = "ETH/USDC:USDC"
+                # Fallback to a default symbol / 回退到默认 symbol
+                status["symbol"] = "ETH/USDT:USDT"
 
         # Preserve error field from get_status if present (for backward compatibility) / 如果存在，保留 get_status 中的 error 字段（向后兼容）
         if "error" in status and status["error"] is not None:
@@ -1151,24 +1090,7 @@ async def get_status(request: Request, exchange: Optional[str] = Query(None)):
 
         # Ensure required fields are present for backward compatibility / 确保必需字段存在以保持向后兼容
         if "symbol" not in status:
-            # Try to get default ETH symbol from Hyperliquid exchange / 尝试从 Hyperliquid 交易所获取默认 ETH 交易对
-            try:
-                hyperliquid_exchange = get_exchange_by_name("hyperliquid")
-                if hyperliquid_exchange and hasattr(hyperliquid_exchange, "get_default_eth_symbol"):
-                    status["symbol"] = hyperliquid_exchange.get_default_eth_symbol()
-                    logger.info(
-                        f"Using default ETH symbol from Hyperliquid (fallback): {status['symbol']}. "
-                        f"使用 Hyperliquid 的默认 ETH 交易对（回退）: {status['symbol']}。"
-                    )
-                else:
-                    # Fallback to default symbol / 回退到默认 symbol
-                    status["symbol"] = "ETH/USDC:USDC"
-            except Exception as e:
-                logger.warning(
-                    f"Failed to get default ETH symbol from Hyperliquid (fallback): {e}. Using fallback. "
-                    f"从 Hyperliquid 获取默认 ETH 交易对失败（回退）: {e}。使用回退值。"
-                )
-                status["symbol"] = "ETH/USDC:USDC"
+            status["symbol"] = "ETH/USDT:USDT"
         if "active" not in status:
             status["active"] = is_running
 
@@ -1217,7 +1139,7 @@ async def cancel_hyperliquid_order(order_id: str = Body(..., embed=True)):
     """
     try:
         exchange = get_exchange_by_name("hyperliquid")
-        if not exchange or not getattr(exchange, "is_connected", False):
+        if not exchange or not exchange.is_connected:
             return {
                 "error": "Hyperliquid exchange not connected / Hyperliquid 交易所未连接"
             }
@@ -1244,7 +1166,7 @@ async def update_hyperliquid_config(config: ConfigUpdate):
         from src.trading.hyperliquid_client import HyperliquidClient
 
         exchange = get_exchange_by_name("hyperliquid")
-        if not exchange or not getattr(exchange, "is_connected", False):
+        if not exchange or not exchange.is_connected:
             return {
                 "error": "Hyperliquid exchange not connected / Hyperliquid 交易所未连接"
             }
@@ -1302,7 +1224,7 @@ async def update_hyperliquid_leverage(leverage: int = Body(..., embed=True)):
     """
     try:
         exchange = get_exchange_by_name("hyperliquid")
-        if not exchange or not getattr(exchange, "is_connected", False):
+        if not exchange or not exchange.is_connected:
             return {
                 "error": "Hyperliquid exchange not connected / Hyperliquid 交易所未连接"
             }
@@ -1331,6 +1253,76 @@ async def update_hyperliquid_leverage(leverage: int = Body(..., embed=True)):
             "error": f"Failed to update leverage: {str(e)} / 更新杠杆失败：{str(e)}"
         }
 
+
+@app.post("/api/hyperliquid/pair")
+async def update_hyperliquid_pair(pair: PairUpdate):
+    """
+    Update Hyperliquid trading pair / 更新 Hyperliquid 交易对
+
+    Note: This endpoint allows updating the symbol even if Hyperliquid is not connected.
+    The symbol will be updated when connection is established.
+    注意：即使 Hyperliquid 未连接，此端点也允许更新交易对。连接建立时将更新交易对。
+    """
+    try:
+        from src.trading.hyperliquid_client import HyperliquidClient
+
+        exchange = get_exchange_by_name("hyperliquid")
+
+        # Update strategy instance symbol first, then update exchange if connected
+        # 首先更新策略实例交易对，然后如果已连接则更新交易所
+        hyperliquid_instance = None
+        for instance_id, instance in bot_engine.strategy_instances.items():
+            if isinstance(instance.exchange, HyperliquidClient):
+                hyperliquid_instance = instance
+                # Always update instance symbol first
+                # 始终首先更新实例交易对
+                instance.symbol = pair.symbol
+                break
+        
+        # If exchange is connected, update it immediately
+        # 如果交易所已连接，立即更新
+        if exchange and exchange.is_connected:
+            success = exchange.set_symbol(pair.symbol)
+            if success:
+                # Ensure instance symbol is synced (already updated above, but refresh data)
+                # 确保实例交易对已同步（上面已更新，但刷新数据）
+                if hyperliquid_instance:
+                    hyperliquid_instance.refresh_data()
+                    logger.info(
+                        f"✅ Updated Hyperliquid symbol to {pair.symbol} / "
+                        f"✅ 已更新 Hyperliquid 交易对到 {pair.symbol}"
+                    )
+
+                return {"status": "updated", "symbol": pair.symbol}
+            else:
+                return {
+                    "status": "error",
+                    "message": f"Failed to update to symbol {pair.symbol} / 更新到交易对 {pair.symbol} 失败",
+                }
+        else:
+            # Exchange not connected, but we still allow symbol update for UI
+            # Store the symbol preference for when connection is established
+            # 交易所未连接，但我们仍然允许更新交易对以用于 UI
+            # 存储交易对偏好，以便连接建立时使用
+            if hyperliquid_instance:
+                logger.info(
+                    f"✅ Updated Hyperliquid instance symbol to {pair.symbol} (exchange not connected) / "
+                    f"✅ 已更新 Hyperliquid 实例交易对到 {pair.symbol}（交易所未连接）"
+                )
+
+            # Return success with a warning that connection is needed for actual trading
+            # 返回成功，但警告需要连接才能进行实际交易
+            return {
+                "status": "updated",
+                "symbol": pair.symbol,
+                "warning": "Hyperliquid not connected. Symbol updated for UI. Please connect to Hyperliquid for trading. / Hyperliquid 未连接。交易对已更新用于 UI。请连接到 Hyperliquid 进行交易。",
+            }
+    except Exception as e:
+        logger.error(f"Error updating Hyperliquid pair: {e}")
+        return {
+            "status": "error",
+            "message": f"Failed to update pair: {str(e)} / 更新交易对失败：{str(e)}",
+        }
 
 
 @app.post("/api/control")
@@ -1440,7 +1432,7 @@ async def control_bot(action: str):
                 hyperliquid_instance.use_real_exchange = True
                 # Ensure exchange symbol matches instance symbol
                 # 确保交易所交易对与实例交易对匹配
-                if hyperliquid_instance.exchange and getattr(hyperliquid_instance.exchange, "is_connected", False):
+                if hyperliquid_instance.exchange and hyperliquid_instance.exchange.is_connected:
                     if hasattr(hyperliquid_instance.exchange, 'symbol') and hyperliquid_instance.symbol:
                         if hyperliquid_instance.exchange.symbol != hyperliquid_instance.symbol:
                             logger.info(
@@ -1747,12 +1739,15 @@ async def get_performance():
 
     # Calculate additional stats from trade history (filter by start time)
     trades = bot_engine.data.trade_history
-    perf_stats = calculate_trade_performance(trades, start_time_ms=start_time_ms)
+    # Filter trades that happened after session start
+    start_time_sec = start_time_ms / 1000
+    filtered_trades = [t for t in trades if t.get("timestamp", 0) >= start_time_sec]
 
-    realized_pnl = perf_stats["realized_pnl"]
-    total_trades = perf_stats["total_trades"]
-    winning_trades = perf_stats["winning_trades"]
-    losing_trades = perf_stats["losing_trades"]
+    total_trades = len(filtered_trades)
+    winning_trades = len([t for t in filtered_trades if t["pnl"] > 0])
+    losing_trades = len([t for t in filtered_trades if t["pnl"] <= 0])
+
+    realized_pnl = sum(t["pnl"] for t in filtered_trades)
 
     # Fetch commission/fees from exchange starting from session start time
     commission = 0.0
@@ -1792,8 +1787,15 @@ async def get_performance():
             # Fallback to local calculation if exchange call fails
             pass
 
-    # Use helper-generated PnL history
-    pnl_history = perf_stats["pnl_history"]
+    # Construct PnL history for chart (only include trades after session start)
+    pnl_history = []
+    cumulative_pnl = 0
+    # Add initial point at session start
+    pnl_history.append([start_time_ms, 0])
+
+    for t in filtered_trades:
+        cumulative_pnl += t["pnl"]
+        pnl_history.append([t["timestamp"] * 1000, cumulative_pnl])
 
     return {
         "realized_pnl": realized_pnl,
@@ -1802,79 +1804,10 @@ async def get_performance():
         "total_trades": total_trades,
         "winning_trades": winning_trades,
         "losing_trades": losing_trades,
-        "win_rate": perf_stats["win_rate"],
+        "win_rate": (winning_trades / total_trades * 100) if total_trades > 0 else 0,
         "metrics": metrics,
         "pnl_history": pnl_history,
         "session_start_time": start_time_ms,
-    }
-
-
-@app.get("/api/performance/strategy")
-async def get_strategy_performance(
-    strategy_type: Optional[str] = Query(
-        None, description="Filter by strategy type, e.g. 'fixed_spread'"
-    ),
-    strategy_id: Optional[str] = Query(
-        None, description="Filter by strategy_id, e.g. 'fixed_spread'"
-    ),
-    symbol: Optional[str] = Query(
-        None, description="Filter by symbol, e.g. 'ETH/USDT:USDT'"
-    ),
-):
-    """
-    Get performance data for a specific strategy subset.
-
-    Filters trade_history by strategy_type / strategy_id / symbol and then
-    calculates performance metrics from the filtered trades.
-    """
-    start_time_ms = get_session_start_time_ms()
-
-    trades = (
-        bot_engine.data.trade_history
-        if hasattr(bot_engine, "data") and hasattr(bot_engine.data, "trade_history")
-        else []
-    )
-
-    perf_stats = calculate_strategy_performance(
-        trades,
-        start_time_ms=start_time_ms,
-        strategy_type=strategy_type,
-        strategy_id=strategy_id,
-        symbol=symbol,
-    )
-
-    # Calculate metrics for this subset using the same registry, if available
-    metrics: Dict[str, Any] = {}
-    if hasattr(bot_engine, "data") and hasattr(bot_engine.data, "registry"):
-        try:
-            data_context = {
-                "trades": [
-                    t
-                    for t in trades
-                    if (
-                        (strategy_type is None or t.get("strategy_type") == strategy_type)
-                        and (strategy_id is None or t.get("strategy_id") == strategy_id)
-                        and (symbol is None or t.get("symbol") == symbol)
-                    )
-                ],
-                "prices": getattr(bot_engine.data, "price_history", []),
-            }
-            metrics = bot_engine.data.registry.calculate_all(data_context)
-        except Exception:
-            metrics = {}
-
-    return {
-        "realized_pnl": perf_stats["realized_pnl"],
-        "total_trades": perf_stats["total_trades"],
-        "winning_trades": perf_stats["winning_trades"],
-        "losing_trades": perf_stats["losing_trades"],
-        "win_rate": perf_stats["win_rate"],
-        "metrics": metrics,
-        "pnl_history": perf_stats["pnl_history"],
-        "session_start_time": start_time_ms,
-        "strategy_type": strategy_type,
-        "strategy_id": strategy_id,
-        "symbol": symbol,
     }
 
 
@@ -2184,19 +2117,8 @@ async def ws_evaluation(websocket: WebSocket):
                 model_to_provider_map.get(model.lower(), model.capitalize())
                 for model in selected_models
             ]
-            
-            # Helper function to extract base provider name (e.g., "Gemini" from "Gemini (gemini-3-pro-preview)")
-            # 辅助函数：提取基础提供商名称（例如，从 "Gemini (gemini-3-pro-preview)" 提取 "Gemini"）
-            def extract_base_name(provider_name: str) -> str:
-                """Extract base provider name, removing model suffix in parentheses / 提取基础提供商名称，移除括号中的模型后缀"""
-                if "(" in provider_name:
-                    return provider_name.split("(")[0].strip()
-                return provider_name.strip()
-            
-            # Match providers by base name / 通过基础名称匹配提供商
             providers = [
-                p for p in all_providers 
-                if any(extract_base_name(getattr(p, "name", "")).startswith(name) for name in selected_provider_names)
+                p for p in all_providers if any(p.name.startswith(name) for name in selected_provider_names)
             ]
             if not providers:
                 await websocket.send_json(
@@ -2420,24 +2342,18 @@ async def run_evaluation(request: EvaluationRunRequest):
         # Fetch market data
         # 获取市场数据
         try:
-            # For Hyperliquid, fetch the requested symbol without mutating the live client state
-            # 对于 Hyperliquid，在不修改实时客户端状态的情况下获取目标交易对
-            if exchange_name == "hyperliquid" and hasattr(exchange, "fetch_market_data"):
-                market_data = exchange.fetch_market_data(symbol=symbol)
-                account_data = exchange.fetch_account_data()
-            else:
-                # Temporarily set symbol if needed (use original format)
-                # 如果需要，临时设置 symbol（使用原始格式）
-                original_symbol = getattr(exchange, "symbol", None)
-                if hasattr(exchange, "set_symbol"):
-                    exchange.set_symbol(symbol)
-                
-                market_data = exchange.fetch_market_data()
-                account_data = exchange.fetch_account_data()
-                
-                # Restore original symbol
-                if original_symbol and hasattr(exchange, "set_symbol"):
-                    exchange.set_symbol(original_symbol)
+            # Temporarily set symbol if needed (use original format)
+            # 如果需要，临时设置 symbol（使用原始格式）
+            original_symbol = getattr(exchange, "symbol", None)
+            if hasattr(exchange, "set_symbol"):
+                exchange.set_symbol(symbol)
+            
+            market_data = exchange.fetch_market_data()
+            account_data = exchange.fetch_account_data()
+            
+            # Restore original symbol
+            if original_symbol and hasattr(exchange, "set_symbol"):
+                exchange.set_symbol(original_symbol)
         except Exception as e:
             error_msg = (
                 f"Failed to fetch market data: {str(e)} / 获取市场数据失败：{str(e)}"
@@ -2515,52 +2431,18 @@ async def run_evaluation(request: EvaluationRunRequest):
             metrics = bot_engine.data.calculate_metrics()
             sharpe_ratio = metrics.get("sharpe_ratio", 0.0) or 0.0
             # Calculate win rate from trade history
-            # Ensure trade_history is iterable (list), not a Mock object
-            # 确保 trade_history 是可迭代的（列表），而不是 Mock 对象
-            trades = getattr(bot_engine.data, "trade_history", [])
-            # Check if trades is actually a list/iterable, not a Mock
-            # 检查 trades 是否实际上是列表/可迭代对象，而不是 Mock
-            if isinstance(trades, (list, tuple)) and trades:
+            trades = bot_engine.data.trade_history
+            if trades:
                 winning = len([t for t in trades if t.get("pnl", 0) > 0])
                 win_rate = winning / len(trades) if len(trades) > 0 else 0.0
                 recent_pnl = sum(
                     t.get("pnl", 0) for t in trades[-10:]
                 )  # Last 10 trades
         
-        # Calculate volatility from exchange historical data / 从交易所历史数据计算波动率
+        # Estimate volatility (simplified - could be enhanced)
         # 估算波动率（简化版 - 可以增强）
-        volatility_24h = 0.03  # 3% default fallback
-        volatility_1h = 0.01  # 1% default fallback
-        
-        try:
-            from src.trading.volatility import calculate_volatility_1h_24h, VolatilityCalculator
-            
-            # Get exchange client / 获取交易所客户端
-            exchange = get_exchange_by_name(exchange_name)
-            if exchange:
-                # Initialize calculator with caching / 使用缓存初始化计算器
-                calculator = VolatilityCalculator(cache_ttl=300)  # Cache for 5 minutes
-                
-                # Calculate volatility from historical prices / 从历史价格计算波动率
-                volatility_1h, volatility_24h = calculate_volatility_1h_24h(
-                    exchange, symbol, calculator=calculator
-                )
-                
-                logger.info(
-                    f"Calculated volatility for {symbol}: 1h={volatility_1h:.4%}, 24h={volatility_24h:.4%}. "
-                    f"计算 {symbol} 的波动率: 1小时={volatility_1h:.4%}, 24小时={volatility_24h:.4%}。"
-                )
-            else:
-                logger.warning(
-                    f"Exchange {exchange_name} not found. Using default volatility values. "
-                    f"未找到交易所 {exchange_name}。使用默认波动率值。"
-                )
-        except Exception as e:
-            logger.warning(
-                f"Error calculating volatility from exchange data: {e}. Using default values. "
-                f"从交易所数据计算波动率时出错: {e}。使用默认值。",
-                exc_info=True
-            )
+        volatility_24h = 0.03  # 3% default
+        volatility_1h = 0.01  # 1% default
 
         # Add exchange information to symbol for LLM context
         # 在 symbol 中添加交易所信息以供 LLM 上下文使用
@@ -2619,25 +2501,13 @@ async def run_evaluation(request: EvaluationRunRequest):
                     for model in request.selected_models
                 ]
                 
-                # Helper function to extract base provider name / 辅助函数：提取基础提供商名称
-                def extract_base_name(provider_name: str) -> str:
-                    """Extract base provider name, removing model suffix in parentheses / 提取基础提供商名称，移除括号中的模型后缀"""
-                    if "(" in provider_name:
-                        return provider_name.split("(")[0].strip()
-                    return provider_name.strip()
+                # Check which selected providers are available
+                # 检查哪些选中的提供商可用
+                available_provider_dict = {item["name"]: item["provider"] for item in availability["available"]}
+                unavailable_provider_dict = {item["name"]: item for item in availability["unavailable"]}
                 
-                # Build mapping from base name to provider / 构建从基础名称到提供商的映射
-                available_provider_dict = {}
-                for item in availability["available"]:
-                    base_name = extract_base_name(item["name"])
-                    # Use the first matching provider if multiple exist / 如果存在多个匹配的提供商，使用第一个
-                    if base_name not in available_provider_dict:
-                        available_provider_dict[base_name] = item["provider"]
-                
-                unavailable_provider_dict = {extract_base_name(item["name"]): item for item in availability["unavailable"]}
-                
-                # Filter providers by base name (only use available ones)
-                # 按基础名称过滤提供商（仅使用可用的）
+                # Filter providers by name (only use available ones)
+                # 按名称过滤提供商（仅使用可用的）
                 providers = [
                     available_provider_dict[name]
                     for name in selected_provider_names
@@ -2997,29 +2867,18 @@ async def apply_evaluation(request: EvaluationApplyRequest):
                     "error": "provider_name required for individual source / 个人来源需要 provider_name",
                 }
             
-            # Helper function to extract base provider name / 辅助函数：提取基础提供商名称
-            def extract_base_name(provider_name: str) -> str:
-                """Extract base provider name, removing model suffix in parentheses / 提取基础提供商名称，移除括号中的模型后缀"""
-                if "(" in provider_name:
-                    return provider_name.split("(")[0].strip()
-                return provider_name.strip()
-            
-            # Find result by provider name (match by base name) / 通过提供商名称查找结果（按基础名称匹配）
+            # Find result by provider name
             found = False
-            requested_base_name = extract_base_name(request.provider_name)
             for result in _last_evaluation_results:
-                result_base_name = extract_base_name(result.provider_name)
-                if result_base_name == requested_base_name:
+                if result.provider_name == request.provider_name:
                     proposal = result.proposal
                     found = True
                     break
             
             if not found:
                 available_providers = [
-                    extract_base_name(r.provider_name) for r in _last_evaluation_results
+                    r.provider_name for r in _last_evaluation_results
                 ]
-                # Remove duplicates while preserving order / 移除重复项，同时保持顺序
-                available_providers = list(dict.fromkeys(available_providers))
                 return {
                     "status": "error",
                     "error": f"Provider {request.provider_name} not found in evaluation results. Available providers: {', '.join(available_providers)} / 在评估结果中未找到提供商 {request.provider_name}。可用提供商：{', '.join(available_providers)}",
@@ -3078,7 +2937,7 @@ async def apply_evaluation(request: EvaluationApplyRequest):
             # Ensure Hyperliquid exchange is connected
             # 确保 Hyperliquid 交易所已连接
             exchange = get_exchange_by_name("hyperliquid")
-            if not exchange or not getattr(exchange, "is_connected", False):
+            if not exchange or not exchange.is_connected:
                 return {
                     "status": "error",
                     "error": "Hyperliquid exchange not connected / Hyperliquid 交易所未连接",
@@ -3280,7 +3139,7 @@ async def get_hyperliquid_status(request: Request):
                 hyperliquid_instance = instance
                 break
         
-        if not hyperliquid_instance and getattr(exchange, "is_connected", False):
+        if not hyperliquid_instance and exchange.is_connected:
             # Create a new instance for Hyperliquid with the exchange client
             # 为 Hyperliquid 创建新实例，直接传入 exchange 客户端
             success = bot_engine.add_strategy_instance(
@@ -3374,42 +3233,6 @@ async def get_hyperliquid_status(request: Request):
                 )
             raise
 
-        # Calculate volatility for LLM input parameters / 计算 LLM 输入参数的波动率
-        volatility_24h = 0.03  # Default fallback / 默认回退值
-        volatility_1h = 0.01  # Default fallback / 默认回退值
-        try:
-            from src.trading.volatility import calculate_volatility_1h_24h, VolatilityCalculator
-            
-            symbol = exchange.symbol if hasattr(exchange, "symbol") else None
-            if symbol:
-                calculator = VolatilityCalculator(cache_ttl=300)  # Cache for 5 minutes / 缓存 5 分钟
-                volatility_1h, volatility_24h = calculate_volatility_1h_24h(
-                    exchange, symbol, calculator=calculator
-                )
-                logger.debug(
-                    f"Calculated volatility for {symbol}: 1h={volatility_1h:.4%}, 24h={volatility_24h:.4%} / "
-                    f"计算 {symbol} 的波动率: 1小时={volatility_1h:.4%}, 24小时={volatility_24h:.4%}"
-                )
-        except Exception as e:
-            logger.warning(
-                f"Error calculating volatility: {e}. Using default values. / "
-                f"计算波动率时出错: {e}。使用默认值。",
-                exc_info=True
-            )
-        
-        # Determine volatility level for display / 确定波动率级别用于显示
-        volatility_level = None  # "low", "medium", "high", "very_high"
-        volatility = volatility_1h if volatility_1h is not None else volatility_24h
-        if volatility is not None:
-            if volatility < 0.02:
-                volatility_level = "low"
-            elif volatility < 0.05:
-                volatility_level = "medium"
-            elif volatility < 0.10:
-                volatility_level = "high"
-            else:
-                volatility_level = "very_high"
-
         try:
             open_orders = exchange.fetch_open_orders()
         except Exception as fetch_error:
@@ -3468,9 +3291,6 @@ async def get_hyperliquid_status(request: Request):
             "leverage": account_data.get("leverage", 1.0) if account_data else 1.0,
             "spread": spread if spread is not None else None,
             "quantity": quantity if quantity is not None else None,
-            "volatility_24h": volatility_24h,
-            "volatility_1h": volatility_1h,
-            "volatility_level": volatility_level,
             "orders": open_orders,
             "positions": positions,
             "trace_id": trace_id,
@@ -3558,22 +3378,11 @@ async def get_hyperliquid_prices(request: Request):
             if not hasattr(exchange, "fetch_multiple_prices"):
                 # Fallback: fetch prices one by one / 回退：逐个获取价格
                 original_symbol = getattr(exchange, "symbol", None)
-                symbol_was_changed = False
                 for symbol in symbols:
                     try:
-                        try:
-                            # Prefer symbol-specific fetch to avoid mutating live trading symbol
-                            # 优先使用带 symbol 的行情获取，避免修改正在交易的交易对
-                            market_data = exchange.fetch_market_data(symbol=symbol)
-                        except TypeError:
-                            # Fallback for clients without symbol parameter support
-                            # 对不支持 symbol 参数的客户端使用回退
-                            # Avoid mutating symbol for Hyperliquid; its client supports symbol parameter
-                            # Hyperliquid 客户端支持 symbol 参数，避免为了查询修改交易对
-                            if hasattr(exchange, "set_symbol") and exchange.__class__.__name__ != "HyperliquidClient":
-                                exchange.set_symbol(symbol)
-                                symbol_was_changed = True
-                            market_data = exchange.fetch_market_data()
+                        if hasattr(exchange, "set_symbol"):
+                            exchange.set_symbol(symbol)
+                        market_data = exchange.fetch_market_data()
                         if market_data and market_data.get("mid_price"):
                             fresh_prices[symbol] = market_data["mid_price"]
                     except Exception as e:
@@ -3584,7 +3393,7 @@ async def get_hyperliquid_prices(request: Request):
                         else:
                             logger.warning(f"Error fetching price for {symbol}: {e}")
                 # Restore original symbol / 恢复原始交易对
-                if symbol_was_changed and original_symbol and hasattr(exchange, "set_symbol"):
+                if original_symbol and hasattr(exchange, "set_symbol"):
                     exchange.set_symbol(original_symbol)
             else:
                 # Use efficient batch method / 使用高效的批量方法
@@ -3819,11 +3628,6 @@ async def update_hyperliquid_pair(request: Request, pair: PairUpdate):
         "/api/hyperliquid/pair", "POST", hash_payload(pair.model_dump())
     )
 
-    target_instance = None
-    old_symbol = None
-    was_running = None
-    exchange_symbol_changed = False
-
     try:
         exchange = get_exchange_by_name("hyperliquid")
         if not exchange:
@@ -3834,96 +3638,39 @@ async def update_hyperliquid_pair(request: Request, pair: PairUpdate):
             )
 
         target_strategy_id = pair.strategy_id or "default"
-        
-        # Check if strategy instance exists / 检查策略实例是否存在
-        if target_strategy_id not in bot_engine.strategy_instances:
-            logger.error(
-                f"Strategy instance '{target_strategy_id}' not found. Available instances: {list(bot_engine.strategy_instances.keys())}"
-            )
-            return create_error_response(
-                ValueError(
-                    f"Strategy instance '{target_strategy_id}' not found. Available instances: {list(bot_engine.strategy_instances.keys())}"
-                ),
-                error_code="STRATEGY_INSTANCE_NOT_FOUND",
-                details=request_context,
-            )
-
-        # Pause trading loop for this instance to make symbol switch atomic
-        # 为该实例暂停交易循环，确保切换交易对是原子的
-        target_instance = bot_engine.strategy_instances.get(target_strategy_id)
-        if target_instance:
-            old_symbol = target_instance.symbol
-            was_running = target_instance.running
-            target_instance.running = False
-
-        # Update strategy and exchange symbols without mutating other instances
-        # 更新策略与交易所的交易对，避免影响其他实例
         success = bot_engine.set_symbol(pair.symbol, strategy_id=target_strategy_id)
 
-        if success and target_instance:
-            # Keep instance.exchange in sync (if separate from global exchange ref)
-            if target_instance.exchange:
-                if hasattr(target_instance.exchange, "set_symbol"):
-                    symbol_changed = target_instance.exchange.set_symbol(pair.symbol)
-                    exchange_symbol_changed = exchange_symbol_changed or symbol_changed
-                elif hasattr(target_instance.exchange, "symbol"):
-                    target_instance.exchange.symbol = pair.symbol
-
-            # If global exchange is connected, update it as well
-            if exchange and getattr(exchange, "is_connected", False):
-                if hasattr(exchange, "set_symbol"):
-                    exchange_symbol_changed = exchange.set_symbol(pair.symbol) or exchange_symbol_changed
-
-            # Refresh data after switching symbol
-            target_instance.refresh_data()
-
         if success:
-            # Resume trading loop if it was previously running
-            if target_instance and was_running is not None:
-                target_instance.running = was_running
+            # Immediately refresh data / 立即刷新数据
+            target_instance = bot_engine.strategy_instances.get(target_strategy_id)
+            if target_instance:
+                # Force refresh to get new market data for the new symbol / 强制刷新以获取新交易对的市场数据
+                target_instance.refresh_data()
+                # Also ensure exchange symbol is updated / 同时确保交易所交易对已更新
+                if target_instance.exchange and hasattr(
+                    target_instance.exchange, "symbol"
+                ):
+                    # Double-check symbol is set correctly / 再次确认交易对设置正确
+                    if target_instance.exchange.symbol != pair.symbol:
+                        target_instance.exchange.set_symbol(pair.symbol)
+                        # Refresh again after setting symbol / 设置交易对后再次刷新
+                        target_instance.refresh_data()
 
-            logger.info(
-                f"Successfully updated symbol to {pair.symbol} for strategy '{target_strategy_id}' (trace_id={trace_id})"
-            )
-            response_payload = {
+            return {
                 "status": "updated",
                 "symbol": pair.symbol,
                 "ok": True,
                 "trace_id": trace_id,
             }
-            if not exchange or not getattr(exchange, "is_connected", False):
-                response_payload["warning"] = "Exchange not connected; will apply on reconnect / 交易所未连接，连接后将应用。"
-            return response_payload
-
-        # Handle failure path
-        logger.error(
-            f"Failed to update symbol to {pair.symbol} for strategy '{target_strategy_id}'. "
-            f"Check if exchange.set_symbol() returned False or if _initialize_symbol() raised an exception."
-        )
-        # Roll back runtime flags
-        if target_instance and was_running is not None:
-            target_instance.running = was_running
-        return create_error_response(
-            ValueError(
-                f"Failed to update to symbol {pair.symbol} for strategy '{target_strategy_id}'. "
-                f"Check server logs for details."
-            ),
-            error_code="PAIR_UPDATE_FAILED",
-            details=request_context,
-        )
+        else:
+            return create_error_response(
+                ValueError(
+                    f"Failed to update to symbol {pair.symbol} for strategy '{target_strategy_id}'"
+                ),
+                error_code="PAIR_UPDATE_FAILED",
+                details=request_context,
+            )
     except Exception as e:
-        # Roll back symbol on exception to avoid leaving mismatched state
-        if target_instance and old_symbol:
-            target_instance.symbol = old_symbol
-            if target_instance.exchange and hasattr(target_instance.exchange, "set_symbol"):
-                target_instance.exchange.set_symbol(old_symbol)
-            elif target_instance.exchange and hasattr(target_instance.exchange, "symbol"):
-                target_instance.exchange.symbol = old_symbol
-        if exchange and exchange_symbol_changed and old_symbol and hasattr(exchange, "set_symbol"):
-            exchange.set_symbol(old_symbol)
-        if target_instance and was_running is not None:
-            target_instance.running = was_running
-
         logger.error(
             "Error updating Hyperliquid pair",
             exc_info=True,

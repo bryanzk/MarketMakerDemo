@@ -12,8 +12,6 @@ import os
 from unittest.mock import MagicMock, Mock, patch
 
 import pytest
-import requests
-from requests.exceptions import HTTPError
 
 # Note: This test assumes HyperliquidClient will be implemented in src/trading/hyperliquid_client.py
 # 注意：此测试假设 HyperliquidClient 将在 src/trading/hyperliquid_client.py 中实现
@@ -31,16 +29,10 @@ class TestHyperliquidClientInitialization:
             "HYPERLIQUID_API_SECRET": "test_api_secret",
             "HYPERLIQUID_TESTNET": "true",
         },
-        clear=False,
     )
     @patch("src.trading.hyperliquid_client.requests")
     def test_init_with_testnet_config(self, mock_requests):
         """Test initialization with testnet configuration / 测试使用测试网配置初始化"""
-        # Remove HYPERLIQUID_WALLET_ADDRESS if present to test API_KEY priority
-        # 如果存在，移除 HYPERLIQUID_WALLET_ADDRESS 以测试 API_KEY 优先级
-        if "HYPERLIQUID_WALLET_ADDRESS" in os.environ:
-            del os.environ["HYPERLIQUID_WALLET_ADDRESS"]
-        
         # Mock successful API response
         mock_response = MagicMock()
         mock_response.status_code = 200
@@ -55,11 +47,7 @@ class TestHyperliquidClientInitialization:
         # Verify testnet URL is used (correct testnet endpoint)
         assert client.base_url == "https://api.hyperliquid-testnet.xyz"
         assert client.testnet is True
-        # Note: api_key may be wallet address if HYPERLIQUID_WALLET_ADDRESS is set
-        # 注意：如果设置了 HYPERLIQUID_WALLET_ADDRESS，api_key 可能是钱包地址
-        # In test environment, check that it's either test_api_key or a wallet address format
-        # 在测试环境中，检查它是 test_api_key 或钱包地址格式
-        assert client.api_key == "test_api_key" or (client.api_key and client.api_key.startswith("0x"))
+        assert client.api_key == "test_api_key"
         assert client.api_secret == "test_api_secret"
 
     @patch.dict(
@@ -95,16 +83,10 @@ class TestHyperliquidClientInitialization:
             "HYPERLIQUID_API_SECRET": "test_api_secret",
             "HYPERLIQUID_TESTNET": "false",
         },
-        clear=False,
     )
     @patch("src.trading.hyperliquid_client.requests")
     def test_init_reads_env_vars(self, mock_requests):
         """Test that initialization reads environment variables / 测试初始化读取环境变量"""
-        # Remove HYPERLIQUID_WALLET_ADDRESS if present to test API_KEY priority
-        # 如果存在，移除 HYPERLIQUID_WALLET_ADDRESS 以测试 API_KEY 优先级
-        if "HYPERLIQUID_WALLET_ADDRESS" in os.environ:
-            del os.environ["HYPERLIQUID_WALLET_ADDRESS"]
-        
         # Mock successful API response
         mock_response = MagicMock()
         mock_response.status_code = 200
@@ -117,9 +99,7 @@ class TestHyperliquidClientInitialization:
         client = HyperliquidClient()
 
         # Verify environment variables are read
-        # Note: api_key may be wallet address if HYPERLIQUID_WALLET_ADDRESS is set
-        # 注意：如果设置了 HYPERLIQUID_WALLET_ADDRESS，api_key 可能是钱包地址
-        assert client.api_key == "test_api_key" or (client.api_key and client.api_key.startswith("0x"))
+        assert client.api_key == "test_api_key"
         assert client.api_secret == "test_api_secret"
         assert client.testnet is False
 
@@ -211,48 +191,30 @@ class TestHyperliquidClientAuthenticationFailure:
             "HYPERLIQUID_API_KEY": "invalid_key",
             "HYPERLIQUID_API_SECRET": "invalid_secret",
         },
-        clear=False,
     )
     @patch("src.trading.hyperliquid_client.requests")
     def test_authentication_failure_invalid_credentials(self, mock_requests):
         """Test authentication failure with invalid credentials / 测试使用无效凭证认证失败"""
-        # Remove HYPERLIQUID_WALLET_ADDRESS if present
-        # 如果存在，移除 HYPERLIQUID_WALLET_ADDRESS
-        if "HYPERLIQUID_WALLET_ADDRESS" in os.environ:
-            del os.environ["HYPERLIQUID_WALLET_ADDRESS"]
-        
-        # Mock authentication failure response (401 for connection attempts)
-        # 模拟认证失败响应（连接尝试返回 401）
-        mock_401_response = MagicMock()
-        mock_401_response.status_code = 401
-        mock_401_response.json.return_value = {"error": "Invalid API key"}
-        mock_401_response.text = '{"error": "Invalid API key"}'
-        mock_401_response.raise_for_status.side_effect = HTTPError(response=mock_401_response)
-        
-        # Mock both get and post to return 401
-        # 模拟 get 和 post 都返回 401
-        mock_requests.get.return_value = mock_401_response
-        mock_requests.post.return_value = mock_401_response
+        # Mock authentication failure response
+        mock_response = MagicMock()
+        mock_response.status_code = 401
+        mock_response.json.return_value = {"error": "Invalid API key"}
+        mock_response.text = '{"error": "Invalid API key"}'
+        mock_requests.post.return_value = mock_response
 
         from src.trading.hyperliquid_client import (
             HyperliquidClient,
             AuthenticationError,
         )
 
-        # Should raise AuthenticationError when credentials are invalid (401 status)
-        # 当凭证无效（401 状态）时应抛出 AuthenticationError
+        # Should raise AuthenticationError with bilingual message
         with pytest.raises(AuthenticationError) as exc_info:
             HyperliquidClient()
 
         error_message = str(exc_info.value)
-        # Verify error message indicates authentication failure
-        # 验证错误消息表明认证失败
-        assert (
-            "authentication" in error_message.lower()
-            or "认证" in error_message
-            or "invalid" in error_message.lower()
-            or "无效" in error_message
-        )
+        # Verify bilingual error message
+        assert "认证失败" in error_message or "Authentication failed" in error_message
+        assert "Invalid API key" in error_message or "无效的 API 密钥" in error_message
 
     @patch.dict(os.environ, {}, clear=True)
     @patch("src.trading.hyperliquid_client.requests")

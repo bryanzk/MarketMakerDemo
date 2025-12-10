@@ -1031,9 +1031,7 @@ class TestSelectedModelsFiltering:
                     # 应该只有 Gemini 结果
                     results = data["individual_results"]
                     assert len(results) == 1, "Should have only one result / 应该只有一个结果"
-                    # Provider name now includes model name: "Gemini (gemini-3-pro-preview)"
-                    # Provider 名称现在包含模型名称："Gemini (gemini-3-pro-preview)"
-                    assert results[0]["provider_name"].startswith("Gemini"), "Should be Gemini / 应该是 Gemini"
+                    assert results[0]["provider_name"] == "Gemini", "Should be Gemini / 应该是 Gemini"
 
     @patch("server.create_all_providers")
     @patch("server.get_exchange_by_name")
@@ -1082,26 +1080,10 @@ class TestSelectedModelsFiltering:
                 if "individual_results" in data:
                     results = data["individual_results"]
                     provider_names = [r["provider_name"] for r in results]
-                    # Provider names now include model names, check with startswith
-                    # Provider 名称现在包含模型名称，使用 startswith 检查
-                    # Note: Providers may be skipped if API keys are missing
-                    # 注意：如果缺少 API 密钥，提供商可能会被跳过
-                    assert any(name.startswith("Gemini") for name in provider_names), "Should include Gemini / 应该包含 Gemini"
-                    # OpenAI may be skipped if API key is missing, so check if it's present or skipped
-                    # OpenAI 可能因缺少 API 密钥而被跳过，因此检查它是否存在或被跳过
-                    has_openai = any(name.startswith("OpenAI") for name in provider_names)
-                    if not has_openai:
-                        # Check if OpenAI was skipped due to missing API key (warning in response or logs)
-                        # 检查 OpenAI 是否因缺少 API 密钥而被跳过（响应或日志中的警告）
-                        warnings = data.get("warnings", [])
-                        if not any("openai" in str(w).lower() for w in warnings):
-                            # If no warning, OpenAI should be present
-                            # 如果没有警告，OpenAI 应该存在
-                            assert False, "OpenAI should be included or have a warning about missing API key / OpenAI 应该被包含或有关于缺少 API 密钥的警告"
-                    assert not any(name.startswith("Claude") for name in provider_names), "Should not include Claude / 不应该包含 Claude"
-                    # Should have at least 1 result (Gemini), up to 2 if both are available
-                    # 应该至少有 1 个结果（Gemini），如果两者都可用则最多 2 个
-                    assert 1 <= len(results) <= 2, f"Should have 1-2 results, got {len(results)} / 应该有 1-2 个结果，得到 {len(results)}"
+                    assert "Gemini" in provider_names, "Should include Gemini / 应该包含 Gemini"
+                    assert "OpenAI" in provider_names, "Should include OpenAI / 应该包含 OpenAI"
+                    assert "Claude" not in provider_names, "Should not include Claude / 不应该包含 Claude"
+                    assert len(results) == 2, "Should have two results / 应该有两个结果"
 
     @patch("server.create_all_providers")
     @patch("server.get_exchange_by_name")
@@ -1143,21 +1125,16 @@ class TestSelectedModelsFiltering:
             # 验证 API 接受请求
             assert response.status_code != 404, "API endpoint not found / API 端点未找到"
 
-            # If successful, verify all available providers were used
-            # 如果成功，验证使用了所有可用的提供商
+            # If successful, verify all providers were used
+            # 如果成功，验证使用了所有提供商
             if response.status_code == 200:
                 data = response.json()
                 if "individual_results" in data:
                     results = data["individual_results"]
                     provider_names = [r["provider_name"] for r in results]
-                    # Note: Only providers with API keys will be used
-                    # 注意：只有具有 API 密钥的提供商才会被使用
-                    # In test environment, may only have Gemini available
-                    # 在测试环境中，可能只有 Gemini 可用
-                    assert len(results) >= 1, "Should use at least one provider / 应该至少使用一个提供商"
-                    # Check that all available providers are used (not skipped)
-                    # 检查所有可用的提供商都被使用（未被跳过）
-                    assert len(results) <= 3, "Should not exceed 3 providers / 不应超过 3 个提供商"
+                    # Should have all three providers
+                    # 应该有三个提供商
+                    assert len(results) == 3, "Should use all providers / 应该使用所有提供商"
 
     @patch("server.create_all_providers")
     @patch("server.get_exchange_by_name")
@@ -1266,13 +1243,9 @@ class TestParseErrorInResponse:
         
         # Provider with invalid JSON response (will cause parse_error)
         # 具有无效 JSON 响应的提供商（将导致 parse_error）
-        # Use a response that definitely cannot be parsed as JSON (no braces, no valid structure)
-        # 使用一个肯定无法解析为 JSON 的响应（没有大括号，没有有效结构）
         invalid_provider = Mock()
         invalid_provider.name = "OpenAI"
-        # Return plain text with no JSON structure at all
-        # 返回完全没有 JSON 结构的纯文本
-        invalid_provider.generate.return_value = "This is not valid JSON and cannot be parsed. There are no braces or any JSON-like structure here."
+        invalid_provider.generate.return_value = "This is not valid JSON and cannot be parsed"
         providers.append(invalid_provider)
         
         return providers
@@ -1309,7 +1282,7 @@ class TestParseErrorInResponse:
                 "/api/evaluation/run",
                 json={
                     "symbol": "ETH/USDC:USDC",
-                    "simulation_steps": 2,  # Minimal steps for faster tests / 最小步数以加快测试
+                    "simulation_steps": 100,
                     "exchange": "hyperliquid",
                 },
             )
@@ -1327,29 +1300,17 @@ class TestParseErrorInResponse:
             
             # Find the result with parse_error
             # 查找有 parse_error 的结果
-            # Check for parse_success=False or non-empty parse_error
-            # 检查 parse_success=False 或非空的 parse_error
             results_with_parse_error = [
                 r for r in results 
-                if (r.get("proposal", {}).get("parse_success") is False) or 
-                   (r.get("proposal", {}).get("parse_error") and r["proposal"]["parse_error"].strip())
+                if r.get("proposal", {}).get("parse_error") and r["proposal"]["parse_error"].strip()
             ]
             
-            # Note: The mock may not be working correctly if real providers are used
-            # 注意：如果使用真实的提供商，mock 可能无法正常工作
-            # This test verifies the structure exists, even if no parse errors occur in this run
-            # 此测试验证结构存在，即使在此运行中没有发生解析错误
-            if len(results_with_parse_error) == 0:
-                # If no parse errors, verify the structure is still present
-                # 如果没有解析错误，验证结构仍然存在
-                for r in results:
-                    proposal = r.get("proposal", {})
-                    assert "parse_success" in proposal, "proposal should have parse_success field / proposal 应该有 parse_success 字段"
-                    assert "parse_error" in proposal, "proposal should have parse_error field / proposal 应该有 parse_error 字段"
-                    # If parse_success is True, parse_error should be empty string
-                    # 如果 parse_success 为 True，parse_error 应该为空字符串
-                    if proposal.get("parse_success"):
-                        assert proposal.get("parse_error") == "", "parse_error should be empty when parse_success is True / 当 parse_success 为 True 时，parse_error 应该为空"
+            # Verify at least one result has parse_error
+            # 验证至少有一个结果有 parse_error
+            assert len(results_with_parse_error) > 0, (
+                "At least one result should have parse_error when provider fails to parse / "
+                "当提供商解析失败时，至少应该有一个结果有 parse_error"
+            )
             
             # Verify parse_error field structure
             # 验证 parse_error 字段结构

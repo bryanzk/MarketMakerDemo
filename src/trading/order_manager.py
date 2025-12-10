@@ -8,121 +8,23 @@ Owner: Agent TRADING
 """
 
 import logging
-import time
 from typing import Any, Dict, List, Tuple
 
 logger = logging.getLogger(__name__)
-
-# Order stability configuration / 订单稳定性配置
-MIN_ORDER_AGE_SECONDS = 30  # Minimum time before allowing cancellation (seconds)
-PRICE_THRESHOLD_PCT = 0.001  # 0.1% of mid price (adaptive threshold)
-QTY_THRESHOLD_PCT = 0.01  # 1% quantity change threshold
 
 
 class OrderManager:
     """Manages order synchronization."""
 
-    def _should_cancel_order(
-        self, 
-        current_order: Dict[str, Any], 
-        target_order: Dict[str, Any],
-        mid_price: float,
-        force_cancel: bool = False
-    ) -> bool:
-        """
-        Determine if an order should be cancelled based on stability window and adaptive thresholds.
-        根据稳定性窗口和自适应阈值判断是否应该取消订单。
-        
-        Args:
-            current_order: Current open order
-            target_order: Target order to achieve
-            mid_price: Current mid price for adaptive threshold calculation
-            force_cancel: If True, bypass stability window check (used for enforce_both_side)
-                         如果为 True，绕过稳定性窗口检查（用于 enforce_both_side）
-            
-        Returns:
-            True if order should be cancelled, False otherwise
-        """
-        # Check order age (stability window) / 检查订单年龄（稳定性窗口）
-        # Skip stability check if force_cancel is True (for enforce_both_side scenarios)
-        # 如果 force_cancel 为 True，跳过稳定性检查（用于 enforce_both_side 场景）
-        if not force_cancel:
-            order_timestamp = current_order.get("timestamp", 0)
-            if isinstance(order_timestamp, (int, float)) and order_timestamp > 0:
-                # Convert milliseconds to seconds if needed
-                if order_timestamp > 1e10:
-                    order_timestamp = order_timestamp / 1000
-                order_age = time.time() - order_timestamp
-                
-                if order_age < MIN_ORDER_AGE_SECONDS:
-                    logger.debug(
-                        f"Order {current_order.get('id')} is too new ({order_age:.1f}s < {MIN_ORDER_AGE_SECONDS}s). "
-                        f"Keeping order active for stability. "
-                        f"订单 {current_order.get('id')} 太新（{order_age:.1f}秒 < {MIN_ORDER_AGE_SECONDS}秒）。"
-                        f"保持订单活跃以确保稳定性。"
-                    )
-                    return False
-        
-        # Calculate adaptive thresholds / 计算自适应阈值
-        price_threshold = mid_price * PRICE_THRESHOLD_PCT if mid_price > 0 else 0.01
-        curr_price = current_order.get("price", 0)
-        tgt_price = target_order.get("price", 0)
-        price_diff = abs(curr_price - tgt_price)
-        
-        # Quantity threshold (percentage-based) / 数量阈值（基于百分比）
-        # Support both "quantity" and "amount" fields (different exchanges use different field names)
-        # 支持 "quantity" 和 "amount" 字段（不同交易所使用不同的字段名）
-        curr_qty = current_order.get("quantity") or current_order.get("amount", 0)
-        tgt_qty = target_order.get("quantity") or target_order.get("amount", 0)
-        qty_threshold = max(curr_qty, tgt_qty) * QTY_THRESHOLD_PCT if max(curr_qty, tgt_qty) > 0 else 0.001
-        qty_diff = abs(curr_qty - tgt_qty)
-        
-        # Only cancel if difference exceeds adaptive threshold / 仅在差异超过自适应阈值时取消
-        should_cancel = price_diff > price_threshold or qty_diff > qty_threshold
-        
-        if should_cancel:
-            logger.info(
-                f"Order {current_order.get('id')} exceeds threshold. "
-                f"Price diff: {price_diff:.4f} > {price_threshold:.4f} ({PRICE_THRESHOLD_PCT*100:.2f}% of mid), "
-                f"Qty diff: {qty_diff:.4f} > {qty_threshold:.4f}. "
-                f"Will cancel and replace. "
-                f"订单 {current_order.get('id')} 超过阈值。"
-                f"价格差: {price_diff:.4f} > {price_threshold:.4f}（中间价的 {PRICE_THRESHOLD_PCT*100:.2f}%），"
-                f"数量差: {qty_diff:.4f} > {qty_threshold:.4f}。将取消并替换。"
-            )
-        else:
-            logger.debug(
-                f"Order {current_order.get('id')} within threshold. "
-                f"Price diff: {price_diff:.4f} <= {price_threshold:.4f}, "
-                f"Qty diff: {qty_diff:.4f} <= {qty_threshold:.4f}. "
-                f"Keeping order. "
-                f"订单 {current_order.get('id')} 在阈值内。"
-                f"价格差: {price_diff:.4f} <= {price_threshold:.4f}，"
-                f"数量差: {qty_diff:.4f} <= {qty_threshold:.4f}。保持订单。"
-            )
-        
-        return should_cancel
-
     def sync_orders(
-        self, 
-        current_orders: List[Dict[str, Any]], 
-        target_orders: List[Dict[str, Any]],
-        mid_price: float = None,
-        enforce_both_side: bool = False
+        self, current_orders: List[Dict[str, Any]], target_orders: List[Dict[str, Any]]
     ) -> Tuple[List[str], List[Dict[str, Any]]]:
         """
         Compares current and target orders to determine actions.
-        Uses adaptive thresholds and order stability window.
 
         Args:
             current_orders: List of current open orders
             target_orders: List of target orders to achieve
-            mid_price: Current mid price for adaptive threshold (optional, will estimate if not provided)
-            enforce_both_side: If True, ensures both buy and sell orders are placed when target_orders
-                             contains both sides. Used for market making strategies that require
-                             simultaneous bid and ask orders.
-                             如果为 True，当 target_orders 包含双边时，确保买入和卖出订单都下单。
-                             用于需要同时提供买卖订单的做市策略。
 
         Returns:
             Tuple of (order_ids_to_cancel, orders_to_place)
@@ -137,66 +39,37 @@ class OrderManager:
         tgt_buy = next((o for o in target_orders if o["side"] == "buy"), None)
         tgt_sell = next((o for o in target_orders if o["side"] == "sell"), None)
 
-        # Estimate mid_price if not provided / 如果未提供，估算中间价
-        if mid_price is None:
-            if tgt_buy and tgt_sell:
-                # Estimate from target orders / 从目标订单估算
-                mid_price = (tgt_buy.get("price", 0) + tgt_sell.get("price", 0)) / 2
-            elif curr_buy and curr_sell:
-                # Estimate from current orders / 从当前订单估算
-                mid_price = (curr_buy.get("price", 0) + curr_sell.get("price", 0)) / 2
-            else:
-                # Fallback to fixed threshold / 回退到固定阈值
-                mid_price = 1000.0  # Default estimate
-                logger.warning(
-                    f"Mid price not provided, using default {mid_price} for threshold calculation. "
-                    f"未提供中间价，使用默认值 {mid_price} 进行阈值计算。"
-                )
-
         # Log target orders for debugging
         logger.debug(
             f"Order sync: target_buy={tgt_buy}, target_sell={tgt_sell}, "
-            f"current_buy={curr_buy}, current_sell={curr_sell}, "
-            f"mid_price={mid_price:.2f}"
+            f"current_buy={curr_buy}, current_sell={curr_sell}"
         )
-
-        # For enforce_both_side, we need to ensure both orders are synchronized
-        # If one side is in stability window but the other needs update, force cancel both
-        # 对于 enforce_both_side，我们需要确保双边订单同步
-        # 如果一边在稳定性窗口内但另一边需要更新，强制取消双边
-        force_cancel_for_sync = False
-        if enforce_both_side and tgt_buy and tgt_sell:
-            # Check if we have a mismatch: one side needs update but the other is in stability window
-            # 检查是否有不匹配：一边需要更新但另一边在稳定性窗口内
-            buy_needs_update = curr_buy and self._should_cancel_order(curr_buy, tgt_buy, mid_price, force_cancel=True)
-            sell_needs_update = curr_sell and self._should_cancel_order(curr_sell, tgt_sell, mid_price, force_cancel=True)
-            buy_in_stability = curr_buy and not self._should_cancel_order(curr_buy, tgt_buy, mid_price, force_cancel=False)
-            sell_in_stability = curr_sell and not self._should_cancel_order(curr_sell, tgt_sell, mid_price, force_cancel=False)
-            
-            # If one side needs update but the other is in stability window, force cancel both
-            # 如果一边需要更新但另一边在稳定性窗口内，强制取消双边
-            if (buy_needs_update and sell_in_stability) or (sell_needs_update and buy_in_stability):
-                force_cancel_for_sync = True
-                logger.warning(
-                    f"Both-side order sync mismatch detected. One side needs update but the other is in stability window. "
-                    f"Forcing cancellation of both orders to maintain market making consistency. "
-                    f"检测到双边订单同步不匹配。一边需要更新但另一边在稳定性窗口内。"
-                    f"强制取消双边订单以保持做市一致性。"
-                )
 
         # Compare Buy
         if tgt_buy:
             if curr_buy:
-                # Use improved cancellation logic / 使用改进的取消逻辑
-                # Force cancel if needed for both-side sync / 如果需要，强制取消以保持双边同步
-                should_cancel = self._should_cancel_order(curr_buy, tgt_buy, mid_price, force_cancel=force_cancel_for_sync)
-                if should_cancel:
+                # Check if price OR quantity changed significantly
+                curr_price = curr_buy.get("price", 0)
+                tgt_price = tgt_buy.get("price", 0)
+                curr_qty = curr_buy.get("quantity", 0)
+                tgt_qty = tgt_buy.get("quantity", 0)
+                
+                price_diff = abs(curr_price - tgt_price)
+                qty_diff = abs(curr_qty - tgt_qty)
+                
+                if price_diff > 0.01 or qty_diff > 0.001:  # Also check quantity
+                    logger.info(
+                        f"Buy order needs update: price_diff={price_diff:.4f}, qty_diff={qty_diff:.4f}. "
+                        f"Current: price={curr_price}, qty={curr_qty}. "
+                        f"Target: price={tgt_price}, qty={tgt_qty}. "
+                        f"买入订单需要更新: 价格差={price_diff:.4f}, 数量差={qty_diff:.4f}。"
+                    )
                     to_cancel.append(curr_buy["id"])
                     to_place.append(tgt_buy)
                 else:
                     logger.debug(
-                        f"Buy order unchanged: price={curr_buy.get('price')}, qty={curr_buy.get('quantity')}. "
-                        f"买入订单未变化: 价格={curr_buy.get('price')}, 数量={curr_buy.get('quantity')}。"
+                        f"Buy order unchanged: price={curr_price}, qty={curr_qty}. "
+                        f"买入订单未变化: 价格={curr_price}, 数量={curr_qty}。"
                     )
             else:
                 logger.info(
@@ -215,16 +88,27 @@ class OrderManager:
         # Compare Sell
         if tgt_sell:
             if curr_sell:
-                # Use improved cancellation logic / 使用改进的取消逻辑
-                # Force cancel if needed for both-side sync / 如果需要，强制取消以保持双边同步
-                should_cancel = self._should_cancel_order(curr_sell, tgt_sell, mid_price, force_cancel=force_cancel_for_sync)
-                if should_cancel:
+                curr_price = curr_sell.get("price", 0)
+                tgt_price = tgt_sell.get("price", 0)
+                curr_qty = curr_sell.get("quantity", 0)
+                tgt_qty = tgt_sell.get("quantity", 0)
+                
+                price_diff = abs(curr_price - tgt_price)
+                qty_diff = abs(curr_qty - tgt_qty)
+                
+                if price_diff > 0.01 or qty_diff > 0.001:  # Also check quantity
+                    logger.info(
+                        f"Sell order needs update: price_diff={price_diff:.4f}, qty_diff={qty_diff:.4f}. "
+                        f"Current: price={curr_price}, qty={curr_qty}. "
+                        f"Target: price={tgt_price}, qty={tgt_qty}. "
+                        f"卖出订单需要更新: 价格差={price_diff:.4f}, 数量差={qty_diff:.4f}。"
+                    )
                     to_cancel.append(curr_sell["id"])
                     to_place.append(tgt_sell)
                 else:
                     logger.debug(
-                        f"Sell order unchanged: price={curr_sell.get('price')}, qty={curr_sell.get('quantity')}. "
-                        f"卖出订单未变化: 价格={curr_sell.get('price')}, 数量={curr_sell.get('quantity')}。"
+                        f"Sell order unchanged: price={curr_price}, qty={curr_qty}. "
+                        f"卖出订单未变化: 价格={curr_price}, 数量={curr_qty}。"
                     )
             else:
                 logger.info(
@@ -239,34 +123,6 @@ class OrderManager:
                     f"没有目标卖出订单，将取消当前订单: {curr_sell['id']}。"
                 )
                 to_cancel.append(curr_sell["id"])
-
-        # ENFORCE both-side orders for market making strategies
-        # 强制做市策略的双边订单
-        if enforce_both_side and tgt_buy and tgt_sell:
-            # Strategy requires both-side orders - ensure both are placed
-            # 策略要求双边订单 - 确保双边都下单
-            buy_in_place = any(o.get("side") == "buy" for o in to_place)
-            sell_in_place = any(o.get("side") == "sell" for o in to_place)
-            
-            if buy_in_place and not sell_in_place:
-                # Only buy is being placed, but strategy requires both - add sell
-                # 只下单买入，但策略要求双边 - 添加卖出
-                to_place.append(tgt_sell)
-                logger.warning(
-                    f"Only buy order was scheduled, but strategy requires both-side. "
-                    f"Adding sell order to maintain market making consistency. "
-                    f"只安排了买入订单，但策略要求双边。添加卖出订单以保持做市一致性。"
-                )
-            
-            if sell_in_place and not buy_in_place:
-                # Only sell is being placed, but strategy requires both - add buy
-                # 只下单卖出，但策略要求双边 - 添加买入
-                to_place.append(tgt_buy)
-                logger.warning(
-                    f"Only sell order was scheduled, but strategy requires both-side. "
-                    f"Adding buy order to maintain market making consistency. "
-                    f"只安排了卖出订单，但策略要求双边。添加买入订单以保持做市一致性。"
-                )
 
         # Log summary
         buy_count = sum(1 for o in to_place if o.get("side") == "buy")

@@ -394,18 +394,6 @@
                         <div style="font-size: 11px; color: #6b7280; margin-bottom: 4px;">Leverage / 杠杆</div>
                         <div id="currentLeverage" style="font-size: 14px; font-weight: 600; color: #1f2937;">--</div>
                     </div>
-                    <div>
-                        <div style="font-size: 11px; color: #6b7280; margin-bottom: 4px;">Volatility (24h) / 波动率 (24小时)</div>
-                        <div id="currentVolatility24h" style="font-size: 14px; font-weight: 600; color: #1f2937;">--</div>
-                    </div>
-                    <div>
-                        <div style="font-size: 11px; color: #6b7280; margin-bottom: 4px;">Volatility (1h) / 波动率 (1小时)</div>
-                        <div id="currentVolatility1h" style="font-size: 14px; font-weight: 600; color: #1f2937;">--</div>
-                    </div>
-                    <div>
-                        <div style="font-size: 11px; color: #6b7280; margin-bottom: 4px;">Volatility Level / 波动率级别</div>
-                        <div id="currentVolatilityLevel" style="font-size: 14px; font-weight: 600; color: #1f2937;">--</div>
-                    </div>
                 </div>
             </div>
             
@@ -436,16 +424,9 @@
             <div style="margin-top: 8px; font-size: 12px; color: #6b7280;">
                 Note: Fixed Spread Strategy does not use Skew Factor / 注意：固定价差策略不使用倾斜因子
             </div>
-            <div style="display:flex; gap:12px; margin-top:16px; align-items:center;">
+            <div style="display:flex; gap:12px; margin-top:16px;">
                 <button class="btn btn-primary" onclick="updateConfig()">💾 Save Strategy Config</button>
                 <button class="btn btn-secondary" onclick="updateLeverage()">⚡ Update Leverage</button>
-                <!-- Bot Control Buttons / Bot 控制按钮 -->
-                <div style="margin-left:auto; display:flex; gap:12px;">
-                    <button id="strategyStartBotBtn" class="btn btn-success" style="display:none;"
-                        onclick="startBot()">🚀 Start Bot / 启动机器人</button>
-                    <button id="strategyStopBotBtn" class="btn btn-danger" style="display:none;"
-                        onclick="stopBot()">⏹ Stop Bot / 停止机器人</button>
-                </div>
             </div>
             <div id="controlMessage" class="message"></div>
         </section>
@@ -625,7 +606,6 @@
     <script>
         const controlMessage = document.getElementById('controlMessage');
         let currentEvalSymbol = 'ETHUSDC';
-        let currentEvaluationWS = null; // Track current WebSocket connection for cancellation / 跟踪当前 WebSocket 连接以便取消
         let evaluationState = {
             loading: false,
             results: [],
@@ -662,8 +642,6 @@
                 let ws;
                 try {
                     ws = new WebSocket(getWebSocketUrl('/ws/evaluation'));
-                    // Store WebSocket reference for cancellation / 存储 WebSocket 引用以便取消
-                    currentEvaluationWS = ws;
                 } catch (err) {
                     return reject(err);
                 }
@@ -776,7 +754,6 @@
                                 total: msg.total || evaluationState.progress.total
                             };
                             evaluationState.loading = false;
-                            currentEvaluationWS = null; // Clear reference on completion / 完成时清除引用
                             updateEvaluationUI();
                             finished = true;
                             ws.close();
@@ -785,7 +762,6 @@
                         case 'error':
                             evaluationState.lastError = msg.message || 'Evaluation error';
                             evaluationState.loading = false;
-                            currentEvaluationWS = null; // Clear reference on error / 错误时清除引用
                             updateEvaluationUI();
                             finished = true;
                             ws.close();
@@ -800,7 +776,6 @@
                     if (finished) return;
                     evaluationState.lastError = 'WebSocket error / WebSocket错误';
                     evaluationState.loading = false;
-                    currentEvaluationWS = null; // Clear reference on error / 错误时清除引用
                     updateEvaluationUI();
                     finished = true;
                     reject(new Error('WebSocket error'));
@@ -809,12 +784,8 @@
                 ws.onclose = () => {
                     if (finished) return;
                     evaluationState.loading = false;
-                    currentEvaluationWS = null; // Clear reference on close / 关闭时清除引用
                     updateEvaluationUI();
-                    // Only reject if not finished (e.g., cancelled) / 仅在未完成时拒绝（例如，已取消）
-                    if (!finished) {
-                        reject(new Error('WebSocket closed'));
-                    }
+                    reject(new Error('WebSocket closed'));
                 };
             });
         }
@@ -1251,8 +1222,6 @@
             const currentSpreadEl = document.getElementById('currentSpread');
             const currentQuantityEl = document.getElementById('currentQuantity');
             const currentLeverageEl = document.getElementById('currentLeverage');
-            const currentVolatility24hEl = document.getElementById('currentVolatility24h');
-            const currentVolatility1hEl = document.getElementById('currentVolatility1h');
             
             if (currentPairEl) {
                 currentPairEl.innerText = data.symbol || '--';
@@ -1279,42 +1248,6 @@
                     currentLeverageEl.innerText = `${data.leverage}x`;
                 } else {
                     currentLeverageEl.innerText = '--';
-                }
-            }
-            
-            // Display volatility (LLM input parameters) / 显示波动率（LLM 输入参数）
-            if (currentVolatility24hEl) {
-                if (data.volatility_24h !== undefined && data.volatility_24h !== null) {
-                    currentVolatility24hEl.innerText = `${(data.volatility_24h * 100).toFixed(2)}%`;
-                } else {
-                    currentVolatility24hEl.innerText = '--';
-                }
-            }
-            
-            if (currentVolatility1hEl) {
-                if (data.volatility_1h !== undefined && data.volatility_1h !== null) {
-                    currentVolatility1hEl.innerText = `${(data.volatility_1h * 100).toFixed(2)}%`;
-                } else {
-                    currentVolatility1hEl.innerText = '--';
-                }
-            }
-            
-            // Display volatility level with color coding / 显示波动率级别（带颜色编码）
-            const currentVolatilityLevelEl = document.getElementById('currentVolatilityLevel');
-            if (currentVolatilityLevelEl) {
-                if (data.volatility_level) {
-                    const levelMap = {
-                        'low': { text: 'Low / 低', color: '#10b981' },      // Green
-                        'medium': { text: 'Medium / 中', color: '#f59e0b' }, // Yellow
-                        'high': { text: 'High / 高', color: '#ef4444' },      // Red
-                        'very_high': { text: 'Very High / 极高', color: '#dc2626' } // Dark Red
-                    };
-                    const levelInfo = levelMap[data.volatility_level] || { text: data.volatility_level, color: '#6b7280' };
-                    currentVolatilityLevelEl.innerText = levelInfo.text;
-                    currentVolatilityLevelEl.style.color = levelInfo.color;
-                } else {
-                    currentVolatilityLevelEl.innerText = '--';
-                    currentVolatilityLevelEl.style.color = '#6b7280';
                 }
             }
         }
@@ -1458,31 +1391,6 @@
             isCheckingConnection = false;
             // Mark that user manually switched pair / 标记用户手动切换了交易对
             userManuallySwitchedPair = true;
-            
-            // Cancel ongoing evaluation if any / 如果有正在进行的评估，取消它
-            if (currentEvaluationWS) {
-                try {
-                    currentEvaluationWS.close();
-                    currentEvaluationWS = null;
-                    // Reset evaluation state / 重置评估状态
-                    evaluationState.loading = false;
-                    evaluationState.lastError = 'Evaluation cancelled due to pair switch / 由于切换交易对，评估已取消';
-                    if (evaluationState.elapsedInterval) {
-                        clearInterval(evaluationState.elapsedInterval);
-                        evaluationState.elapsedInterval = null;
-                    }
-                    updateEvaluationUI();
-                    console.log('Cancelled ongoing evaluation due to pair switch / 由于切换交易对，已取消正在进行的评估');
-                } catch (err) {
-                    console.warn('Error cancelling evaluation:', err);
-                }
-            }
-            
-            // Store previous symbol for rollback on error / 存储之前的 symbol 以便错误时回滚
-            const pairSelect = document.getElementById('pairSelect');
-            const previousSymbol = pairSelect ? pairSelect.value : null;
-            const previousEvalSymbol = currentEvalSymbol;
-            
             try {
                 const symbol = document.getElementById('pairSelect').value;
                 
@@ -1497,36 +1405,16 @@
                 });
                 const data = await res.json();
                 
-                // Check for error BEFORE updating UI / 在更新 UI 之前检查错误
-                // Note: create_error_response returns ok: false, so we check both error and ok fields
-                // 注意：create_error_response 返回 ok: false，所以我们检查 error 和 ok 字段
-                if (data.error || data.ok === false) {
-                    // Revert pairSelect to previous value on error / 错误时回滚 pairSelect 到之前的值
-                    if (pairSelect && previousSymbol) {
-                        pairSelect.value = previousSymbol;
-                    }
-                    // Extract error message from error response / 从错误响应中提取错误消息
-                    // StandardErrorResponse format: { error, message, message_zh, ... }
-                    // StandardErrorResponse 格式：{ error, message, message_zh, ... }
-                    const errorMessage = data.message || data.message_zh || data.error || 'Failed to update pair / 更新交易对失败';
-                    throw new Error(errorMessage);
+                // Check for error
+                if (data.error) {
+                    throw new Error(data.error);
                 }
                 
-                // Only update UI after successful response / 仅在成功响应后更新 UI
+                // Update symbol
                 currentEvalSymbol = normalizeSymbol(symbol);
-                
-                // Update current params display with new symbol / 使用新 symbol 更新当前参数显示
-                const currentPairEl = document.getElementById('currentPair');
-                if (currentPairEl) {
-                    currentPairEl.innerText = symbol || '--';
-                }
                 
                 // Reload status to update current params display / 重新加载状态以更新当前参数显示
                 await loadStatus();
-                
-                // Re-check provider availability after switching pair / 切换币对后重新检查提供商可用性
-                // This ensures checkboxes are correctly enabled/disabled / 这确保复选框正确启用/禁用
-                await checkProviderAvailability();
                 
                 // Show success message, with warning if connection is needed
                 if (data.warning) {
@@ -1545,17 +1433,7 @@
                     refreshOrders();
                 }
             } catch (err) {
-                // Revert to previous symbol on error / 错误时回滚到之前的 symbol
-                if (pairSelect && previousSymbol) {
-                    pairSelect.value = previousSymbol;
-                }
-                currentEvalSymbol = previousEvalSymbol;
-                
-                // Show error message / 显示错误消息
                 showMessage(controlMessage, err.message || 'Failed to switch pair / 切换交易对失败', true);
-                
-                // Log error for debugging / 记录错误以便调试
-                console.error('Pair switch failed:', err);
             }
         }
 
@@ -2029,21 +1907,8 @@
                 'openai': 'OpenAI',
                 'claude': 'Claude'
             };
-            
-            // Helper function to extract base name (e.g., "Gemini" from "Gemini (gemini-3-pro-preview)")
-            // 辅助函数：提取基础名称（例如，从 "Gemini (gemini-3-pro-preview)" 提取 "Gemini"）
-            function extractBaseName(providerName) {
-                if (!providerName) return '';
-                // Remove model suffix in parentheses if present / 如果存在，移除括号中的模型后缀
-                if (providerName.includes('(')) {
-                    return providerName.split('(')[0].trim();
-                }
-                return providerName.trim();
-            }
-            
-            // Build set of unavailable provider base names / 构建不可用提供商基础名称的集合
             const unavailableNames = new Set(
-                (providerAvailability.unavailable || []).map(p => extractBaseName(p.name))
+                providerAvailability.unavailable.map(p => p.name)
             );
             const unavailableSelected = selectedModels.filter(model => {
                 const providerName = modelMap[model];
@@ -2054,8 +1919,7 @@
                 const errorBox = document.getElementById('evaluationErrorBox');
                 const unavailableProviders = unavailableSelected.map(model => {
                     const providerName = modelMap[model];
-                    // Use extractBaseName to match provider names / 使用 extractBaseName 匹配提供商名称
-                    const info = (providerAvailability.unavailable || []).find(p => extractBaseName(p.name) === providerName);
+                    const info = providerAvailability.unavailable.find(p => p.name === providerName);
                     return {
                         name: providerName,
                         api_key: info ? info.api_key_name : '',
@@ -2387,13 +2251,8 @@
 
         // Update bot control buttons based on bot status / 根据 bot 状态更新控制按钮
         function updateBotControlButtons(isRunning) {
-            // Update buttons in evaluation panel / 更新评估面板中的按钮
             const startBtn = document.getElementById('startBotBtn');
             const stopBtn = document.getElementById('stopBotBtn');
-            
-            // Update buttons in strategy panel / 更新策略面板中的按钮
-            const strategyStartBtn = document.getElementById('strategyStartBotBtn');
-            const strategyStopBtn = document.getElementById('strategyStopBotBtn');
             
             // Update bot state / 更新 bot 状态
             botIsActive = isRunning;
@@ -2402,14 +2261,10 @@
                 // Bot is running: show stop button, hide start button / Bot 正在运行：显示停止按钮，隐藏启动按钮
                 if (startBtn) startBtn.style.display = 'none';
                 if (stopBtn) stopBtn.style.display = 'flex';
-                if (strategyStartBtn) strategyStartBtn.style.display = 'none';
-                if (strategyStopBtn) strategyStopBtn.style.display = 'flex';
             } else {
                 // Bot is stopped: show start button, hide stop button / Bot 已停止：显示启动按钮，隐藏停止按钮
                 if (startBtn) startBtn.style.display = 'flex';
                 if (stopBtn) stopBtn.style.display = 'none';
-                if (strategyStartBtn) strategyStartBtn.style.display = 'flex';
-                if (strategyStopBtn) strategyStopBtn.style.display = 'none';
             }
             
             // Update orders refresh interval when bot state changes / bot 状态改变时更新订单刷新间隔
@@ -2420,12 +2275,8 @@
         function initializeBotButtons() {
             // Default to showing start button if status check fails / 如果状态检查失败，默认显示启动按钮
             const startBtn = document.getElementById('startBotBtn');
-            const strategyStartBtn = document.getElementById('strategyStartBotBtn');
             if (startBtn && startBtn.style.display === 'none' && !document.getElementById('stopBotBtn')?.style.display) {
                 startBtn.style.display = 'flex';
-            }
-            if (strategyStartBtn && strategyStartBtn.style.display === 'none' && !document.getElementById('strategyStopBotBtn')?.style.display) {
-                strategyStartBtn.style.display = 'flex';
             }
         }
 
@@ -2548,11 +2399,10 @@
                 }
                 
                 // Use Hyperliquid-specific cancel order endpoint / 使用 Hyperliquid 特定取消订单端点
-                // Backend expects {"order_id": "..."} format / 后端期望 {"order_id": "..."} 格式
                 const res = await diagnosticFetch('/api/hyperliquid/cancel-order', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ order_id: orderId }),
+                    body: JSON.stringify(orderId),
                 });
                 const data = await res.json();
                 
@@ -2681,29 +2531,10 @@
                 return;
             }
             
-            // Extract base provider names from available and unavailable lists
-            // 从可用和不可用列表中提取基础提供商名称
-            // Helper function to extract base name (e.g., "Gemini" from "Gemini (gemini-3-pro-preview)")
-            // 辅助函数：提取基础名称（例如，从 "Gemini (gemini-3-pro-preview)" 提取 "Gemini"）
-            function extractBaseName(providerName) {
-                if (!providerName) return '';
-                // Remove model suffix in parentheses if present / 如果存在，移除括号中的模型后缀
-                if (providerName.includes('(')) {
-                    return providerName.split('(')[0].trim();
-                }
-                return providerName.trim();
-            }
-            
-            // Build sets of available and unavailable provider base names
-            // 构建可用和不可用提供商基础名称的集合
-            const availableNames = new Set(
-                (providerAvailability.available || []).map(p => extractBaseName(p.name))
-            );
             const unavailableNames = new Set(
-                (providerAvailability.unavailable || []).map(p => extractBaseName(p.name))
+                (providerAvailability.unavailable || []).map(p => p.name)
             );
             
-            console.log('Available providers:', Array.from(availableNames)); // Debug log / 调试日志
             console.log('Unavailable providers:', Array.from(unavailableNames)); // Debug log / 调试日志
             
             Object.keys(modelMap).forEach(modelKey => {
@@ -2714,38 +2545,23 @@
                 }
                 
                 const providerName = modelMap[modelKey];
-                // Check if provider is explicitly unavailable / 检查提供商是否明确不可用
                 const isUnavailable = unavailableNames.has(providerName);
-                // Check if provider is explicitly available / 检查提供商是否明确可用
-                const isAvailable = availableNames.has(providerName);
                 
-                console.log(`Provider ${providerName}: available=${isAvailable}, unavailable=${isUnavailable}`); // Debug log / 调试日志
+                console.log(`Provider ${providerName}: ${isUnavailable ? 'unavailable' : 'available'}`); // Debug log / 调试日志
                 
                 if (isUnavailable) {
-                    // Provider is explicitly unavailable - disable checkbox / 提供商明确不可用 - 禁用复选框
                     checkbox.disabled = true;
                     checkbox.checked = false;
                     const label = checkbox.closest('label');
                     if (label) {
                         label.style.opacity = '0.5';
                         label.style.cursor = 'not-allowed';
-                        const unavailableInfo = (providerAvailability.unavailable || []).find(p => extractBaseName(p.name) === providerName);
+                        const unavailableInfo = (providerAvailability.unavailable || []).find(p => p.name === providerName);
                         if (unavailableInfo) {
                             label.title = `${unavailableInfo.reason}. Please configure ${unavailableInfo.api_key_name} in .env file. / ${unavailableInfo.reason}。请在 .env 文件中配置 ${unavailableInfo.api_key_name}。`;
                         }
                     }
-                } else if (isAvailable) {
-                    // Provider is explicitly available - enable checkbox / 提供商明确可用 - 启用复选框
-                    checkbox.disabled = false;
-                    const label = checkbox.closest('label');
-                    if (label) {
-                        label.style.opacity = '1';
-                        label.style.cursor = 'pointer';
-                        label.title = '';
-                    }
                 } else {
-                    // Provider status unknown - enable checkbox but log warning / 提供商状态未知 - 启用复选框但记录警告
-                    console.warn(`Provider ${providerName} status unknown, enabling checkbox by default / 提供商 ${providerName} 状态未知，默认启用复选框`);
                     checkbox.disabled = false;
                     const label = checkbox.closest('label');
                     if (label) {
@@ -2771,16 +2587,7 @@
                         'claude': 'Claude'
                     };
                     const providerName = modelMap[cb.value];
-                    // Helper function to extract base name / 辅助函数：提取基础名称
-                    function extractBaseName(providerName) {
-                        if (!providerName) return '';
-                        if (providerName.includes('(')) {
-                            return providerName.split('(')[0].trim();
-                        }
-                        return providerName.trim();
-                    }
-                    // Use extractBaseName to match provider names / 使用 extractBaseName 匹配提供商名称
-                    const unavailableInfo = (providerAvailability.unavailable || []).find(p => extractBaseName(p.name) === providerName);
+                    const unavailableInfo = providerAvailability.unavailable.find(p => p.name === providerName);
                     
                     if (cb.checked && unavailableInfo) {
                         // Uncheck if no API key / 如果没有 API 密钥则取消选中

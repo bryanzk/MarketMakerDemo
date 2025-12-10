@@ -9,7 +9,7 @@ Owner: Agent QA
 """
 
 import os
-from unittest.mock import MagicMock, Mock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 import requests
@@ -31,9 +31,7 @@ class TestHyperliquid422ErrorIntegration:
         os.environ,
         {
             "HYPERLIQUID_API_KEY": "test_key",
-            # Use a valid hex format private key (64 hex characters) for testing
-            # 使用有效的十六进制格式私钥（64 个十六进制字符）用于测试
-            "HYPERLIQUID_API_SECRET": "0x" + "1" * 64,  # Valid format but invalid key for actual trading
+            "HYPERLIQUID_API_SECRET": "test_secret",
         },
     )
     @patch("src.trading.hyperliquid_client.requests.post")
@@ -58,35 +56,28 @@ class TestHyperliquid422ErrorIntegration:
             "meta": {"universe": [{"name": "ETH"}]}
         }
         
-        # Setup mock sequence: connection (2 calls), market data
-        # 设置 mock 序列：连接（2 次调用），市场数据
+        # Mock 422 error for order placement / 模拟订单下单的 422 错误
+        mock_422_response = MagicMock()
+        mock_422_response.status_code = 422
+        mock_422_response.text = '{"error": "Insufficient margin", "code": "MARGIN_ERROR"}'
+        mock_422_response.json.return_value = {
+            "error": "Insufficient margin",
+            "code": "MARGIN_ERROR"
+        }
+        mock_422_response.raise_for_status.side_effect = HTTPError(
+            response=mock_422_response
+        )
+        
+        # Setup mock sequence: connection (2 calls), market data, then 422 for order
+        # 设置 mock 序列：连接（2 次调用），市场数据，然后订单 422
         mock_post.side_effect = [
             mock_success,  # Connection call 1
             mock_success,  # Connection call 2
             mock_market_data,  # Market data
+            mock_422_response,  # Order placement fails
         ]
         
         client = HyperliquidClient()
-        
-        # Mock fetch_market_data to return market data with tick_size and step_size
-        # Mock fetch_market_data 返回包含 tick_size 和 step_size 的市场数据
-        client.fetch_market_data = Mock(
-            return_value={
-                "best_bid": 2000.0,
-                "best_ask": 2002.0,
-                "mid_price": 2001.0,
-                "tick_size": 0.1,
-                "step_size": 0.001,
-            }
-        )
-        
-        # Mock SDK order() method to return 422 error response
-        # Mock SDK order() 方法返回 422 错误响应
-        if client._exchange:
-            client._exchange.order = MagicMock(return_value={
-                "status": "err",
-                "response": "Insufficient margin. MARGIN_ERROR"
-            })
         
         # Simulate a trading cycle / 模拟交易周期
         # 1. Get market data (should succeed) / 获取市场数据（应该成功）
@@ -110,18 +101,13 @@ class TestHyperliquid422ErrorIntegration:
         assert client.last_order_error is not None
         assert client.last_order_error["type"] == "invalid_request"
         assert "Insufficient margin" in client.last_order_error["message"]
-        # Check error detail in api_error field / 检查 api_error 字段中的错误详情
-        api_error = client.last_order_error.get("api_error", {})
-        error_text = api_error.get("error", "") if api_error else ""
-        assert "MARGIN_ERROR" in error_text or "Insufficient margin" in error_text
+        assert "MARGIN_ERROR" in client.last_order_error.get("api_error", {}).get("error_detail", "")
 
     @patch.dict(
         os.environ,
         {
             "HYPERLIQUID_API_KEY": "test_key",
-            # Use a valid hex format private key (64 hex characters) for testing
-            # 使用有效的十六进制格式私钥（64 个十六进制字符）用于测试
-            "HYPERLIQUID_API_SECRET": "0x" + "1" * 64,  # Valid format but invalid key for actual trading
+            "HYPERLIQUID_API_SECRET": "test_secret",
         },
     )
     @patch("src.trading.hyperliquid_client.requests.post")
@@ -138,76 +124,42 @@ class TestHyperliquid422ErrorIntegration:
         mock_success.status_code = 200
         mock_success.json.return_value = {"status": "ok"}
         
+        # Mock 422 error for first order / 模拟第一个订单的 422 错误
+        mock_422_response = MagicMock()
+        mock_422_response.status_code = 422
+        mock_422_response.text = '{"error": "Invalid price", "field": "price"}'
+        mock_422_response.json.return_value = {"error": "Invalid price", "field": "price"}
+        mock_422_response.raise_for_status.side_effect = HTTPError(
+            response=mock_422_response
+        )
+        
+        # Mock success for second order / 模拟第二个订单成功
+        mock_success_order = MagicMock()
+        mock_success_order.status_code = 200
+        mock_success_order.json.return_value = {
+            "status": "ok",
+            "response": {
+                "type": "order",
+                "data": {"statuses": [{"resting": {"oid": 99999}}]},
+            },
+        }
+        
         # Setup mock sequence / 设置 mock 序列
         mock_post.side_effect = [
             mock_success,  # Connection call 1
             mock_success,  # Connection call 2
+            mock_422_response,  # First order fails
+            mock_success_order,  # Second order succeeds
         ]
         
         client = HyperliquidClient()
         
-        # Mock fetch_market_data to return market data with tick_size and step_size
-        # Market data should match order prices to avoid symbol mismatch detection
-        # Mock fetch_market_data 返回包含 tick_size 和 step_size 的市场数据
-        # 市场数据应该匹配订单价格以避免交易对不匹配检测
-        # Use a callable mock that returns different market data based on which order is being placed
-        # 使用可调用的 mock，根据正在下的订单返回不同的市场数据
-        call_count = [0]  # Use list to allow modification in nested function
-        def mock_fetch_market_data():
-            call_count[0] += 1
-            if call_count[0] == 1:
-                # First order: price 100.0, so mid_price should be around 100.0
-                # 第一个订单：价格 100.0，所以 mid_price 应该在 100.0 附近
-                return {
-                    "best_bid": 99.5,
-                    "best_ask": 100.5,
-                    "mid_price": 100.0,  # Match first order price / 匹配第一个订单价格
-                    "tick_size": 0.1,
-                    "step_size": 0.001,
-                }
-            else:
-                # Second order: price 2010.0, so mid_price should be around 2010.0
-                # 第二个订单：价格 2010.0，所以 mid_price 应该在 2010.0 附近
-                return {
-                    "best_bid": 2009.5,
-                    "best_ask": 2010.5,
-                    "mid_price": 2010.0,  # Match second order price / 匹配第二个订单价格
-                    "tick_size": 0.1,
-                    "step_size": 0.001,
-                }
-        client.fetch_market_data = Mock(side_effect=mock_fetch_market_data)
-        
-        # Mock SDK order() method to return different responses for different orders
-        # Mock SDK order() 方法为不同订单返回不同响应
-        if client._exchange:
-            order_call_count = [0]  # Use list to allow modification in nested function
-            def mock_order(*args, **kwargs):
-                order_call_count[0] += 1
-                if order_call_count[0] == 1:
-                    # First order fails with 422 / 第一个订单因 422 失败
-                    return {
-                        "status": "err",
-                        "response": "Invalid price. field: price"
-                    }
-                else:
-                    # Second order succeeds / 第二个订单成功
-                    return {
-                        "status": "ok",
-                        "response": {
-                            "type": "order",
-                            "data": {"statuses": [{"resting": {"oid": 99999}}]},
-                        },
-                    }
-            client._exchange.order = MagicMock(side_effect=mock_order)
-        
         # Place multiple orders / 下多个订单
         # First order will fail with 422 from API (not validation)
         # 第一个订单会因 API 返回 422 失败（不是验证失败）
-        # Note: Order value must be >= $10.0 to pass validation
-        # 注意：订单价值必须 >= $10.0 才能通过验证
         orders = [
-            {"side": "buy", "price": 100.0, "quantity": 0.1, "type": "limit"},  # Value: $10.0, will fail with 422 / 价值: $10.0，会因 422 失败
-            {"side": "sell", "price": 2010.0, "quantity": 0.1, "type": "limit"},  # Value: $201.0, valid order / 价值: $201.0，有效订单
+            {"side": "buy", "price": 100.0, "quantity": 0.01, "type": "limit"},  # Will fail with 422 / 会因 422 失败
+            {"side": "sell", "price": 2010.0, "quantity": 0.01, "type": "limit"},  # Valid order / 有效订单
         ]
         result = client.place_orders(orders)
         
@@ -224,9 +176,7 @@ class TestHyperliquid422ErrorIntegration:
         os.environ,
         {
             "HYPERLIQUID_API_KEY": "test_key",
-            # Use a valid hex format private key (64 hex characters) for testing
-            # 使用有效的十六进制格式私钥（64 个十六进制字符）用于测试
-            "HYPERLIQUID_API_SECRET": "0x" + "1" * 64,  # Valid format but invalid key for actual trading
+            "HYPERLIQUID_API_SECRET": "test_secret",
         },
     )
     @patch("src.trading.hyperliquid_client.requests.post")
@@ -297,9 +247,7 @@ class TestHyperliquid422ErrorIntegration:
         os.environ,
         {
             "HYPERLIQUID_API_KEY": "test_key",
-            # Use a valid hex format private key (64 hex characters) for testing
-            # 使用有效的十六进制格式私钥（64 个十六进制字符）用于测试
-            "HYPERLIQUID_API_SECRET": "0x" + "1" * 64,  # Valid format but invalid key for actual trading
+            "HYPERLIQUID_API_SECRET": "test_secret",
         },
     )
     @patch("src.trading.hyperliquid_client.requests.post")
@@ -444,9 +392,7 @@ class TestHyperliquid422ErrorIntegration:
         os.environ,
         {
             "HYPERLIQUID_API_KEY": "test_key",
-            # Use a valid hex format private key (64 hex characters) for testing
-            # 使用有效的十六进制格式私钥（64 个十六进制字符）用于测试
-            "HYPERLIQUID_API_SECRET": "0x" + "1" * 64,  # Valid format but invalid key for actual trading
+            "HYPERLIQUID_API_SECRET": "test_secret",
         },
     )
     @patch("src.trading.hyperliquid_client.requests.post")

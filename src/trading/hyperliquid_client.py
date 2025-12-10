@@ -12,7 +12,6 @@ import hmac
 import json
 import logging
 import os
-import re
 import time
 import uuid
 from collections import deque
@@ -61,7 +60,6 @@ from src.shared.config import (
     SYMBOL,
 )
 from src.shared.tracing import get_trace_id, hash_payload
-from src.shared.utils import round_step_size, round_tick_size
 
 logger = logging.getLogger(__name__)
 
@@ -251,10 +249,9 @@ class RateLimiter:
         """
         with self.lock:
             current_time = time.time()
-            # Clean up old weights first to ensure accurate tracking / 首先清理旧权重以确保准确跟踪
-            self._cleanup_old_weights(current_time)
             weight = self.get_endpoint_weight(endpoint)
             self.weight_history.append((current_time, weight))
+            self._cleanup_old_weights(current_time)
 
 
 class HyperliquidClient:
@@ -285,8 +282,8 @@ class HyperliquidClient:
         # Note: os.getenv returns None if not set, so we check both env and config
         # API key should be the user's wallet address on Hyperliquid
         # API key 应该是用户在 Hyperliquid 上的钱包地址
-        # Priority: explicit api_key > HYPERLIQUID_WALLET_ADDRESS > HYPERLIQUID_API_KEY > default
-        # 优先级：显式 api_key > HYPERLIQUID_WALLET_ADDRESS > HYPERLIQUID_API_KEY > 默认值
+        # Priority: HYPERLIQUID_WALLET_ADDRESS > HYPERLIQUID_API_KEY > default
+        # 优先级：HYPERLIQUID_WALLET_ADDRESS > HYPERLIQUID_API_KEY > 默认值
         if api_key is None:
             # Check for new wallet address variable first / 首先检查新的钱包地址变量
             wallet_address = os.getenv("HYPERLIQUID_WALLET_ADDRESS")
@@ -300,16 +297,10 @@ class HyperliquidClient:
                 env_key = os.getenv("HYPERLIQUID_API_KEY")
                 self.api_key = env_key if env_key is not None else HYPERLIQUID_API_KEY
         else:
-            # Use explicit api_key parameter (for testing or explicit configuration)
-            # 使用显式 api_key 参数（用于测试或显式配置）
             self.api_key = api_key
         
         # Store the user address (from API key or account)
         # 存储用户地址（来自 API key 或账户）
-        # For API wallet mode, user_address should be the wallet address
-        # For testing, user_address may be the same as api_key
-        # 对于 API 钱包模式，user_address 应该是钱包地址
-        # 对于测试，user_address 可能与 api_key 相同
         # Initialize to API key, will be updated after account initialization if needed
         # 初始化为 API key，如果需要，将在账户初始化后更新
         self.user_address = self.api_key if self.api_key else None
@@ -419,39 +410,15 @@ class HyperliquidClient:
                 )
             if EthAccount:
                 try:
-                    # Clean and normalize private key format
-                    # 清理并规范化私钥格式
-                    original_key = str(self.api_secret).strip()
-                    
-                    # Remove whitespace, newlines, and other non-hex characters
-                    # 移除空格、换行符和其他非十六进制字符
-                    cleaned_key = "".join(c for c in original_key if c.isalnum() or c in "x")
-                    
-                    # Remove 0x prefix if present (we'll add it back)
-                    # 如果存在 0x 前缀则移除（稍后会重新添加）
-                    if cleaned_key.startswith("0x") or cleaned_key.startswith("0X"):
-                        cleaned_key = cleaned_key[2:]
-                    
-                    # Validate hex format (must be 64 hex characters for 32 bytes)
-                    # 验证十六进制格式（必须是 64 个十六进制字符，对应 32 字节）
-                    if not all(c in "0123456789abcdefABCDEF" for c in cleaned_key):
-                        raise ValueError(
-                            f"Private key contains non-hexadecimal characters. "
-                            f"私钥包含非十六进制字符。"
-                            f"Cleaned key preview: {cleaned_key[:20]}...{cleaned_key[-10:] if len(cleaned_key) > 30 else ''}"
-                        )
-                    
-                    if len(cleaned_key) != 64:
-                        raise ValueError(
-                            f"Private key length is {len(cleaned_key)}, expected 64 hex characters (32 bytes). "
-                            f"私钥长度为 {len(cleaned_key)}，期望 64 个十六进制字符（32 字节）。"
-                        )
-                    
-                    # Add 0x prefix for eth_account
-                    # 为 eth_account 添加 0x 前缀
-                    key = f"0x{cleaned_key}"
+                    # Normalize key format (ensure 0x prefix)
+                    # 规范化密钥格式（确保0x前缀）
+                    original_key = str(self.api_secret)
+                    key = (
+                        self.api_secret
+                        if original_key.startswith("0x")
+                        else f"0x{self.api_secret}"
+                    )
                     key_length = len(key)
-                    
                     logger.info(
                         f"Attempting to create account from key. "
                         f"Key length: {key_length}, "
@@ -518,27 +485,13 @@ class HyperliquidClient:
                             f"如果您使用 API 钱包模式，请在 .env 文件中设置 HYPERLIQUID_WALLET_ADDRESS。"
                         )
                 except Exception as e:
-                    # Log detailed error information for debugging
-                    # 记录详细的错误信息用于调试
-                    original_key_str = str(self.api_secret)
-                    key_preview = (
-                        f"{original_key_str[:20]}...{original_key_str[-10:]}"
-                        if len(original_key_str) > 30
-                        else original_key_str[:30]
-                    )
-                    
                     logger.warning(
                         f"Failed to initialize Ethereum account for signing: {e}. "
-                        f"API secret format may be invalid (expected 64-character hex private key). "
-                        f"Original key length: {len(original_key_str)}, "
-                        f"Key preview: {key_preview}. "
-                        f"Please ensure HYPERLIQUID_API_SECRET is a valid 64-character hexadecimal private key "
-                        f"(with or without 0x prefix). "
+                        f"API secret format may be invalid (expected hex private key). "
+                        f"Key length: {len(key)}, Key preview: {key[:20]}... "
                         f"Signature-based authentication will fall back to placeholder. "
-                        f"初始化以太坊账户失败: {e}。API密钥格式可能无效（期望 64 字符的十六进制私钥）。"
-                        f"原始密钥长度: {len(original_key_str)}，密钥预览: {key_preview}。"
-                        f"请确保 HYPERLIQUID_API_SECRET 是有效的 64 字符十六进制私钥（带或不带 0x 前缀）。"
-                        f"签名将使用占位符。",
+                        f"初始化以太坊账户失败: {e}。API密钥格式可能无效（期望十六进制私钥）。"
+                        f"密钥长度: {len(key)}。签名将使用占位符。",
                         exc_info=True,
                     )
         else:
@@ -622,36 +575,17 @@ class HyperliquidClient:
                     exc_info=True,
                 )
         else:
-            # Log reason for SDK not being initialized / 记录 SDK 未初始化的原因
-            reasons = []
             if not HYPERLIQUID_SDK_AVAILABLE:
-                reasons.append("SDK not available")
-            if not HyperliquidExchange:
-                reasons.append("HyperliquidExchange not available")
-            if not HyperliquidInfo:
-                reasons.append("HyperliquidInfo not available")
-            if not self._account:
-                reasons.append("Ethereum account not available")
-            
-            reason_str = ", ".join(reasons) if reasons else "Unknown reason"
-            logger.warning(
-                f"Hyperliquid SDK not initialized. Reason: {reason_str}. "
-                f"Will use manual implementation for some operations. "
-                f"Hyperliquid SDK 未初始化。原因: {reason_str}。"
-                f"某些操作将使用手动实现。"
-            )
-            
-            # For testing: try to initialize Info even without Exchange
-            # 对于测试：即使没有 Exchange，也尝试初始化 Info
-            if HYPERLIQUID_SDK_AVAILABLE and HyperliquidInfo:
-                try:
-                    self._info = HyperliquidInfo(self.base_url, skip_ws=True, timeout=self.request_timeout)
-                    logger.info(
-                        "Initialized Hyperliquid SDK Info instance (without Exchange). "
-                        "初始化 Hyperliquid SDK Info 实例（无 Exchange）。"
-                    )
-                except Exception as e:
-                    logger.debug(f"Failed to initialize Info instance: {e}")
+                logger.warning(
+                    "Hyperliquid SDK not available. Will use manual implementation. "
+                    "Hyperliquid SDK 不可用。将使用手动实现。"
+                )
+            elif not self._account:
+                logger.warning(
+                    "Ethereum account not initialized. Cannot use Hyperliquid SDK Exchange. "
+                    "Will use manual implementation. "
+                    "以太坊账户未初始化。无法使用 Hyperliquid SDK Exchange。将使用手动实现。"
+                )
 
         # Connect and authenticate
         # Note: Use requests module directly for test compatibility
@@ -747,19 +681,6 @@ class HyperliquidClient:
                         f"Hyperliquid client connected successfully (testnet={self.testnet}, attempt={attempt + 1})"
                     )
                     return
-                elif response.status_code == 401:
-                    # Authentication failed - raise AuthenticationError immediately
-                    # 认证失败 - 立即抛出 AuthenticationError
-                    error_text = (
-                        response.text if hasattr(response, "text") else "Unauthorized"
-                    )
-                    error_msg = (
-                        f"Authentication failed. Invalid API credentials. "
-                        f"Error: {error_text}. "
-                        f"认证失败。无效的 API 凭证。错误: {error_text}。"
-                    )
-                    logger.error(f"Authentication failed: {error_msg}")
-                    raise AuthenticationError(error_msg)
                 else:
                     # Log non-200 status codes for debugging
                     logger.warning(
@@ -1039,21 +960,10 @@ class HyperliquidClient:
                         f"捕获HTTPError。状态码: {status_code}。"
                     )
                 else:
-                    # Try to extract status code from error message if response object is not available
-                    # 如果响应对象不可用，尝试从错误消息中提取状态码
-                    error_str = str(e)
-                    status_match = re.search(r'(\d{3})\s+Client Error|(\d{3})\s+Server Error|(\d{3})\s+Error', error_str)
-                    if status_match:
-                        status_code = int(status_match.group(1) or status_match.group(2) or status_match.group(3))
-                        logger.warning(
-                            f"HTTPError without response object. Extracted status code {status_code} from error message: {error_str[:200]}. "
-                            f"HTTPError没有响应对象。从错误消息中提取状态码 {status_code}: {error_str[:200]}。"
-                        )
-                    else:
-                        logger.warning(
-                            f"HTTPError without response object. Could not extract status code. Error: {error_str[:200]}. "
-                            f"HTTPError没有响应对象。无法提取状态码。错误: {error_str[:200]}。"
-                        )
+                    logger.warning(
+                        f"HTTPError without response object. Error: {str(e)}. "
+                        f"HTTPError没有响应对象。错误: {str(e)}。"
+                    )
                 if status_code == 401:
                     error_msg = (
                         f"Authentication failed. Invalid API credentials. "
@@ -1185,49 +1095,21 @@ class HyperliquidClient:
                         "response_body": response_body[:500] if response_body else None,
                     }
 
-                    # Include request_data in extra for debugging / 在 extra 中包含 request_data 以便调试
-                    extra_data = {
-                        **request_meta,
-                        "status_code": status_code,
-                        "latency_ms": latency_ms,
-                        "attempt": attempt,
-                        "error_detail": error_detail,
-                        "request_summary": request_summary,
-                        "response_body": response_body[:500] if response_body else None,
-                    }
-                    # Add request_data field for debugging (sanitized) / 添加 request_data 字段以便调试（已清理）
-                    # This field is expected by tests for debugging 422 errors
-                    # 此字段是测试期望的，用于调试 422 错误
-                    if data:
-                        try:
-                            # Create sanitized copy of request data / 创建请求数据的清理副本
-                            sanitized_data = {}
-                            if isinstance(data, dict):
-                                # Include action and nonce for debugging / 包含 action 和 nonce 以便调试
-                                sanitized_data = {
-                                    k: v for k, v in data.items()
-                                    if k not in ["signature"]  # Hide signature but keep other fields / 隐藏签名但保留其他字段
-                                }
-                                # Ensure action is included if present / 确保包含 action（如果存在）
-                                if "action" in data:
-                                    sanitized_data["action"] = data["action"]
-                                if "nonce" in data:
-                                    sanitized_data["nonce"] = data["nonce"]
-                            else:
-                                sanitized_data = {"raw_data_preview": str(data)[:200]}
-                            extra_data["request_data"] = sanitized_data
-                        except Exception as ex:
-                            extra_data["request_data"] = {"error": f"Failed to sanitize request data: {ex}"}
-                    else:
-                        extra_data["request_data"] = {}
-                    
                     logger.error(
                         f"Hyperliquid invalid request (422) for {endpoint}. "
                         f"Request summary: {request_summary}, "
                         f"Response: {error_detail[:200]}. "
                         f"Hyperliquid无效请求 (422) {endpoint}。"
                         f"请求摘要: {request_summary}。",
-                        extra=extra_data,
+                        extra={
+                            **request_meta,
+                            "status_code": status_code,
+                            "latency_ms": latency_ms,
+                            "attempt": attempt,
+                            "error_detail": error_detail,
+                            "request_summary": request_summary,
+                            "response_body": response_body[:500] if response_body else None,
+                        },
                     )
 
                     # Don't retry 422 errors as they indicate a problem with the request itself
@@ -1412,108 +1294,6 @@ class HyperliquidClient:
                 exc_info=True,
             )
             return None
-
-    def _resolve_tick_size(
-        self, coin: str, market_snapshot: Optional[Dict] = None
-    ) -> float:
-        """
-        Resolve tick_size priority:
-        1) priceIncrement/tickSize from meta
-        2) pxDecimals -> 10 ** (-pxDecimals)
-        3) orderbook gap (best_ask - best_bid)
-        4) hard defaults per coin
-        优先使用 meta 价格精度，再用盘口价差，最后用默认值。
-        """
-        coin_normalized = (
-            coin.split("/")[0].split(":")[0].upper() if coin else ""
-        )
-
-        tick_size = None
-        meta_data = None
-
-        try:
-            meta_data = self._fetch_meta_data()
-        except Exception as e:
-            logger.debug(f"Failed to fetch meta for tick_size resolution: {e}")
-
-        if meta_data:
-            universe = meta_data.get("universe", [])
-            for asset_info in universe:
-                if not isinstance(asset_info, dict):
-                    continue
-                if asset_info.get("name") != coin_normalized:
-                    continue
-
-                price_increment = (
-                    asset_info.get("priceIncrement")
-                    or asset_info.get("price_increment")
-                    or asset_info.get("tickSize")
-                    or asset_info.get("tick_size")
-                )
-                if price_increment:
-                    try:
-                        tick_size = float(price_increment)
-                        logger.debug(
-                            f"tick_size resolved from priceIncrement/tickSize for {coin_normalized}: {tick_size}"
-                        )
-                        break
-                    except (TypeError, ValueError):
-                        pass
-
-                px_decimals = asset_info.get("pxDecimals") or asset_info.get(
-                    "px_decimals"
-                )
-                if px_decimals is not None:
-                    try:
-                        tick_size = 10 ** (-int(px_decimals))
-                        logger.debug(
-                            f"tick_size resolved from pxDecimals for {coin_normalized}: {tick_size}"
-                        )
-                        break
-                    except (TypeError, ValueError):
-                        pass
-
-                # If we reached here, we found the asset but no usable price precision
-                break
-
-        if tick_size is None and market_snapshot:
-            best_bid = market_snapshot.get("best_bid")
-            best_ask = market_snapshot.get("best_ask")
-            if best_bid and best_ask:
-                try:
-                    gap = abs(float(best_ask) - float(best_bid))
-                    # Only accept gap-based inference if it is reasonably small (prevents absurd tick_size)
-                    # 仅当价差较小且合理时才使用 gap 作为 tick_size，避免异常 tick_size
-                    default_guess = 0.5 if coin_normalized == "BTC" else 0.1
-                    if gap > 0 and gap <= default_guess * 2:
-                        tick_size = gap
-                        logger.debug(
-                            f"tick_size inferred from orderbook gap for {coin_normalized}: {tick_size}"
-                        )
-                except (TypeError, ValueError):
-                    pass
-
-        if tick_size is None:
-            # Use more accurate defaults based on coin price range
-            # 根据币种价格范围使用更准确的默认值
-            # Note: These are fallback values. Actual tick_size should come from meta data.
-            # 注意：这些是回退值。实际的 tick_size 应该来自 meta 数据。
-            if coin_normalized == "BTC":
-                tick_size = 0.5  # BTC common perp tick
-            elif coin_normalized == "ETH":
-                tick_size = 0.1
-            elif coin_normalized in ["SOL", "AVAX", "MATIC"]:
-                tick_size = 0.01
-            else:
-                tick_size = 0.1
-            logger.warning(
-                f"tick_size fallback default for {coin_normalized}: {tick_size}. "
-                f"This may not be accurate. Please verify from meta data. "
-                f"{coin_normalized} 的 tick_size 回退默认值: {tick_size}。"
-                f"这可能不准确。请从 meta 数据验证。"
-            )
-
-        return tick_size
     
     def _build_asset_index_map(self, meta_data: Dict) -> None:
         """
@@ -1591,87 +1371,14 @@ class HyperliquidClient:
         
         return asset_index
 
-    def get_default_eth_symbol(self) -> str:
-        """
-        Get default ETH trading pair with highest volume from Hyperliquid.
-        Returns ETH perpetual (USDC-settled) if available, otherwise falls back to spot.
-        从 Hyperliquid 获取交易量最大的默认 ETH 交易对。
-        如果可用，返回 ETH 永续合约（USDC 结算），否则回退到现货。
-        
-        Returns:
-            Default ETH symbol in format "ETH/USDC:USDC" or "ETH/USDC:USDC" (spot)
-            默认 ETH 交易对，格式为 "ETH/USDC:USDC" 或 "ETH/USDC:USDC"（现货）
-        """
-        try:
-            meta_data = self._fetch_meta_data()
-            if not meta_data:
-                logger.warning(
-                    "Failed to fetch meta data for default ETH symbol. Using fallback. "
-                    "获取默认 ETH 交易对的 meta 数据失败。使用回退值。"
-                )
-                return "ETH/USDC:USDC"  # Fallback to perpetual format / 回退到永续合约格式
-            
-            # Check perpetual universe first (usually has highest volume) / 首先检查永续合约 universe（通常交易量最大）
-            universe = meta_data.get("universe", [])
-            for asset_info in universe:
-                if isinstance(asset_info, dict):
-                    coin_name = asset_info.get("name", "").upper()
-                    if coin_name == "ETH":
-                        # Perpetual contracts use USDC as settlement / 永续合约使用 USDC 作为结算货币
-                        logger.info(
-                            "Found ETH perpetual contract. Using ETH/USDC:USDC as default symbol. "
-                            "找到 ETH 永续合约。使用 ETH/USDC:USDC 作为默认交易对。"
-                        )
-                        return "ETH/USDC:USDC"
-            
-            # If not found in perpetual, check spot universe / 如果在永续合约中未找到，检查现货 universe
-            spot_meta = meta_data.get("spotMeta", {})
-            spot_universe = spot_meta.get("universe", []) if isinstance(spot_meta, dict) else []
-            for asset_info in spot_universe:
-                if isinstance(asset_info, dict):
-                    coin_name = asset_info.get("name", "").upper()
-                    if coin_name == "ETH":
-                        # Spot contracts also typically use USDC / 现货合约通常也使用 USDC
-                        logger.info(
-                            "Found ETH spot contract. Using ETH/USDC:USDC as default symbol. "
-                            "找到 ETH 现货合约。使用 ETH/USDC:USDC 作为默认交易对。"
-                        )
-                        return "ETH/USDC:USDC"
-            
-            # If ETH not found in either universe, log warning and use fallback / 如果在两个 universe 中都未找到 ETH，记录警告并使用回退值
-            logger.warning(
-                "ETH not found in Hyperliquid universe. Using fallback symbol ETH/USDC:USDC. "
-                "在 Hyperliquid universe 中未找到 ETH。使用回退交易对 ETH/USDC:USDC。"
-            )
-            return "ETH/USDC:USDC"
-            
-        except Exception as e:
-            logger.error(
-                f"Error getting default ETH symbol: {e}. Using fallback. "
-                f"获取默认 ETH 交易对时出错: {e}。使用回退值。",
-                exc_info=True
-            )
-            return "ETH/USDC:USDC"  # Fallback / 回退值
-
     def _initialize_symbol(self):
         """Initialize symbol-specific data / 初始化交易对特定数据"""
         # Fetch meta data to build asset index mapping / 获取 meta 数据以构建资产索引映射
-        meta_data = self._fetch_meta_data()
-        if meta_data:
-            # Rebuild asset index map with new symbol
-            # 使用新交易对重建资产索引映射
-            self._build_asset_index_map(meta_data)
+        self._fetch_meta_data()
         
         # For now, we'll use a simple approach
         # In a full implementation, we'd fetch market info from Hyperliquid
         self.market = {"id": self.symbol.replace("/", "").replace(":", "")}
-        
-        # Log symbol initialization
-        # 记录交易对初始化
-        logger.info(
-            f"Symbol initialized: {self.symbol}. Asset index map size: {len(self._asset_index_map)}. "
-            f"交易对已初始化: {self.symbol}。资产索引映射大小: {len(self._asset_index_map)}。"
-        )
 
     def get_connection_status(self) -> Dict:
         """
@@ -1711,23 +1418,15 @@ class HyperliquidClient:
     def set_symbol(self, symbol: str) -> bool:
         """Updates the trading symbol / 更新交易对"""
         try:
-            old_symbol = getattr(self, 'symbol', None)
             # In a full implementation, we'd validate the symbol exists
             self.symbol = symbol
             self._initialize_symbol()
             self.last_order_error = None
             self.last_api_error = None
-            logger.info(
-                f"Switched Hyperliquid client symbol: {old_symbol} -> {self.symbol}. "
-                f"切换 Hyperliquid 客户端交易对: {old_symbol} -> {self.symbol}。"
-            )
+            logger.info(f"Switched Hyperliquid client to symbol: {self.symbol}")
             return True
         except Exception as e:
-            logger.error(
-                f"Error setting symbol {symbol}: {e}. "
-                f"设置交易对 {symbol} 时出错: {e}。",
-                exc_info=True
-            )
+            logger.error(f"Error setting symbol {symbol}: {e}")
             return False
 
     def get_leverage(self) -> Optional[int]:
@@ -1781,55 +1480,20 @@ class HyperliquidClient:
                 "minNotional": 5.0,
             }
 
-    def fetch_market_data(self, symbol: Optional[str] = None) -> Optional[Dict]:
-        """
-        Fetches top 5 order book and calculates mid price / 获取前 5 档订单簿并计算中间价
-
-        Args:
-            symbol: Optional trading pair to query without mutating client state.
-                    可选交易对，用于在不修改客户端状态的情况下查询行情。
-        """
+    def fetch_market_data(self) -> Optional[Dict]:
+        """Fetches top 5 order book and calculates mid price / 获取前 5 档订单簿并计算中间价"""
         try:
-            # Choose target symbol without altering self.symbol (important when other threads are trading)
-            # 选择目标交易对且不修改 self.symbol（在其他线程交易时很重要）
-            target_symbol = symbol or self.symbol
-
-            # Log the symbol being used / 记录正在使用的交易对
-            logger.debug(
-                f"fetch_market_data called. Requested symbol: {target_symbol}. Current client symbol: {self.symbol}. "
-                f"fetch_market_data 被调用。请求的交易对: {target_symbol}。当前客户端交易对: {self.symbol}。"
-            )
-            
             # Convert symbol format (e.g., "ETH/USDT:USDT" -> "ETH")
             # 转换交易对格式（例如，"ETH/USDT:USDT" -> "ETH"）
             symbol_base = (
-                target_symbol.split("/")[0]
-                if "/" in target_symbol
-                else target_symbol.split(":")[0] if ":" in target_symbol else target_symbol
+                self.symbol.split("/")[0]
+                if "/" in self.symbol
+                else self.symbol.split(":")[0] if ":" in self.symbol else self.symbol
             )
 
             # Hyperliquid uses coin name without /USDT suffix
             # Hyperliquid 使用币种名称，不带 /USDT 后缀
-            # IMPORTANT: Only remove USDT if it's a suffix, not if it's part of the coin name
-            # 重要：仅在 USDT 是后缀时移除，而不是当它是币种名称的一部分时
-            coin = symbol_base
-            # Remove USDT suffix only if it appears at the end
-            # 仅在 USDT 出现在末尾时移除后缀
-            if coin.endswith("USDT"):
-                coin = coin[:-4]  # Remove "USDT" suffix
-            # Clean up any remaining separators
-            # 清理任何剩余的分隔符
-            coin = coin.replace("/", "").replace(":", "").strip()
-            
-            # Ensure coin is uppercase (Hyperliquid convention)
-            # 确保 coin 为大写（Hyperliquid 约定）
-            coin = coin.upper()
-            
-            # Log the extracted coin name / 记录提取的币种名称
-            logger.info(
-                f"Extracted coin from symbol. Symbol: {target_symbol}, Symbol base: {symbol_base}, Coin: {coin}. "
-                f"从交易对提取币种。交易对: {target_symbol}，交易对基础: {symbol_base}，币种: {coin}。"
-            )
+            coin = symbol_base.replace("USDT", "").replace("/", "").replace(":", "")
 
             # Fetch orderbook from Hyperliquid API
             # 从 Hyperliquid API 获取订单簿
@@ -2053,13 +1717,11 @@ class HyperliquidClient:
                 meta_data = self._fetch_meta_data()
                 if meta_data:
                     universe = meta_data.get("universe", [])
-                    # CRITICAL: Use target_symbol (or coin already extracted) instead of self.symbol
-                    # This ensures we get tick_size for the correct coin even if self.symbol hasn't been updated yet
-                    # 关键：使用 target_symbol（或已提取的 coin）而不是 self.symbol
-                    # 这确保即使 self.symbol 尚未更新，我们也能获取正确币种的 tick_size
-                    # Use the coin we already extracted from target_symbol above
-                    # 使用上面从 target_symbol 提取的 coin
-                    coin_normalized = coin.upper()  # coin was already extracted from target_symbol above
+                    # Get coin name from symbol
+                    # 从交易对名称获取币种名称
+                    symbol = self.symbol.split(":")[0] if ":" in self.symbol else self.symbol
+                    coin_normalized = symbol.split("/")[0] if "/" in symbol else symbol
+                    coin_normalized = coin_normalized.upper()
                     
                     # Find asset info in universe
                     # 在 universe 中查找资产信息
@@ -2068,27 +1730,16 @@ class HyperliquidClient:
                             # Hyperliquid uses szDecimals for step_size
                             # Hyperliquid 使用 szDecimals 作为 step_size
                             if "szDecimals" in asset_info:
-                                sz_decimals = asset_info["szDecimals"]
-                                step_size = 10 ** (-sz_decimals)
-                                # Calculate tick_size from szDecimals
-                                # For perpetuals: tick_size = 10^(szDecimals - 6)
-                                # For spot: tick_size = 10^(szDecimals - 8)
-                                # We assume perpetuals (most common case)
-                                # 从 szDecimals 计算 tick_size
-                                # 对于永续合约: tick_size = 10^(szDecimals - 6)
-                                # 对于现货: tick_size = 10^(szDecimals - 8)
-                                # 我们假设是永续合约（最常见的情况）
-                                tick_size = 10 ** (sz_decimals - 6)
-                                logger.debug(
-                                    f"Found tick_size={tick_size}, step_size={step_size} for {coin_normalized} from meta data "
-                                    f"(szDecimals={sz_decimals}). "
-                                    f"从 meta 数据找到 {coin_normalized} 的 tick_size={tick_size}, step_size={step_size} "
-                                    f"（szDecimals={sz_decimals}）。"
-                                )
-                            else:
-                                logger.debug(
-                                    f"No szDecimals found for {coin_normalized} when resolving step_size."
-                                )
+                                step_size = 10 ** (-asset_info["szDecimals"])
+                            # Common tick sizes: 0.1 for ETH, 0.01 for BTC
+                            # 常见 tick size: ETH 使用 0.1, BTC 使用 0.01
+                            # For ETH, tick_size is typically 0.1
+                            # 对于 ETH，tick_size 通常是 0.1
+                            tick_size = 0.1  # Default for ETH, adjust based on asset
+                            logger.debug(
+                                f"Found tick_size={tick_size}, step_size={step_size} for {coin_normalized} from meta data. "
+                                f"从 meta 数据找到 {coin_normalized} 的 tick_size={tick_size}, step_size={step_size}。"
+                            )
                             break
             except Exception as e:
                 logger.debug(
@@ -2096,14 +1747,10 @@ class HyperliquidClient:
                     f"从 meta 获取 tick_size/step_size 失败: {e}。"
                 )
 
-            # Resolve tick_size using price precision with fallbacks
-            # 使用价格精度及回退逻辑解析 tick_size
-            tick_size = self._resolve_tick_size(
-                coin_normalized, {"best_bid": best_bid, "best_ask": best_ask}
-            )
-
-            # Use defaults for step_size if not found
-            # 如果未找到 step_size，使用默认值
+            # Use defaults if not found
+            # 如果未找到，使用默认值
+            if tick_size is None:
+                tick_size = 0.1  # Default for ETH (changed from 0.01)
             if step_size is None:
                 step_size = 0.001  # Default for ETH
 
@@ -2220,285 +1867,6 @@ class HyperliquidClient:
         except Exception as e:
             logger.error(f"Error fetching bulk funding rates: {e}")
             return {symbol: 0.0 for symbol in symbols}
-
-    def fetch_historical_prices(
-        self, 
-        symbol: Optional[str] = None, 
-        hours: int = 24,
-        interval_minutes: int = 1
-    ) -> List[float]:
-        """
-        Fetch historical prices using official Hyperliquid REST API /info endpoint.
-        使用官方 Hyperliquid REST API /info 端点获取历史价格。
-        
-        According to official API documentation:
-        - Endpoint: POST https://api.hyperliquid.xyz/info
-        - Maximum: 5000 candles
-        - Supported intervals: "1m", "3m", "5m", "15m", "30m", "1h", "2h", "4h", "8h", "12h", "1d", "3d", "1w", "1M"
-        - Reference: https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/info-endpoint
-        
-        根据官方 API 文档：
-        - 端点: POST https://api.hyperliquid.xyz/info
-        - 最大: 5000 根 K 线
-        - 支持的时间间隔: "1m", "3m", "5m", "15m", "30m", "1h", "2h", "4h", "8h", "12h", "1d", "3d", "1w", "1M"
-        - 参考: https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/info-endpoint
-        
-        Implementation strategy:
-        1. First try official Hyperliquid SDK Info class methods (if available)
-        2. Fallback to direct REST API call to /info endpoint with candleSnapshot type
-        3. Final fallback: use current price from allMids
-        
-        实现策略：
-        1. 首先尝试官方 Hyperliquid SDK Info 类方法（如果可用）
-        2. 回退到直接 REST API 调用 /info 端点，类型为 candleSnapshot
-        3. 最终回退：使用 allMids 的当前价格
-        
-        Args:
-            symbol: Trading symbol (optional, uses self.symbol if not provided)
-            hours: Number of hours of history to fetch
-            interval_minutes: Interval between price points in minutes (default: 1)
-            
-        Returns:
-            List of prices in chronological order (oldest to newest)
-        """
-        try:
-            # Use provided symbol or default to self.symbol / 使用提供的交易对或默认使用 self.symbol
-            target_symbol = symbol or self.symbol
-            
-            # Extract coin name / 提取币种名称
-            # According to official docs: For perpetuals, coin is the name from meta response
-            # 根据官方文档：对于永续合约，coin 是 meta 响应中的名称
-            symbol_base = (
-                target_symbol.split("/")[0]
-                if "/" in target_symbol
-                else target_symbol.split(":")[0] if ":" in target_symbol else target_symbol
-            )
-            coin = symbol_base.replace("USDT", "").replace("/", "").replace(":", "").upper()
-            
-            # Map interval_minutes to official interval format
-            # 将 interval_minutes 映射到官方间隔格式
-            # Supported intervals: "1m", "3m", "5m", "15m", "30m", "1h", "2h", "4h", "8h", "12h", "1d", "3d", "1w", "1M"
-            interval_map = {
-                1: "1m", 3: "3m", 5: "5m", 15: "15m", 30: "30m",
-                60: "1h", 120: "2h", 240: "4h", 480: "8h", 720: "12h",
-                1440: "1d", 4320: "3d", 10080: "1w", 43200: "1M"
-            }
-            
-            # Find closest supported interval / 找到最接近的支持间隔
-            official_interval = interval_map.get(interval_minutes)
-            if not official_interval:
-                # Find closest match / 找到最接近的匹配
-                closest = min(interval_map.keys(), key=lambda x: abs(x - interval_minutes))
-                official_interval = interval_map[closest]
-                logger.warning(
-                    f"Interval {interval_minutes}m not supported. Using {official_interval} instead. "
-                    f"不支持 {interval_minutes} 分钟间隔。改用 {official_interval}。"
-                )
-            
-            # Calculate number of candles needed (max 5000 according to official docs)
-            # 计算需要的 K 线数量（根据官方文档，最大 5000）
-            num_candles = (hours * 60) // interval_minutes
-            if num_candles > 5000:
-                num_candles = 5000
-                logger.warning(
-                    f"Requested {hours} hours exceeds 5000 candle limit. Using 5000 candles. "
-                    f"请求的 {hours} 小时超过 5000 根 K 线限制。使用 5000 根 K 线。"
-                )
-            
-            # Strategy 1: Try official Hyperliquid SDK Info class methods first
-            # 策略 1：首先尝试官方 Hyperliquid SDK Info 类方法
-            if HYPERLIQUID_SDK_AVAILABLE and hasattr(self, '_info') and self._info:
-                try:
-                    # Check for candle_snapshot method in SDK / 检查 SDK 中的 candle_snapshot 方法
-                    if hasattr(self._info, 'candle_snapshot'):
-                        try:
-                            # Try SDK method with official interval format / 尝试使用官方间隔格式的 SDK 方法
-                            candles = self._info.candle_snapshot(coin, official_interval, num_candles)
-                            if candles and isinstance(candles, list) and len(candles) > 0:
-                                prices = self._extract_close_prices_from_candles(candles)
-                                if len(prices) >= 2:
-                                    logger.info(
-                                        f"Fetched {len(prices)} historical prices for {coin} using SDK candle_snapshot "
-                                        f"(interval: {official_interval}, candles: {num_candles}). "
-                                        f"使用 SDK candle_snapshot 获取了 {coin} 的 {len(prices)} 个历史价格 "
-                                        f"（间隔: {official_interval}, K 线数: {num_candles}）。"
-                                    )
-                                    return prices
-                        except Exception as sdk_error:
-                            logger.debug(
-                                f"SDK candle_snapshot failed: {sdk_error}. Trying REST API. "
-                                f"SDK candle_snapshot 失败: {sdk_error}。尝试 REST API。"
-                            )
-                except Exception as e:
-                    logger.debug(
-                        f"SDK Info class not available or failed: {e}. Using REST API. "
-                        f"SDK Info 类不可用或失败: {e}。使用 REST API。"
-                    )
-            
-            # Strategy 2: Use official REST API /info endpoint with candleSnapshot type
-            # 策略 2：使用官方 REST API /info 端点，类型为 candleSnapshot
-            # Request format based on official API documentation
-            # 根据官方 API 文档的请求格式
-            # Note: Official API requires startTime and endTime, not n parameter
-            # 注意：官方 API 需要 startTime 和 endTime，而不是 n 参数
-            current_time_ms = int(time.time() * 1000)
-            # Calculate startTime based on hours and interval
-            # 根据小时数和间隔计算 startTime
-            # Each candle duration in milliseconds / 每根 K 线的持续时间（毫秒）
-            interval_ms_map = {
-                "1m": 60 * 1000,
-                "3m": 3 * 60 * 1000,
-                "5m": 5 * 60 * 1000,
-                "15m": 15 * 60 * 1000,
-                "30m": 30 * 60 * 1000,
-                "1h": 60 * 60 * 1000,
-                "2h": 2 * 60 * 60 * 1000,
-                "4h": 4 * 60 * 60 * 1000,
-                "8h": 8 * 60 * 60 * 1000,
-                "12h": 12 * 60 * 60 * 1000,
-                "1d": 24 * 60 * 60 * 1000,
-                "3d": 3 * 24 * 60 * 60 * 1000,
-                "1w": 7 * 24 * 60 * 60 * 1000,
-                "1M": 30 * 24 * 60 * 60 * 1000,  # Approximate / 近似值
-            }
-            interval_ms = interval_ms_map.get(official_interval, 60 * 1000)
-            # Calculate time range: endTime is now, startTime is (num_candles * interval_ms) ago
-            # 计算时间范围：endTime 是现在，startTime 是 (num_candles * interval_ms) 之前
-            end_time_ms = current_time_ms
-            start_time_ms = end_time_ms - (num_candles * interval_ms)
-            
-            candle_payload = {
-                "type": "candleSnapshot",
-                "req": {
-                    "coin": coin,
-                    "interval": official_interval,
-                    "startTime": start_time_ms,
-                    "endTime": end_time_ms
-                }
-            }
-            
-            logger.debug(
-                f"Fetching historical candles via REST API: coin={coin}, interval={official_interval}, "
-                f"startTime={start_time_ms}, endTime={end_time_ms}, expected_candles={num_candles}. "
-                f"通过 REST API 获取历史 K 线: coin={coin}, interval={official_interval}, "
-                f"startTime={start_time_ms}, endTime={end_time_ms}, 预期 K 线数={num_candles}。"
-            )
-            
-            response = self._make_request(
-                method="POST",
-                endpoint="/info",
-                data=candle_payload,
-                public=True,  # Candle data is public according to docs
-            )
-            
-            if response and isinstance(response, list) and len(response) > 0:
-                # Extract close prices from candles
-                # Response format: [[timestamp, open, high, low, close, volume], ...]
-                # 从 K 线中提取收盘价
-                # 响应格式: [[时间戳, 开盘, 最高, 最低, 收盘, 成交量], ...]
-                prices = self._extract_close_prices_from_candles(response)
-                
-                if len(prices) >= 2:
-                    logger.info(
-                        f"Fetched {len(prices)} historical prices for {coin} using official REST API "
-                        f"(interval: {official_interval}, candles: {num_candles}). "
-                        f"使用官方 REST API 获取了 {coin} 的 {len(prices)} 个历史价格 "
-                        f"（间隔: {official_interval}, K 线数: {num_candles}）。"
-                    )
-                    return prices
-            elif response:
-                logger.warning(
-                    f"Unexpected response format from candleSnapshot: {type(response)}. "
-                    f"candleSnapshot 的响应格式意外: {type(response)}。"
-                )
-            
-            # Strategy 3: Fallback to current price from allMids endpoint
-            # 策略 3：回退到 allMids 端点的当前价格
-            logger.warning(
-                f"Historical candle data not available for {coin}. "
-                f"Using current price from allMids endpoint as fallback. "
-                f"{coin} 的历史 K 线数据不可用。使用 allMids 端点的当前价格作为回退。"
-            )
-            
-            mids_payload = {"type": "allMids"}
-            mids_response = self._make_request(
-                method="POST",
-                endpoint="/info",
-                data=mids_payload,
-                public=True,
-            )
-            
-            if mids_response and isinstance(mids_response, dict):
-                mid_prices = mids_response.get("mid_prices", mids_response)
-                if isinstance(mid_prices, dict):
-                    current_price = mid_prices.get(coin)
-                    if current_price:
-                        current_price = float(current_price)
-                        num_points = min(num_candles, 100)
-                        logger.debug(
-                            f"Using current price {current_price} from allMids for {coin} "
-                            f"(repeated {num_points} times as fallback). "
-                            f"使用 allMids 的当前价格 {current_price} 作为 {coin} 的回退（重复 {num_points} 次）。"
-                        )
-                        return [current_price] * num_points
-            
-            # Final fallback: use fetch_market_data / 最终回退：使用 fetch_market_data
-            market_data = self.fetch_market_data()
-            if market_data and market_data.get("mid_price"):
-                current_price = market_data.get("mid_price")
-                num_points = min(num_candles, 100)
-                return [current_price] * num_points
-            
-            return []
-            
-        except Exception as e:
-            logger.error(
-                f"Error fetching historical prices for {symbol or self.symbol}: {e}. "
-                f"获取 {symbol or self.symbol} 的历史价格时出错: {e}。",
-                exc_info=True
-            )
-            return []
-    
-    def _extract_close_prices_from_candles(self, candles: List) -> List[float]:
-        """
-        Extract close prices from candle data / 从 K 线数据中提取收盘价
-        
-        Supports multiple candle formats:
-        - [timestamp, open, high, low, close, volume]
-        - [open, high, low, close, volume]
-        - {"close": ...} or {"c": ...}
-        
-        支持多种 K 线格式：
-        - [时间戳, 开盘, 最高, 最低, 收盘, 成交量]
-        - [开盘, 最高, 最低, 收盘, 成交量]
-        - {"close": ...} 或 {"c": ...}
-        
-        Args:
-            candles: List of candle data
-            
-        Returns:
-            List of close prices
-        """
-        prices = []
-        for candle in candles:
-            try:
-                if isinstance(candle, (list, tuple)):
-                    if len(candle) >= 6:
-                        # Format: [timestamp, open, high, low, close, volume]
-                        prices.append(float(candle[4]))  # Close at index 4
-                    elif len(candle) >= 5:
-                        # Format: [open, high, low, close, volume]
-                        prices.append(float(candle[3]))  # Close at index 3
-                elif isinstance(candle, dict):
-                    # Try common field names / 尝试常见字段名
-                    close_price = candle.get("close") or candle.get("c") or candle.get("closePrice")
-                    if close_price is not None:
-                        prices.append(float(close_price))
-            except (ValueError, TypeError, IndexError) as e:
-                logger.debug(f"Error extracting close price from candle: {candle}, error: {e}")
-                continue
-        
-        return prices
 
     def fetch_ticker_stats(self) -> Optional[Dict]:
         """Fetches 24h ticker statistics / 获取 24 小时行情统计"""
@@ -3035,27 +2403,6 @@ class HyperliquidClient:
         """
         created_orders = []
         self.last_order_error = None
-        
-        # Log current symbol at the start of place_orders
-        # 在 place_orders 开始时记录当前交易对
-        logger.info(
-            f"place_orders called with {len(orders)} order(s). Current client symbol: {self.symbol}. "
-            f"place_orders 被调用，有 {len(orders)} 个订单。当前客户端交易对: {self.symbol}。"
-        )
-        
-        # CRITICAL: Verify symbol is set correctly before processing orders
-        # 关键：在处理订单之前验证交易对设置正确
-        if not self.symbol:
-            logger.error(
-                f"⚠️  CRITICAL: Client symbol is not set! Cannot place orders. "
-                f"⚠️  严重：客户端交易对未设置！无法下单。"
-            )
-            self.last_order_error = {
-                "type": "symbol_not_set",
-                "message": "Client symbol is not set. Cannot place orders. / 客户端交易对未设置。无法下单。",
-                "symbol": self.symbol,
-            }
-            return []
 
         for order in orders:
             order_req_id = f"hl-order-{uuid.uuid4().hex[:8]}"
@@ -3090,719 +2437,190 @@ class HyperliquidClient:
 
                 # Use Hyperliquid SDK Exchange (required for all order operations)
                 # 使用 Hyperliquid SDK Exchange（所有订单操作都需要）
-                # In test environments, _exchange might be None but we should still attempt to use manual implementation
-                # 在测试环境中，_exchange 可能为 None，但我们仍应尝试使用手动实现
                 if not self._exchange:
-                    # Try to initialize SDK if possible / 如果可能，尝试初始化 SDK
-                    if HYPERLIQUID_SDK_AVAILABLE and HyperliquidExchange and self._account:
-                        try:
-                            wallet = self._account
-                            exchange_kwargs = {
-                                "base_url": self.base_url,
-                                "timeout": self.request_timeout,
-                            }
-                            if self.user_address:
-                                exchange_kwargs["account_address"] = self.user_address
-                            else:
-                                exchange_kwargs["account_address"] = self._account.address
-                            self._exchange = HyperliquidExchange(wallet, **exchange_kwargs)
-                            logger.info("SDK Exchange initialized on-demand for order placement.")
-                        except Exception as e:
-                            logger.warning(f"Failed to initialize SDK Exchange on-demand: {e}")
-                    
-                    # If still not initialized, use manual implementation fallback
-                    # 如果仍未初始化，使用手动实现回退
-                    if not self._exchange:
-                        logger.warning(
-                            "Hyperliquid SDK Exchange not initialized. Using manual implementation fallback. "
-                            "Hyperliquid SDK Exchange 未初始化。使用手动实现回退。"
-                        )
-                        # Continue with manual implementation (will be handled below)
-                        # 继续使用手动实现（将在下面处理）
+                    error_msg = (
+                        "Hyperliquid SDK Exchange not initialized. Cannot place orders. "
+                        "Hyperliquid SDK Exchange 未初始化。无法下单。"
+                    )
+                    logger.error(error_msg)
+                    self.last_order_error = {
+                        "type": "sdk_not_initialized",
+                        "message": error_msg,
+                        "symbol": self.symbol,
+                        "order": order_snapshot,
+                    }
+                    continue
                 
                 order_result = None
                 response = None
                 
-                # Use SDK Exchange.order() method if available
-                # 如果可用，使用 SDK Exchange.order() 方法
-                if self._exchange:
-                    try:
-                        # CRITICAL: Verify symbol is set correctly before processing
-                        # 关键：在处理之前验证交易对设置正确
-                        if not self.symbol:
-                            logger.error(
-                                f"⚠️  CRITICAL: Client symbol is not set! Cannot place order. "
-                                f"⚠️  严重：客户端交易对未设置！无法下单。"
-                            )
-                            self.last_order_error = {
-                                "type": "symbol_not_set",
-                                "message": "Client symbol is not set. Cannot place order. / 客户端交易对未设置。无法下单。",
-                                "symbol": self.symbol,
-                                "order": order_snapshot,
-                            }
-                            continue
-                        
-                        # Normalize symbol to coin name for Hyperliquid SDK
-                        # Hyperliquid uses coin names like "ETH", "BTC", not pairs like "ETH/USDT"
-                        # 规范化交易对为 Hyperliquid SDK 的 coin 名称
-                        # Hyperliquid 使用 coin 名称如 "ETH"、"BTC"，而不是交易对如 "ETH/USDT"
-                        symbol = self.symbol.split(":")[0] if ":" in self.symbol else self.symbol
-                        # Extract coin name (first part before "/")
-                        # 提取 coin 名称（"/" 前的第一部分）
-                        coin = symbol.split("/")[0] if "/" in symbol else symbol
-                        # Ensure coin is uppercase (Hyperliquid convention)
-                        # 确保 coin 为大写（Hyperliquid 约定）
-                        coin = coin.upper()
-                        
-                        logger.info(
-                            f"Symbol normalization: {self.symbol} -> {coin}. "
-                            f"交易对规范化: {self.symbol} -> {coin}。"
-                        )
-                        
-                        # CRITICAL: Verify coin extraction is correct
-                        # 关键：验证币种提取正确
-                        # If order price suggests a different coin, log warning
-                        # 如果订单价格表明是不同的币种，记录警告
-                        price = float(order.get("price", 0)) if order.get("price") else 0.0
-                        if price > 0:
-                            # Rough price range check: BTC is typically > $50k, ETH is typically $2k-$5k
-                            # 粗略价格范围检查：BTC 通常 > $50k，ETH 通常 $2k-$5k
-                            if price > 50000 and coin != "BTC":
-                                logger.warning(
-                                    f"⚠️  Price {price} suggests BTC order, but coin extracted is {coin}. "
-                                    f"Client symbol: {self.symbol}. "
-                                    f"⚠️  价格 {price} 表明是 BTC 订单，但提取的币种是 {coin}。"
-                                    f"客户端交易对: {self.symbol}。"
-                                )
-                            elif 1000 < price < 10000 and coin != "ETH":
-                                logger.warning(
-                                    f"⚠️  Price {price} suggests ETH order, but coin extracted is {coin}. "
-                                    f"Client symbol: {self.symbol}. "
-                                    f"⚠️  价格 {price} 表明是 ETH 订单，但提取的币种是 {coin}。"
-                                    f"客户端交易对: {self.symbol}。"
-                                )
-                        
-                        # Convert order format to SDK format
-                        # 将订单格式转换为 SDK 格式
-                        side = order.get("side", "").lower()
-                        is_buy = side == "buy"
-                        quantity = float(order.get("quantity", 0))
-                        price = float(order.get("price", 0)) if order.get("price") else 0.0
-                        order_type_str = order.get("type", "limit").lower()
-                        
-                        # Round price to tick size and validate against market price
-                        # 将价格舍入到 tick size 并验证市场价格
-                        if order_type_str == "limit" and price > 0:
-                            try:
-                                # Log symbol before fetching market data
-                                # 在获取市场数据之前记录交易对
-                                logger.debug(
-                                    f"Fetching market data for price validation. "
-                                    f"Client symbol: {self.symbol}, Coin: {coin}, Order price: {price}. "
-                                    f"获取市场数据以进行价格验证。客户端交易对: {self.symbol}，币种: {coin}，订单价格: {price}。"
-                                )
-                                
-                                # CRITICAL: Fetch market data using the current client symbol to ensure correct coin
-                                # 关键：使用当前客户端交易对获取市场数据以确保正确的币种
-                                # This ensures we get market data for the coin we're actually trading
-                                # 这确保我们获取实际交易的币种的市场数据
-                                market_data = self.fetch_market_data(symbol=self.symbol)
-                                
-                                # Verify that market data is for the correct coin
-                                # 验证市场数据是针对正确币种的
-                                if market_data:
-                                    mid_price = market_data.get("mid_price")
-                                    
-                                    # CRITICAL: Verify market data matches the coin we're trading
-                                    # 关键：验证市场数据匹配我们正在交易的币种
-                                    if mid_price and price > 0:
-                                        # Rough validation: BTC prices are typically > $50k, ETH prices are typically $2k-$5k
-                                        # 粗略验证：BTC 价格通常 > $50k，ETH 价格通常 $2k-$5k
-                                        if price > 50000 and mid_price < 10000:
-                                            logger.error(
-                                                f"🚨 CRITICAL MISMATCH: Order price {price} suggests BTC, "
-                                                f"but market data mid_price {mid_price} suggests ETH or other coin. "
-                                                f"Client symbol: {self.symbol}, Coin extracted: {coin}. "
-                                                f"This indicates symbol was not updated correctly! "
-                                                f"🚨 严重不匹配：订单价格 {price} 表明是 BTC，"
-                                                f"但市场数据中间价 {mid_price} 表明是 ETH 或其他币种。"
-                                                f"客户端交易对: {self.symbol}，提取的币种: {coin}。"
-                                                f"这表明交易对未正确更新！"
-                                            )
-                                            # Don't proceed with order placement if symbol mismatch
-                                            # 如果交易对不匹配，不继续下单
-                                            self.last_order_error = {
-                                                "type": "symbol_mismatch",
-                                                "message": (
-                                                    f"Symbol mismatch detected. Order price {price} suggests BTC order, "
-                                                    f"but market data mid_price {mid_price} suggests different coin. "
-                                                    f"Client symbol: {self.symbol}. "
-                                                    f"检测到交易对不匹配。订单价格 {price} 表明是 BTC 订单，"
-                                                    f"但市场数据中间价 {mid_price} 表明是不同的币种。客户端交易对: {self.symbol}。"
-                                                ),
-                                                "symbol": self.symbol,
-                                                "coin": coin,
-                                                "order_price": price,
-                                                "reference_price": mid_price,
-                                                "order": order_snapshot,
-                                            }
-                                            continue
-                                        elif 1000 < price < 10000 and mid_price > 50000:
-                                            logger.error(
-                                                f"🚨 CRITICAL MISMATCH: Order price {price} suggests ETH, "
-                                                f"but market data mid_price {mid_price} suggests BTC. "
-                                                f"Client symbol: {self.symbol}, Coin extracted: {coin}. "
-                                                f"This indicates symbol was not updated correctly! "
-                                                f"🚨 严重不匹配：订单价格 {price} 表明是 ETH，"
-                                                f"但市场数据中间价 {mid_price} 表明是 BTC。"
-                                                f"客户端交易对: {self.symbol}，提取的币种: {coin}。"
-                                                f"这表明交易对未正确更新！"
-                                            )
-                                            # Don't proceed with order placement if symbol mismatch
-                                            # 如果交易对不匹配，不继续下单
-                                            self.last_order_error = {
-                                                "type": "symbol_mismatch",
-                                                "message": (
-                                                    f"Symbol mismatch detected. Order price {price} suggests ETH order, "
-                                                    f"but market data mid_price {mid_price} suggests BTC. "
-                                                    f"Client symbol: {self.symbol}. "
-                                                    f"检测到交易对不匹配。订单价格 {price} 表明是 ETH 订单，"
-                                                    f"但市场数据中间价 {mid_price} 表明是 BTC。客户端交易对: {self.symbol}。"
-                                                ),
-                                                "symbol": self.symbol,
-                                                "coin": coin,
-                                                "order_price": price,
-                                                "reference_price": mid_price,
-                                                "order": order_snapshot,
-                                            }
-                                            continue
-                                    
-                                    # Log market data result
-                                    # 记录市场数据结果
-                                    logger.info(
-                                        f"Market data fetched. Symbol: {self.symbol}, Coin: {coin}, Mid price: {mid_price}. "
-                                        f"市场数据已获取。交易对: {self.symbol}，币种: {coin}，中间价: {mid_price}。"
-                                    )
-                                else:
-                                    logger.warning(
-                                        f"Market data is None. Symbol: {self.symbol}, Coin: {coin}. "
-                                        f"市场数据为 None。交易对: {self.symbol}，币种: {coin}。"
-                                    )
-
-                                # Resolve tick_size using meta price precision with fallbacks
-                                # 使用 meta 价格精度及回退逻辑解析 tick_size
-                                tick_size = self._resolve_tick_size(
-                                    coin, market_data or {}
-                                )
-
-                                # Round price to tick size BEFORE validation and placing order
-                                # 在验证和下单之前将价格舍入到 tick size
-                                original_price = price
-                                price = round_tick_size(price, tick_size)
-                                
-                                if abs(price - original_price) > 1e-10:  # Only log if price changed
-                                    logger.info(
-                                        f"Rounded price from {original_price} to {price} (tick_size={tick_size}) for {coin}. "
-                                        f"将 {coin} 的价格从 {original_price} 舍入到 {price}（tick_size={tick_size}）。"
-                                    )
-                                
-                                if market_data and market_data.get("mid_price"):
-                                    reference_price = market_data.get("mid_price")
-                                    
-                                    # Validate that we got the correct coin's market data
-                                    # 验证我们获取了正确币种的市场数据
-                                    price_ratio = price / reference_price if reference_price > 0 else 0
-                                    if price_ratio > 10 or price_ratio < 0.1:
-                                        # Price and reference price are too far apart - likely wrong coin
-                                        # 价格和参考价格相差太远 - 可能是错误的币种
-                                        logger.error(
-                                            f"⚠️  SYMBOL MISMATCH DETECTED! / ⚠️  检测到交易对不匹配！"
-                                            f"Order price {price} vs reference price {reference_price} (ratio: {price_ratio:.2f}). "
-                                            f"This suggests market data was fetched for wrong coin. "
-                                            f"Client symbol: {self.symbol}, Coin extracted: {coin}. "
-                                            f"订单价格 {price} vs 参考价格 {reference_price}（比率: {price_ratio:.2f}）。"
-                                            f"这表明市场数据是为错误的币种获取的。客户端交易对: {self.symbol}，提取的币种: {coin}。"
-                                        )
-                                        # Don't proceed with order placement if symbol mismatch
-                                        # 如果交易对不匹配，不继续下单
-                                        self.last_order_error = {
-                                            "type": "symbol_mismatch",
-                                            "message": (
-                                                f"Symbol mismatch detected. Order price {price} suggests {coin} order, "
-                                                f"but reference price {reference_price} suggests different coin. "
-                                                f"Client symbol: {self.symbol}. "
-                                                f"检测到交易对不匹配。订单价格 {price} 表明是 {coin} 订单，"
-                                                f"但参考价格 {reference_price} 表明是不同的币种。客户端交易对: {self.symbol}。"
-                                            ),
-                                            "symbol": self.symbol,
-                                            "coin": coin,
-                                            "order_price": price,
-                                            "reference_price": reference_price,
-                                            "order": order_snapshot,
-                                        }
-                                        continue
-                                    
-                                    # Hyperliquid allows orders within 80% of reference price (0.2x to 1.8x)
-                                    # Hyperliquid 允许订单价格在参考价格的 80% 范围内（0.2x 到 1.8x）
-                                    min_price = reference_price * 0.2
-                                    max_price = reference_price * 1.8
-                                    
-                                    if price < min_price or price > max_price:
-                                        price_deviation_pct = abs((price - reference_price) / reference_price) * 100
-                                        error_msg = (
-                                            f"Order price {price} is {price_deviation_pct:.2f}% away from reference price {reference_price:.2f}. "
-                                            f"Hyperliquid requires price within 80% of reference (range: {min_price:.2f} - {max_price:.2f}). "
-                                            f"Client symbol: {self.symbol}, Coin: {coin}. "
-                                            f"订单价格 {price} 与参考价格 {reference_price:.2f} 相差 {price_deviation_pct:.2f}%。"
-                                            f"Hyperliquid 要求价格在参考价格的 80% 范围内（范围: {min_price:.2f} - {max_price:.2f}）。"
-                                            f"客户端交易对: {self.symbol}，币种: {coin}。"
-                                        )
-                                        logger.error(error_msg)
-                                        self.last_order_error = {
-                                            "type": "price_out_of_range",
-                                            "message": error_msg,
-                                            "symbol": self.symbol,
-                                            "order": order_snapshot,
-                                            "order_price": price,
-                                            "reference_price": reference_price,
-                                            "min_price": min_price,
-                                            "max_price": max_price,
-                                            "deviation_pct": price_deviation_pct,
-                                        }
-                                        continue
-                                    else:
-                                        logger.debug(
-                                            f"Price validation passed. Order price: {price}, Reference price: {reference_price:.2f}. "
-                                            f"价格验证通过。订单价格: {price}，参考价格: {reference_price:.2f}。"
-                                        )
-                                else:
-                                    logger.warning(
-                                        f"Could not fetch market data for price validation. Proceeding with order placement. "
-                                        f"无法获取市场数据进行价格验证。继续下单。"
-                                    )
-                            except Exception as e:
-                                logger.warning(
-                                    f"Error during price rounding/validation: {e}. Proceeding with order placement. "
-                                    f"价格舍入/验证时出错: {e}。继续下单。",
-                                    exc_info=True,
-                                )
-                        
-                        # Build order_type for SDK
-                        # 为 SDK 构建 order_type
-                        if order_type_str == "limit":
-                            order_type = {"limit": {"tif": "Gtc"}}
-                        else:
-                            order_type = {"market": {}}
-                        
-                        # Log account address being used
-                        # 记录正在使用的账户地址
-                        exchange_account_address = getattr(self._exchange, 'account_address', None) if self._exchange else None
-                        logger.info(
-                            f"Placing order using Hyperliquid SDK Exchange. "
-                            f"Coin: {coin}, Side: {side}, Quantity: {quantity}, Price: {price}. "
-                            f"User address (expected): {self.user_address}. "
-                            f"Exchange account_address attribute: {exchange_account_address}. "
-                            f"Wallet address (for signing): {self._account.address if self._account else None}. "
-                            f"使用 Hyperliquid SDK Exchange 下单。交易对: {coin}。"
-                            f"用户地址（预期）: {self.user_address}。"
-                            f"Exchange account_address 属性: {exchange_account_address}。"
-                            f"钱包地址（用于签名）: {self._account.address if self._account else None}。"
-                        )
-                        
-                        # Verify account_address is set before placing order
-                        # 在下单前验证 account_address 已设置
-                        if not exchange_account_address:
-                            logger.error(
-                                f"⚠️  Exchange.account_address is None! This will cause order placement to fail. "
-                                f"Expected user_address: {self.user_address}. "
-                                f"⚠️  Exchange.account_address 为 None！这将导致下单失败。"
-                                f"预期用户地址: {self.user_address}。"
-                            )
-                            # Try to reinitialize Exchange with account_address
-                            # 尝试使用 account_address 重新初始化 Exchange
-                            logger.warning(
-                                f"Attempting to reinitialize Exchange with account_address: {self.user_address}. "
-                                f"尝试使用 account_address 重新初始化 Exchange: {self.user_address}。"
-                            )
-                            exchange_kwargs_reinit = {
-                                "base_url": self.base_url,
-                                "timeout": self.request_timeout,
-                                "account_address": self.user_address,
-                            }
-                            self._exchange = HyperliquidExchange(self._account, **exchange_kwargs_reinit)
-                            exchange_account_address = getattr(self._exchange, 'account_address', None)
-                            logger.info(
-                                f"Reinitialized Exchange. account_address: {exchange_account_address}. "
-                                f"重新初始化 Exchange。account_address: {exchange_account_address}。"
-                            )
-                        
-                        # Final price validation: ensure price is divisible by tick_size
-                        # 最终价格验证：确保价格可被 tick_size 整除
-                        if order_type_str == "limit" and price > 0:
-                            # Re-fetch tick_size if not already available
-                            # 如果尚未可用，重新获取 tick_size
-                            if 'tick_size' not in locals() or tick_size is None or tick_size <= 0:
-                                tick_size = self._resolve_tick_size(
-                                    coin, market_data or {}
-                                )
-                            
-                            # Verify price is divisible by tick_size before sending to SDK
-                            # 在发送到 SDK 之前验证价格可被 tick_size 整除
-                            if tick_size and tick_size > 0:
-                                from decimal import Decimal, ROUND_FLOOR, ROUND_HALF_UP
-
-                                def _round_price_for_sdk(px: float, tick: float) -> float:
-                                    price_dec = Decimal(str(px))
-                                    tick_dec = Decimal(str(tick))
-
-                                    # snap to tick grid using floor to avoid overshooting
-                                    ticks = (price_dec / tick_dec).quantize(Decimal("1"), rounding=ROUND_FLOOR)
-                                    snapped = ticks * tick_dec
-
-                                    # determine precision for SDK (max 8 dp, but respect tick precision)
-                                    tick_exp = -tick_dec.as_tuple().exponent
-                                    precision = min(max(tick_exp, 0), 8)
-                                    quantize_str = "1" if precision == 0 else "0." + "0" * (precision - 1) + "1"
-                                    snapped = snapped.quantize(Decimal(quantize_str), rounding=ROUND_FLOOR)
-
-                                    # ensure divisibility after quantize
-                                    remainder = snapped % tick_dec
-                                    if remainder != 0:
-                                        ticks = (snapped / tick_dec).quantize(Decimal("1"), rounding=ROUND_FLOOR)
-                                        snapped = ticks * tick_dec
-                                        snapped = snapped.quantize(Decimal(quantize_str), rounding=ROUND_FLOOR)
-                                        remainder = snapped % tick_dec
-                                        if remainder != 0:
-                                            logger.error(
-                                                f"Price {snapped} still not divisible by tick_size {tick_dec}. remainder={remainder}"
-                                            )
-                                    return float(snapped)
-
-                                price = _round_price_for_sdk(price, tick_size)
-                        
-                        # Round quantity to step_size before sending to SDK
-                        # 在发送到 SDK 之前将数量舍入到 step_size
-                        # This ensures quantity is properly aligned to avoid float_to_wire rounding errors
-                        # 这确保数量正确对齐，避免 float_to_wire 舍入错误
-                        try:
-                            # Get step_size from market_data if available
-                            # 如果可用，从 market_data 获取 step_size
-                            step_size = None
-                            if 'market_data' in locals() and market_data:
-                                step_size = market_data.get("step_size")
-                            
-                            # If step_size not available, try to resolve from meta data
-                            # 如果 step_size 不可用，尝试从 meta 数据解析
-                            if step_size is None or step_size <= 0:
-                                try:
-                                    meta_data = self._fetch_meta_data()
-                                    if meta_data:
-                                        universe = meta_data.get("universe", [])
-                                        coin_normalized = coin.upper()
-                                        for asset_info in universe:
-                                            if isinstance(asset_info, dict) and asset_info.get("name") == coin_normalized:
-                                                if "szDecimals" in asset_info:
-                                                    sz_decimals = asset_info["szDecimals"]
-                                                    step_size = 10 ** (-sz_decimals)
-                                                    logger.debug(
-                                                        f"Resolved step_size={step_size} for {coin} from meta data "
-                                                        f"(szDecimals={sz_decimals}). "
-                                                        f"从 meta 数据解析 {coin} 的 step_size={step_size}（szDecimals={sz_decimals}）。"
-                                                    )
-                                                    break
-                                except Exception as e:
-                                    logger.debug(
-                                        f"Failed to resolve step_size from meta: {e}. "
-                                        f"从 meta 解析 step_size 失败: {e}。"
-                                    )
-                            
-                            # Use default step_size if still not available
-                            # 如果仍不可用，使用默认 step_size
-                            if step_size is None or step_size <= 0:
-                                step_size = 0.001  # Default step_size
-                                logger.debug(
-                                    f"Using default step_size={step_size} for {coin}. "
-                                    f"对 {coin} 使用默认 step_size={step_size}。"
-                                )
-                            
-                            # Round quantity to step_size
-                            # 将数量舍入到 step_size
-                            original_quantity = quantity
-                            quantity = round_step_size(quantity, step_size)
-                            
-                            if abs(quantity - original_quantity) > 1e-10:  # Only log if quantity changed
-                                logger.info(
-                                    f"Rounded quantity from {original_quantity} to {quantity} (step_size={step_size}) for {coin}. "
-                                    f"将 {coin} 的数量从 {original_quantity} 舍入到 {quantity}（step_size={step_size}）。"
-                                )
-                            
-                            # Final quantity validation: ensure quantity is divisible by step_size
-                            # 最终数量验证：确保数量可被 step_size 整除
-                            if step_size and step_size > 0:
-                                from decimal import Decimal
-                                quantity_decimal = Decimal(str(quantity))
-                                step_size_decimal = Decimal(str(step_size))
-                                remainder_decimal = quantity_decimal % step_size_decimal
-                                
-                                remainder_abs = abs(remainder_decimal)
-                                if remainder_abs > Decimal('1e-10'):
-                                    # Re-round quantity using Decimal arithmetic to ensure exact divisibility
-                                    # 使用 Decimal 算术重新舍入数量以确保精确可整除
-                                    original_quantity_before_final_round = quantity
-                                    ticks_decimal = quantity_decimal / step_size_decimal
-                                    ticks_floor = ticks_decimal.quantize(Decimal("1"), rounding=ROUND_FLOOR)
-                                    quantity_rounded_decimal = ticks_floor * step_size_decimal
-                                    quantity = float(quantity_rounded_decimal)
-                                    
-                                    logger.warning(
-                                        f"Final quantity rounding: {original_quantity_before_final_round} -> {quantity} "
-                                        f"(step_size={step_size}, remainder before: {float(remainder_decimal)}). "
-                                        f"最终数量舍入: {original_quantity_before_final_round} -> {quantity} "
-                                        f"（step_size={step_size}，舍入前余数: {float(remainder_decimal)}）。"
-                                    )
-                                
-                                # Log final quantity and step_size for debugging
-                                # 记录最终数量和 step_size 用于调试
-                                final_quantity_decimal = Decimal(str(quantity))
-                                final_remainder = final_quantity_decimal % step_size_decimal
-                                logger.debug(
-                                    f"Final order quantity: {quantity}, step_size: {step_size}, "
-                                    f"quantity % step_size (Decimal): {float(final_remainder)}. "
-                                    f"最终订单数量: {quantity}，step_size: {step_size}，"
-                                    f"quantity % step_size (Decimal): {float(final_remainder)}。"
-                                )
-                        except Exception as e:
-                            logger.warning(
-                                f"Error during quantity rounding: {e}. Proceeding with original quantity. "
-                                f"数量舍入时出错: {e}。继续使用原始数量。",
-                                exc_info=True,
-                            )
-                        
-                        # CRITICAL: Final price and quantity rounding before sending to SDK
-                        # 关键：在发送到 SDK 之前进行最终价格和数量舍入
-                        # This is the last chance to ensure exact divisibility and prevent float_to_wire errors
-                        # 这是确保精确可整除并防止 float_to_wire 错误的最后机会
-                        if order_type_str == "limit" and price > 0:
-                            try:
-                                # Re-fetch tick_size if not already available
-                                # 如果尚未可用，重新获取 tick_size
-                                if 'tick_size' not in locals() or tick_size is None or tick_size <= 0:
-                                    # Try to get from market_data first
-                                    # 首先尝试从 market_data 获取
-                                    if 'market_data' in locals() and market_data:
-                                        tick_size = market_data.get("tick_size")
-                                    
-                                    # If still not available, resolve from meta
-                                    # 如果仍不可用，从 meta 解析
-                                    if tick_size is None or tick_size <= 0:
-                                        tick_size = self._resolve_tick_size(
-                                            coin, market_data if 'market_data' in locals() else {}
-                                        )
-                                
-                                # ALWAYS round price using round_tick_size before sending to SDK
-                                # 在发送到 SDK 之前始终使用 round_tick_size 舍入价格
-                                # This ensures exact divisibility regardless of previous rounding
-                                # 这确保精确可整除，无论之前的舍入如何
-                                if tick_size and tick_size > 0:
-                                    original_price = price
-                                    price = round_tick_size(price, tick_size)
-                                    
-                                    # Verify divisibility one more time using Decimal
-                                    # 使用 Decimal 再次验证可整除性
-                                    from decimal import Decimal
-                                    price_decimal = Decimal(str(price))
-                                    tick_size_decimal = Decimal(str(tick_size))
-                                    remainder = price_decimal % tick_size_decimal
-                                    
-                                    if abs(remainder) > Decimal('1e-10'):
-                                        # If still not divisible, force one more round using Decimal
-                                        # 如果仍不可整除，使用 Decimal 强制再舍入一次
-                                        ticks = price_decimal // tick_size_decimal
-                                        price = float(ticks * tick_size_decimal)
-                                        
-                                        logger.warning(
-                                            f"Force re-rounded price: {original_price} -> {price} "
-                                            f"(tick_size={tick_size}) to ensure exact divisibility. "
-                                            f"强制重新舍入价格: {original_price} -> {price} "
-                                            f"（tick_size={tick_size}）以确保精确可整除。"
-                                        )
-                                    elif abs(price - original_price) > 1e-10:
-                                        logger.debug(
-                                            f"Final price rounding before SDK: {original_price} -> {price} "
-                                            f"(tick_size={tick_size}). "
-                                            f"SDK 前的最终价格舍入: {original_price} -> {price} "
-                                            f"（tick_size={tick_size}）。"
-                                        )
-                            except Exception as e:
-                                logger.warning(
-                                    f"Error during final price rounding: {e}. Proceeding with current price. "
-                                    f"最终价格舍入时出错: {e}。继续使用当前价格。",
-                                    exc_info=True,
-                                )
-                        
-                        # CRITICAL: Final quantity rounding before sending to SDK
-                        # 关键：在发送到 SDK 之前进行最终数量舍入
-                        try:
-                            # Re-fetch step_size if not already available
-                            # 如果尚未可用，重新获取 step_size
-                            if 'step_size' not in locals() or step_size is None or step_size <= 0:
-                                # Try to get from market_data first
-                                # 首先尝试从 market_data 获取
-                                if 'market_data' in locals() and market_data:
-                                    step_size = market_data.get("step_size")
-                                
-                                # If still not available, use default
-                                # 如果仍不可用，使用默认值
-                                if step_size is None or step_size <= 0:
-                                    step_size = 0.001  # Default step_size
-                            
-                            # ALWAYS round quantity using round_step_size before sending to SDK
-                            # 在发送到 SDK 之前始终使用 round_step_size 舍入数量
-                            if step_size and step_size > 0:
-                                original_quantity = quantity
-                                quantity = round_step_size(quantity, step_size)
-                                
-                                # Verify divisibility one more time using Decimal
-                                # 使用 Decimal 再次验证可整除性
-                                from decimal import Decimal
-                                quantity_decimal = Decimal(str(quantity))
-                                step_size_decimal = Decimal(str(step_size))
-                                remainder = quantity_decimal % step_size_decimal
-                                
-                                if abs(remainder) > Decimal('1e-10'):
-                                    # If still not divisible, force one more round using Decimal
-                                    # 如果仍不可整除，使用 Decimal 强制再舍入一次
-                                    steps = quantity_decimal // step_size_decimal
-                                    quantity = float(steps * step_size_decimal)
-                                    
-                                    logger.warning(
-                                        f"Force re-rounded quantity: {original_quantity} -> {quantity} "
-                                        f"(step_size={step_size}) to ensure exact divisibility. "
-                                        f"强制重新舍入数量: {original_quantity} -> {quantity} "
-                                        f"（step_size={step_size}）以确保精确可整除。"
-                                    )
-                        except Exception as e:
-                            logger.warning(
-                                f"Error during final quantity rounding: {e}. Proceeding with current quantity. "
-                                f"最终数量舍入时出错: {e}。继续使用当前数量。",
-                                exc_info=True,
-                            )
-                        
-                        # Final verification before sending to SDK
-                        # 在发送到 SDK 之前进行最终验证
-                        if order_type_str == "limit" and price > 0:
-                            from decimal import Decimal
-                            # Verify price one last time
-                            # 最后一次验证价格
-                            price_decimal = Decimal(str(price))
-                            if 'tick_size' in locals() and tick_size and tick_size > 0:
-                                tick_size_decimal = Decimal(str(tick_size))
-                                final_remainder = price_decimal % tick_size_decimal
-                                if abs(final_remainder) > Decimal('1e-10'):
-                                    logger.error(
-                                        f"🚨 CRITICAL: Price {price} still not divisible by tick_size {tick_size} "
-                                        f"before sending to SDK! Remainder: {float(final_remainder)}. "
-                                        f"This will cause float_to_wire error. "
-                                        f"🚨 严重：在发送到 SDK 之前，价格 {price} 仍不可被 tick_size {tick_size} 整除！"
-                                        f"余数: {float(final_remainder)}。这将导致 float_to_wire 错误。"
-                                    )
-                                    # Force one final round as last resort
-                                    # 作为最后手段，强制最后一次舍入
-                                    ticks = price_decimal // tick_size_decimal
-                                    price = float(ticks * tick_size_decimal)
-                                    logger.warning(
-                                        f"Last resort rounding: price -> {price} (tick_size={tick_size}). "
-                                        f"最后手段舍入: 价格 -> {price}（tick_size={tick_size}）。"
-                                    )
-                            
-                            # Verify quantity one last time
-                            # 最后一次验证数量
-                            quantity_decimal = Decimal(str(quantity))
-                            if 'step_size' in locals() and step_size and step_size > 0:
-                                step_size_decimal = Decimal(str(step_size))
-                                final_remainder = quantity_decimal % step_size_decimal
-                                if abs(final_remainder) > Decimal('1e-10'):
-                                    logger.error(
-                                        f"🚨 CRITICAL: Quantity {quantity} still not divisible by step_size {step_size} "
-                                        f"before sending to SDK! Remainder: {float(final_remainder)}. "
-                                        f"This will cause float_to_wire error. "
-                                        f"🚨 严重：在发送到 SDK 之前，数量 {quantity} 仍不可被 step_size {step_size} 整除！"
-                                        f"余数: {float(final_remainder)}。这将导致 float_to_wire 错误。"
-                                    )
-                                    # Force one final round as last resort
-                                    # 作为最后手段，强制最后一次舍入
-                                    steps = quantity_decimal // step_size_decimal
-                                    quantity = float(steps * step_size_decimal)
-                                    logger.warning(
-                                        f"Last resort rounding: quantity -> {quantity} (step_size={step_size}). "
-                                        f"最后手段舍入: 数量 -> {quantity}（step_size={step_size}）。"
-                                    )
-                            
-                            # Log final values before sending to SDK
-                            # 在发送到 SDK 之前记录最终值
-                            logger.debug(
-                                f"Final values before SDK call: price={price}, quantity={quantity}, "
-                                f"tick_size={tick_size if 'tick_size' in locals() else 'N/A'}, "
-                                f"step_size={step_size if 'step_size' in locals() else 'N/A'}. "
-                                f"SDK 调用前的最终值: 价格={price}，数量={quantity}，"
-                                f"tick_size={tick_size if 'tick_size' in locals() else 'N/A'}，"
-                                f"step_size={step_size if 'step_size' in locals() else 'N/A'}。"
-                            )
-                        
-                        # Place order using SDK
-                        # 使用 SDK 下单
-                        response = self._exchange.order(
-                            name=coin,
-                            is_buy=is_buy,
-                            sz=quantity,
-                            limit_px=price,
-                            order_type=order_type,
-                            reduce_only=False,
-                        )
-                        
-                        # Log response to check what address was used
-                        # 记录响应以检查使用的地址
-                        logger.info(
-                            f"SDK order response received. Response type: {type(response)}. "
-                            f"Response keys: {list(response.keys()) if isinstance(response, dict) else 'N/A'}. "
-                            f"Full response: {str(response)[:500]}. "
-                            f"SDK 订单响应已接收。响应类型: {type(response)}。"
-                            f"响应键: {list(response.keys()) if isinstance(response, dict) else 'N/A'}。"
-                            f"完整响应: {str(response)[:500]}。"
-                        )
-                        
-                        # Parse SDK response
-                        # 解析 SDK 响应
-                        order_result = self._parse_sdk_order_response(response, order, coin)
+                # Use SDK Exchange.order() method
+                # 使用 SDK Exchange.order() 方法
+                try:
+                    # Normalize symbol to coin name for Hyperliquid SDK
+                    # Hyperliquid uses coin names like "ETH", "BTC", not pairs like "ETH/USDT"
+                    # 规范化交易对为 Hyperliquid SDK 的 coin 名称
+                    # Hyperliquid 使用 coin 名称如 "ETH"、"BTC"，而不是交易对如 "ETH/USDT"
+                    symbol = self.symbol.split(":")[0] if ":" in self.symbol else self.symbol
+                    # Extract coin name (first part before "/")
+                    # 提取 coin 名称（"/" 前的第一部分）
+                    coin = symbol.split("/")[0] if "/" in symbol else symbol
+                    # Ensure coin is uppercase (Hyperliquid convention)
+                    # 确保 coin 为大写（Hyperliquid 约定）
+                    coin = coin.upper()
                     
-                    except Exception as e:
-                        error_msg = (
-                            f"Failed to place order using Hyperliquid SDK: {e}. "
-                            f"使用 Hyperliquid SDK 下单失败: {e}。"
-                        )
-                        logger.error(error_msg, exc_info=True)
-                        self.last_order_error = {
-                            "type": "sdk_error",
-                            "message": error_msg,
-                            "symbol": self.symbol,
-                            "order": order_snapshot,
-                            "error": str(e),
-                        }
-                        continue
-                else:
-                    # No SDK available - this should not happen in production but may occur in tests
-                    # 没有 SDK 可用 - 这不应该在生产环境中发生，但可能在测试中发生
-                    error_msg = (
-                        "Hyperliquid SDK Exchange not available. Cannot place orders without SDK. "
-                        "Hyperliquid SDK Exchange 不可用。没有 SDK 无法下单。"
+                    logger.info(
+                        f"Symbol normalization: {self.symbol} -> {coin}. "
+                        f"交易对规范化: {self.symbol} -> {coin}。"
                     )
-                    logger.error(error_msg)
+                    
+                    # Convert order format to SDK format
+                    # 将订单格式转换为 SDK 格式
+                    side = order.get("side", "").lower()
+                    is_buy = side == "buy"
+                    quantity = float(order.get("quantity", 0))
+                    price = float(order.get("price", 0)) if order.get("price") else 0.0
+                    order_type_str = order.get("type", "limit").lower()
+                    
+                    # Validate price against current market price (Hyperliquid requires price within 80% of reference price)
+                    # 验证价格是否在当前市场价格范围内（Hyperliquid 要求价格在参考价格的 80% 范围内）
+                    if order_type_str == "limit" and price > 0:
+                        try:
+                            # Fetch current market price for validation
+                            # 获取当前市场价格进行验证
+                            market_data = self.fetch_market_data()
+                            if market_data and market_data.get("mid_price"):
+                                reference_price = market_data.get("mid_price")
+                                # Hyperliquid allows orders within 80% of reference price (0.2x to 1.8x)
+                                # Hyperliquid 允许订单价格在参考价格的 80% 范围内（0.2x 到 1.8x）
+                                min_price = reference_price * 0.2
+                                max_price = reference_price * 1.8
+                                
+                                if price < min_price or price > max_price:
+                                    price_deviation_pct = abs((price - reference_price) / reference_price) * 100
+                                    error_msg = (
+                                        f"Order price {price} is {price_deviation_pct:.2f}% away from reference price {reference_price:.2f}. "
+                                        f"Hyperliquid requires price within 80% of reference (range: {min_price:.2f} - {max_price:.2f}). "
+                                        f"订单价格 {price} 与参考价格 {reference_price:.2f} 相差 {price_deviation_pct:.2f}%。"
+                                        f"Hyperliquid 要求价格在参考价格的 80% 范围内（范围: {min_price:.2f} - {max_price:.2f}）。"
+                                    )
+                                    logger.error(error_msg)
+                                    self.last_order_error = {
+                                        "type": "price_out_of_range",
+                                        "message": error_msg,
+                                        "symbol": self.symbol,
+                                        "order": order_snapshot,
+                                        "order_price": price,
+                                        "reference_price": reference_price,
+                                        "min_price": min_price,
+                                        "max_price": max_price,
+                                        "deviation_pct": price_deviation_pct,
+                                    }
+                                    continue
+                                else:
+                                    logger.debug(
+                                        f"Price validation passed. Order price: {price}, Reference price: {reference_price:.2f}. "
+                                        f"价格验证通过。订单价格: {price}，参考价格: {reference_price:.2f}。"
+                                    )
+                            else:
+                                logger.warning(
+                                    f"Could not fetch market data for price validation. Proceeding with order placement. "
+                                    f"无法获取市场数据进行价格验证。继续下单。"
+                                )
+                        except Exception as e:
+                            logger.warning(
+                                f"Error during price validation: {e}. Proceeding with order placement. "
+                                f"价格验证时出错: {e}。继续下单。",
+                                exc_info=True,
+                            )
+                    
+                    # Build order_type for SDK
+                    # 为 SDK 构建 order_type
+                    if order_type_str == "limit":
+                        order_type = {"limit": {"tif": "Gtc"}}
+                    else:
+                        order_type = {"market": {}}
+                    
+                    # Log account address being used
+                    # 记录正在使用的账户地址
+                    exchange_account_address = getattr(self._exchange, 'account_address', None) if self._exchange else None
+                    logger.info(
+                        f"Placing order using Hyperliquid SDK Exchange. "
+                        f"Coin: {coin}, Side: {side}, Quantity: {quantity}, Price: {price}. "
+                        f"User address (expected): {self.user_address}. "
+                        f"Exchange account_address attribute: {exchange_account_address}. "
+                        f"Wallet address (for signing): {self._account.address if self._account else None}. "
+                        f"使用 Hyperliquid SDK Exchange 下单。交易对: {coin}。"
+                        f"用户地址（预期）: {self.user_address}。"
+                        f"Exchange account_address 属性: {exchange_account_address}。"
+                        f"钱包地址（用于签名）: {self._account.address if self._account else None}。"
+                    )
+                    
+                    # Verify account_address is set before placing order
+                    # 在下单前验证 account_address 已设置
+                    if not exchange_account_address:
+                        logger.error(
+                            f"⚠️  Exchange.account_address is None! This will cause order placement to fail. "
+                            f"Expected user_address: {self.user_address}. "
+                            f"⚠️  Exchange.account_address 为 None！这将导致下单失败。"
+                            f"预期用户地址: {self.user_address}。"
+                        )
+                        # Try to reinitialize Exchange with account_address
+                        # 尝试使用 account_address 重新初始化 Exchange
+                        logger.warning(
+                            f"Attempting to reinitialize Exchange with account_address: {self.user_address}. "
+                            f"尝试使用 account_address 重新初始化 Exchange: {self.user_address}。"
+                        )
+                        exchange_kwargs_reinit = {
+                            "base_url": self.base_url,
+                            "timeout": self.request_timeout,
+                            "account_address": self.user_address,
+                        }
+                        self._exchange = HyperliquidExchange(self._account, **exchange_kwargs_reinit)
+                        exchange_account_address = getattr(self._exchange, 'account_address', None)
+                        logger.info(
+                            f"Reinitialized Exchange. account_address: {exchange_account_address}. "
+                            f"重新初始化 Exchange。account_address: {exchange_account_address}。"
+                        )
+                    
+                    # Place order using SDK
+                    # 使用 SDK 下单
+                    response = self._exchange.order(
+                        name=coin,
+                        is_buy=is_buy,
+                        sz=quantity,
+                        limit_px=price,
+                        order_type=order_type,
+                        reduce_only=False,
+                    )
+                    
+                    # Log response to check what address was used
+                    # 记录响应以检查使用的地址
+                    logger.info(
+                        f"SDK order response received. Response type: {type(response)}. "
+                        f"Response keys: {list(response.keys()) if isinstance(response, dict) else 'N/A'}. "
+                        f"Full response: {str(response)[:500]}. "
+                        f"SDK 订单响应已接收。响应类型: {type(response)}。"
+                        f"响应键: {list(response.keys()) if isinstance(response, dict) else 'N/A'}。"
+                        f"完整响应: {str(response)[:500]}。"
+                    )
+                    
+                    # Parse SDK response
+                    # 解析 SDK 响应
+                    order_result = self._parse_sdk_order_response(response, order, coin)
+                    
+                except Exception as e:
+                    error_msg = (
+                        f"Failed to place order using Hyperliquid SDK: {e}. "
+                        f"使用 Hyperliquid SDK 下单失败: {e}。"
+                    )
+                    logger.error(error_msg, exc_info=True)
                     self.last_order_error = {
-                        "type": "sdk_not_available",
+                        "type": "sdk_error",
                         "message": error_msg,
                         "symbol": self.symbol,
                         "order": order_snapshot,
-                        "order_req_id": order_req_id,
+                        "error": str(e),
                     }
                     continue
                 
@@ -3811,61 +2629,18 @@ class HyperliquidClient:
                 if not order_result:
                     # SDK returned None or invalid response
                     # SDK 返回 None 或无效响应
-                    # Check if response contains error information
-                    # 检查响应是否包含错误信息
-                    error_type = "sdk_no_result"
-                    error_detail = None
-                    error_text = None
-                    
-                    if isinstance(response, dict):
-                        if response.get("status") == "err":
-                            # SDK returned error response
-                            # SDK 返回错误响应
-                            error_text = response.get("response", "")
-                            if isinstance(error_text, dict):
-                                error_text = error_text.get("data", str(error_text))
-                            else:
-                                error_text = str(error_text)
-                            
-                            # Determine error type based on error message
-                            # 根据错误消息确定错误类型
-                            error_text_lower = error_text.lower() if error_text else ""
-                            if any(keyword in error_text_lower for keyword in ["insufficient", "margin", "balance", "invalid", "validation", "422"]):
-                                error_type = "invalid_request"
-                            elif "rate limit" in error_text_lower or "429" in error_text_lower:
-                                error_type = "rate_limit"
-                            elif "connection" in error_text_lower or "timeout" in error_text_lower:
-                                error_type = "connection_error"
-                            
-                            error_detail = {
-                                "error": error_text,
-                                "status": "err",
-                            }
-                        else:
-                            # Response format is unexpected
-                            # 响应格式不符合预期
-                            error_text = str(response)
-                    
                     error_msg = (
                         f"SDK order placement returned no result. Response: {response}. "
                         f"SDK 下单未返回结果。响应: {response}。"
                     )
-                    if error_text:
-                        error_msg = (
-                            f"Order placement failed: {error_text}. "
-                            f"下单失败: {error_text}。"
-                        )
-                    
                     logger.error(error_msg)
                     self.last_order_error = {
-                        "type": error_type,
+                        "type": "sdk_no_result",
                         "message": error_msg,
                         "symbol": self.symbol,
                         "order": order_snapshot,
                         "response": str(response)[:500] if response else None,
                     }
-                    if error_detail:
-                        self.last_order_error["api_error"] = error_detail
                     continue
                 if order_result:
                     created_orders.append(order_result)
@@ -3912,13 +2687,13 @@ class HyperliquidClient:
                         raise InvalidOrderError(error_msg)
 
             except InsufficientBalanceError as e:
-                self._handle_order_error(e, order_snapshot, "insufficient_funds", order_req_id)
+                self._handle_order_error(e, order_snapshot, "insufficient_funds")
                 continue
             except InvalidOrderError as e:
-                self._handle_order_error(e, order_snapshot, "invalid_order", order_req_id)
+                self._handle_order_error(e, order_snapshot, "invalid_order")
                 continue
             except Exception as e:
-                self._handle_order_error(e, order_snapshot, "unknown_error", order_req_id)
+                self._handle_order_error(e, order_snapshot, "unknown_error")
                 continue
 
         return created_orders
@@ -4832,7 +3607,7 @@ class HyperliquidClient:
         return None
 
     def _handle_order_error(
-        self, error: Exception, order: Dict, error_type: str, order_req_id: Optional[str] = None
+        self, error: Exception, order: Dict, error_type: str
     ) -> None:
         """
         Handle order placement error / 处理订单下单错误
@@ -4841,7 +3616,6 @@ class HyperliquidClient:
             error: Exception that occurred
             order: Order dictionary that failed
             error_type: Error type string
-            order_req_id: Optional order request ID for tracking
         """
         error_msg = str(error)
         if error_type == "insufficient_funds":
@@ -4871,8 +3645,6 @@ class HyperliquidClient:
             "order": order,
             "trace_id": get_trace_id(),
         }
-        if order_req_id:
-            self.last_order_error["order_req_id"] = order_req_id
 
     def _convert_hyperliquid_order_to_internal(self, order_data: Dict) -> Dict:
         """

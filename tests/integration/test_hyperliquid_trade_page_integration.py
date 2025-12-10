@@ -419,13 +419,6 @@ class TestHyperliquidPageWorkflowIntegration:
                 },
             )
 
-            # Also verify strategy performance API works in this integrated setup
-            perf_response = client.get(
-                "/api/performance/strategy",
-                params={"strategy_type": "fixed_spread"},
-            )
-            assert perf_response.status_code in [200, 400]
-
             # Step 2: Apply suggestion (if evaluation succeeded)
             # 步骤 2：应用建议（如果评估成功）
             if eval_response.status_code == 200:
@@ -812,3 +805,4 @@ class TestHyperliquidStrategyInstanceCreationIntegration:
         assert not isinstance(created_exchange, BinanceClient), (
             "Strategy instance should NOT use BinanceClient"
         )
+

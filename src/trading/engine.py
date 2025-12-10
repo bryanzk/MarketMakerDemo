@@ -19,7 +19,6 @@ from src.shared.config import HYPERLIQUID_ONLY, STRATEGY_TYPE, SYMBOL
 from src.shared.logger import setup_logger
 from src.shared.tracing import get_trace_id
 from src.trading.exchange import BinanceClient
-from src.trading.exchange_client import ExchangeClient
 from src.trading.order_manager import OrderManager
 from src.trading.simulation import MarketSimulator
 from src.trading.strategies.fixed_spread import FixedSpreadStrategy
@@ -41,7 +40,7 @@ class AlphaLoop:
     def __init__(
         self,
         hyperliquid_only: Optional[bool] = None,
-        hyperliquid_exchange: Optional[ExchangeClient] = None,
+        hyperliquid_exchange: Optional[Any] = None,
     ):
         # Multi-strategy support: dict of StrategyInstance objects
         self.strategy_instances: Dict[str, StrategyInstance] = {}
@@ -108,7 +107,7 @@ class AlphaLoop:
         strategy_id: str,
         strategy_type: str = "fixed_spread",
         symbol: Optional[str] = None,
-        exchange: Optional[ExchangeClient] = None,
+        exchange: Optional[Any] = None,
     ) -> bool:
         """
         Add a new strategy instance.
@@ -117,8 +116,7 @@ class AlphaLoop:
             strategy_id: Unique identifier for the strategy instance
             strategy_type: "fixed_spread" or "funding_rate"
             symbol: Optional trading symbol override
-            exchange: Optional exchange client instance implementing ExchangeClient Protocol
-                     (e.g., HyperliquidClient for hyperliquid instances)
+            exchange: Optional exchange client instance (e.g., HyperliquidClient for hyperliquid instances)
 
         Returns:
             True if added successfully, False if strategy_id already exists
@@ -157,14 +155,6 @@ class AlphaLoop:
             and instance.tracked_order_ids
         ):
             try:
-                # Track cancellations before cancelling
-                # 在取消前跟踪取消
-                for order_id in list(instance.tracked_order_ids):
-                    instance.fill_tracker.track_order_cancelled(
-                        order_id=order_id,
-                        reason="stop_strategy",
-                        timestamp=time.time(),
-                    )
                 instance.exchange.cancel_orders(list(instance.tracked_order_ids))
                 logger.info(
                     f"Cancelled {len(instance.tracked_order_ids)} orders for strategy '{strategy_id}'"
@@ -238,49 +228,6 @@ class AlphaLoop:
         timestamp = time.strftime("%H:%M:%S")
         self.system_logs.append({"timestamp": timestamp, "stage": stage_name})
 
-    def _get_default_eth_symbol(self) -> str:
-        """
-        Get default ETH symbol from Hyperliquid exchange if available.
-        如果可用，从 Hyperliquid 交易所获取默认 ETH 交易对。
-        
-        Returns:
-            Default ETH symbol (e.g., "ETH/USDC:USDC") or fallback
-            默认 ETH 交易对（例如 "ETH/USDC:USDC"）或回退值
-        """
-        try:
-            # Try to get from Hyperliquid exchange / 尝试从 Hyperliquid 交易所获取
-            for instance in self.strategy_instances.values():
-                if (
-                    hasattr(instance, "exchange")
-                    and instance.exchange is not None
-                ):
-                    from src.trading.hyperliquid_client import HyperliquidClient
-                    if isinstance(instance.exchange, HyperliquidClient):
-                        if hasattr(instance.exchange, "get_default_eth_symbol"):
-                            return instance.exchange.get_default_eth_symbol()
-            
-            # If no Hyperliquid exchange found, try to create one / 如果未找到 Hyperliquid 交易所，尝试创建一个
-            try:
-                from src.trading.hyperliquid_client import HyperliquidClient
-                hyperliquid_client = HyperliquidClient()
-                if hasattr(hyperliquid_client, "get_default_eth_symbol"):
-                    return hyperliquid_client.get_default_eth_symbol()
-            except Exception:
-                pass
-            
-            # Final fallback / 最终回退
-            logger.warning(
-                "Could not get default ETH symbol from Hyperliquid. Using fallback. "
-                "无法从 Hyperliquid 获取默认 ETH 交易对。使用回退值。"
-            )
-            return "ETH/USDC:USDC"
-        except Exception as e:
-            logger.warning(
-                f"Error getting default ETH symbol: {e}. Using fallback. "
-                f"获取默认 ETH 交易对时出错: {e}。使用回退值。"
-            )
-            return "ETH/USDC:USDC"
-
     def get_status(self) -> dict:
         """Get current status of all strategy instances."""
         strategy_statuses = {}
@@ -290,22 +237,15 @@ class AlphaLoop:
         default_instance = self.strategy_instances.get("default")
         if default_instance:
             default_status = default_instance.get_status()
-            current_symbol = default_status.get("symbol")
-            if not current_symbol:
-                # Try to get default ETH symbol from exchange / 尝试从交易所获取默认 ETH 交易对
-                current_symbol = self._get_default_eth_symbol()
-            # Use 0.0 as fallback instead of 2000.0 to indicate missing data
-            # 使用 0.0 作为回退值而不是 2000.0，以表示数据缺失
-            mid_price = default_status.get("mid_price", 0.0)
+            current_symbol = default_status.get("symbol", "ETH/USDT:USDT")
+            mid_price = default_status.get("mid_price", 2000.0)
             funding_rate = default_status.get("funding_rate", 0.0)
             position = default_status.get("position", 0.0)
             pnl = default_status.get("pnl", 0.0)
             default_strategy_type = default_instance.strategy_type
         else:
-            current_symbol = self._get_default_eth_symbol()
-            # Use 0.0 as fallback instead of 2000.0 to indicate missing data
-            # 使用 0.0 作为回退值而不是 2000.0，以表示数据缺失
-            mid_price = 0.0
+            current_symbol = "ETH/USDT:USDT"
+            mid_price = 2000.0
             funding_rate = 0.0
             position = 0.0
             pnl = 0.0
@@ -488,43 +428,9 @@ class AlphaLoop:
                 current_orders = [
                     o for o in all_orders if o.get("id") in instance.tracked_order_ids
                 ]
-                
-                # Update fill tracking based on exchange orders
-                # 基于交易所订单更新填充跟踪
-                instance.update_fill_tracking(all_orders)
 
-            # Get mid_price for adaptive threshold calculation / 获取中间价用于自适应阈值计算
-            mid_price = market_data.get("mid_price") if market_data else None
-            
-            # Check if strategy requires both-side orders and detect single-sided current orders
-            # 检查策略是否需要双边订单，并检测当前是否有单边订单
-            enforce_both_side = instance._requires_both_side_orders(target_orders)
-            if enforce_both_side:
-                current_buy = any(o.get("side") == "buy" for o in current_orders)
-                current_sell = any(o.get("side") == "sell" for o in current_orders)
-                
-                # If we have single-sided orders, force cancel to ensure both-side placement
-                # 如果有单边订单，强制取消以确保双边下单
-                if (current_buy and not current_sell) or (current_sell and not current_buy):
-                    logger.warning(
-                        f"Single-sided orders detected for strategy '{instance.strategy_id}'. "
-                        f"Current: buy={current_buy}, sell={current_sell}. "
-                        f"Target requires both-side. Forcing cancellation of single-sided orders. "
-                        f"检测到策略 '{instance.strategy_id}' 有单边订单。"
-                        f"当前: 买入={current_buy}, 卖出={current_sell}。"
-                        f"目标要求双边。强制取消单边订单。"
-                    )
-                    # Force cancel all current orders to ensure clean state for both-side placement
-                    # 强制取消所有当前订单，确保干净状态以便双边下单
-                    for order in current_orders:
-                        if order.get("id"):
-                            instance.remove_tracked_order(order.get("id"))
-                    if current_orders:
-                        instance.exchange.cancel_orders([o.get("id") for o in current_orders if o.get("id")])
-                    current_orders = []  # Clear current orders for fresh sync
-            
             to_cancel_ids, to_place = instance.sync_orders(
-                current_orders, target_orders, mid_price
+                current_orders, target_orders
             )
 
             if to_cancel_ids:
@@ -534,13 +440,6 @@ class AlphaLoop:
                 )
                 for order_id in to_cancel_ids:
                     instance.remove_tracked_order(order_id)
-                    # Track order cancellation in fill tracker
-                    # 在填充跟踪器中跟踪订单取消
-                    instance.fill_tracker.track_order_cancelled(
-                        order_id=order_id,
-                        reason="sync_update",  # Order cancelled due to sync update
-                        timestamp=time.time(),
-                    )
                     for hist_order in instance.order_history:
                         if hist_order.get("id") == order_id:
                             hist_order["status"] = "cancelled"
@@ -593,18 +492,6 @@ class AlphaLoop:
                             f"下单失败的订单方向: {failed_sides}。"
                             f"请检查 exchange.last_order_error 获取详细信息。"
                         )
-                        
-                        # If enforce_both_side and we have single-sided placed orders, mark for retry
-                        # 如果 enforce_both_side 且只有单边订单成功，标记需要重试
-                        if enforce_both_side and len(placed_sides) == 1:
-                            logger.warning(
-                                f"Single-sided orders placed after failure. "
-                                f"Placed sides: {placed_sides}, Failed sides: {failed_sides}. "
-                                f"Will retry missing side in next cycle. "
-                                f"失败后只下单了单边订单。"
-                                f"成功方向: {placed_sides}, 失败方向: {failed_sides}。"
-                                f"将在下一循环中重试缺失的方向。"
-                            )
                 else:
                     logger.info(
                         f"✅ Successfully placed {len(placed_orders)} order(s). "
@@ -622,19 +509,6 @@ class AlphaLoop:
                         logger.debug(
                             f"Tracked order {order_id} ({order.get('side')}) for strategy '{instance.strategy_id}'. "
                             f"跟踪订单 {order_id} ({order.get('side')})，策略 '{instance.strategy_id}'。"
-                        )
-                        
-                        # Track order placement in fill tracker
-                        # 在填充跟踪器中跟踪订单下单
-                        instance.fill_tracker.track_order_placed(
-                            order_id=order_id,
-                            side=order.get("side", "unknown"),
-                            price=order.get("price", 0.0),
-                            quantity=order.get("amount", order.get("quantity", 0.0)),
-                            symbol=instance.exchange.symbol,
-                            strategy_id=instance.strategy_id,
-                            strategy_type=instance.strategy_type,
-                            timestamp=time.time(),
                         )
                     else:
                         logger.warning(

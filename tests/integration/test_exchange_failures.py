@@ -174,9 +174,13 @@ class TestAuthenticationErrorHandling:
         mock_auth_error_response.text = "Unauthorized"
         mock_auth_error_response.json.return_value = {"error": "Unauthorized"}
         
-        # First call (info) returns 401 - authentication should fail during initialization
-        # 第一次调用（info）返回 401 - 认证应该在初始化期间失败
-        mock_post.side_effect = [mock_auth_error_response]
+        # First call (info) succeeds, second call (exchange) returns 401
+        # 第一次调用（info）成功，第二次调用（exchange）返回 401
+        mock_success = MagicMock()
+        mock_success.status_code = 200
+        mock_success.json.return_value = {"status": "ok"}
+        
+        mock_post.side_effect = [mock_success, mock_auth_error_response]
         
         # Should raise AuthenticationError during initialization
         # 应该在初始化期间抛出 AuthenticationError

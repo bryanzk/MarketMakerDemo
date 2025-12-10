@@ -19,6 +19,7 @@ from src.shared.config import HYPERLIQUID_ONLY, STRATEGY_TYPE, SYMBOL
 from src.shared.logger import setup_logger
 from src.shared.tracing import get_trace_id
 from src.trading.exchange import BinanceClient
+from src.trading.exchange_client import ExchangeClient
 from src.trading.order_manager import OrderManager
 from src.trading.simulation import MarketSimulator
 from src.trading.strategies.fixed_spread import FixedSpreadStrategy
@@ -40,7 +41,7 @@ class AlphaLoop:
     def __init__(
         self,
         hyperliquid_only: Optional[bool] = None,
-        hyperliquid_exchange: Optional[Any] = None,
+        hyperliquid_exchange: Optional[ExchangeClient] = None,
     ):
         # Multi-strategy support: dict of StrategyInstance objects
         self.strategy_instances: Dict[str, StrategyInstance] = {}
@@ -107,7 +108,7 @@ class AlphaLoop:
         strategy_id: str,
         strategy_type: str = "fixed_spread",
         symbol: Optional[str] = None,
-        exchange: Optional[Any] = None,
+        exchange: Optional[ExchangeClient] = None,
     ) -> bool:
         """
         Add a new strategy instance.
@@ -116,7 +117,8 @@ class AlphaLoop:
             strategy_id: Unique identifier for the strategy instance
             strategy_type: "fixed_spread" or "funding_rate"
             symbol: Optional trading symbol override
-            exchange: Optional exchange client instance (e.g., HyperliquidClient for hyperliquid instances)
+            exchange: Optional exchange client instance implementing ExchangeClient Protocol
+                     (e.g., HyperliquidClient for hyperliquid instances)
 
         Returns:
             True if added successfully, False if strategy_id already exists

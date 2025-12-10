@@ -605,11 +605,16 @@ class TestMultiStrategy:
     @patch("src.trading.engine.DataAgent")
     @patch("src.trading.engine.QuantAgent")
     @patch("src.trading.engine.RiskAgent")
-    def test_add_strategy_instance(self, mock_risk, mock_quant, mock_data, mock_client):
-        """Test adding a new strategy instance"""
-        mock_client_instance = Mock()
-        mock_client_instance.fetch_market_data.return_value = {"mid_price": 100.0}
-        mock_client.return_value = mock_client_instance
+    def test_add_strategy_instance(
+        self, mock_risk, mock_quant, mock_data, mock_client, mock_exchange_client
+    ):
+        """
+        Test adding a new strategy instance.
+        Uses unified Exchange Provider Mock instead of BinanceClient-specific mock.
+        使用统一的 Exchange Provider Mock，而不是 BinanceClient 特定的 mock。
+        """
+        # Use unified Exchange Provider Mock / 使用统一的 Exchange Provider Mock
+        mock_client.return_value = mock_exchange_client
 
         # Create engine with hyperliquid_only=False to get default instance
         # 创建引擎时设置 hyperliquid_only=False 以获取 default 实例
@@ -634,13 +639,16 @@ class TestMultiStrategy:
     @patch("src.trading.engine.DataAgent")
     @patch("src.trading.engine.QuantAgent")
     @patch("src.trading.engine.RiskAgent")
-    def test_remove_strategy_instance(self, mock_risk, mock_quant, mock_data, mock_client):
-        """Test removing a strategy instance"""
-        mock_client_instance = Mock()
-        mock_client_instance.fetch_market_data.return_value = {"mid_price": 100.0}
-        mock_client_instance.fetch_open_orders.return_value = []
-        mock_client_instance.cancel_orders.return_value = True
-        mock_client.return_value = mock_client_instance
+    def test_remove_strategy_instance(
+        self, mock_risk, mock_quant, mock_data, mock_client, mock_exchange_client
+    ):
+        """
+        Test removing a strategy instance.
+        Uses unified Exchange Provider Mock instead of BinanceClient-specific mock.
+        使用统一的 Exchange Provider Mock，而不是 BinanceClient 特定的 mock。
+        """
+        # Use unified Exchange Provider Mock / 使用统一的 Exchange Provider Mock
+        mock_client.return_value = mock_exchange_client
 
         # Create engine with hyperliquid_only=False to get default instance
         # 创建引擎时设置 hyperliquid_only=False 以获取 default 实例
@@ -664,12 +672,16 @@ class TestMultiStrategy:
     @patch("src.trading.engine.DataAgent")
     @patch("src.trading.engine.QuantAgent")
     @patch("src.trading.engine.RiskAgent")
-    def test_multi_strategy_independent_params(self, mock_risk, mock_quant, mock_data, mock_client):
-        """Test that multiple strategy instances have independent parameters"""
-        mock_client_instance = Mock()
-        mock_client_instance.fetch_market_data.return_value = {"mid_price": 100.0}
-        mock_client_instance.fetch_open_orders.return_value = []
-        mock_client.return_value = mock_client_instance
+    def test_multi_strategy_independent_params(
+        self, mock_risk, mock_quant, mock_data, mock_client, mock_exchange_client
+    ):
+        """
+        Test that multiple strategy instances have independent parameters.
+        Uses unified Exchange Provider Mock instead of BinanceClient-specific mock.
+        使用统一的 Exchange Provider Mock，而不是 BinanceClient 特定的 mock。
+        """
+        # Use unified Exchange Provider Mock / 使用统一的 Exchange Provider Mock
+        mock_client.return_value = mock_exchange_client
 
         # Create engine with hyperliquid_only=False to get default instance
         # 创建引擎时设置 hyperliquid_only=False 以获取 default 实例
@@ -691,11 +703,16 @@ class TestMultiStrategy:
     @patch("src.trading.engine.DataAgent")
     @patch("src.trading.engine.QuantAgent")
     @patch("src.trading.engine.RiskAgent")
-    def test_get_status_includes_strategy_instances(self, mock_risk, mock_quant, mock_data, mock_client):
-        """Test that get_status includes strategy instances information"""
-        mock_client_instance = Mock()
-        mock_client_instance.fetch_market_data.return_value = {"mid_price": 100.0}
-        mock_client.return_value = mock_client_instance
+    def test_get_status_includes_strategy_instances(
+        self, mock_risk, mock_quant, mock_data, mock_client, mock_exchange_client
+    ):
+        """
+        Test that get_status includes strategy instances information.
+        Uses unified Exchange Provider Mock instead of BinanceClient-specific mock.
+        使用统一的 Exchange Provider Mock，而不是 BinanceClient 特定的 mock。
+        """
+        # Use unified Exchange Provider Mock / 使用统一的 Exchange Provider Mock
+        mock_client.return_value = mock_exchange_client
 
         # Create engine with hyperliquid_only=False to get default instance
         # 创建引擎时设置 hyperliquid_only=False 以获取 default 实例
@@ -714,23 +731,22 @@ class TestMultiStrategy:
     @patch("src.trading.engine.DataAgent")
     @patch("src.trading.engine.QuantAgent")
     @patch("src.trading.engine.RiskAgent")
-    def test_run_cycle_respects_instance_running_state(self, mock_risk, mock_quant, mock_data, mock_client):
-        """Ensure stopped strategy instances are skipped during run_cycle execution"""
+    def test_run_cycle_respects_instance_running_state(
+        self, mock_risk, mock_quant, mock_data, mock_client, mock_exchange_client
+    ):
+        """
+        Ensure stopped strategy instances are skipped during run_cycle execution.
+        Uses unified Exchange Provider Mock instead of BinanceClient-specific mock.
+        使用统一的 Exchange Provider Mock，而不是 BinanceClient 特定的 mock。
+        """
         mock_data.return_value.calculate_metrics.return_value = {
             "volatility": 0.01,
             "sharpe_ratio": 1.5,
         }
         mock_quant.return_value.analyze_and_propose.return_value = {"spread": 0.01}
         mock_risk.return_value.validate_proposal.return_value = (True, "ok")
-        mock_client_instance = Mock()
-        mock_client_instance.fetch_market_data.return_value = {"mid_price": 100.0}
-        mock_client_instance.fetch_funding_rate.return_value = 0.0
-        mock_client_instance.fetch_account_data.return_value = {
-            "position_amt": 0.0,
-            "entry_price": 0.0,
-        }
-        mock_client_instance.fetch_open_orders.return_value = []
-        mock_client.return_value = mock_client_instance
+        # Use unified Exchange Provider Mock / 使用统一的 Exchange Provider Mock
+        mock_client.return_value = mock_exchange_client
 
         # Create engine with hyperliquid_only=False to get default instance
         # 创建引擎时设置 hyperliquid_only=False 以获取 default 实例

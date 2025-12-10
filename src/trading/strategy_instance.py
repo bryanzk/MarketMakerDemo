@@ -14,6 +14,7 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 from src.shared.config import SYMBOL
 from src.shared.logger import setup_logger
 from src.trading.exchange import BinanceClient
+from src.trading.exchange_client import ExchangeClient
 from src.trading.order_manager import OrderManager
 from src.trading.strategies.fixed_spread import FixedSpreadStrategy
 from src.trading.strategies.funding_rate import FundingRateStrategy
@@ -35,7 +36,7 @@ class StrategyInstance:
         strategy_id: str,
         strategy_type: str = "fixed_spread",
         symbol: str = None,
-        exchange: Optional[Any] = None,
+        exchange: Optional[ExchangeClient] = None,
     ):
         """
         Initialize a strategy instance with its own exchange connection.
@@ -44,7 +45,8 @@ class StrategyInstance:
             strategy_id: Unique identifier for this strategy instance
             strategy_type: "fixed_spread" or "funding_rate"
             symbol: Trading symbol for this instance (defaults to SYMBOL from config)
-            exchange: Optional exchange client instance. If not provided and strategy_id is not "hyperliquid",
+            exchange: Optional exchange client instance implementing ExchangeClient Protocol.
+                     If not provided and strategy_id is not "hyperliquid",
                      will attempt to create a BinanceClient. For "hyperliquid" strategy_id, exchange must be provided.
         """
         self.strategy_id = strategy_id
@@ -63,7 +65,9 @@ class StrategyInstance:
         # Independent exchange connection for this strategy instance
         # If exchange is provided, use it; otherwise, only create BinanceClient for non-hyperliquid instances
         # 如果提供了 exchange，使用它；否则，仅对非 hyperliquid 实例创建 BinanceClient
-        self.exchange: Optional[Any] = None
+        # Type: ExchangeClient Protocol (BinanceClient, HyperliquidClient, etc.)
+        # 类型：ExchangeClient Protocol（BinanceClient、HyperliquidClient 等）
+        self.exchange: Optional[ExchangeClient] = None
         self.use_real_exchange = False
 
         if exchange is not None:

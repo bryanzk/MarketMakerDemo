@@ -239,13 +239,13 @@ cd MarketMakerDemo
 #### 2. Create Virtual Environment / 创建虚拟环境
 ```bash
 # Create virtual environment / 创建虚拟环境
-python3 -m venv venv
+python3 -m venv .venv
 
 # Activate virtual environment / 激活虚拟环境
 # On macOS/Linux:
-source venv/bin/activate
+source .venv/bin/activate
 # On Windows:
-# venv\Scripts\activate
+# .venv\Scripts\activate
 ```
 
 #### 3. Install Dependencies / 安装依赖

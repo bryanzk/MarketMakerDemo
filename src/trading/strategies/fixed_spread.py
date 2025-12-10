@@ -37,8 +37,10 @@ class FixedSpreadStrategy:
             "high": 0.10,    # 10% - above this, significantly increase spread
         }
         # Spread multipliers based on volatility / 基于波动率的价差倍数
+        # More aggressive reduction in low volatility to improve fill rate
+        # 在低波动时更激进的降低价差以提高成交率
         self.spread_multipliers = {
-            "low": 0.8,      # Reduce spread by 20% in low volatility
+            "low": 0.5,      # Reduce spread by 50% in low volatility (was 0.8, now more aggressive)
             "medium": 1.0,   # No adjustment in medium volatility
             "high": 1.3,     # Increase spread by 30% in high volatility
             "very_high": 1.5, # Increase spread by 50% in very high volatility

@@ -26,7 +26,8 @@ class OrderManager:
         self, 
         current_order: Dict[str, Any], 
         target_order: Dict[str, Any],
-        mid_price: float
+        mid_price: float,
+        force_cancel: bool = False
     ) -> bool:
         """
         Determine if an order should be cancelled based on stability window and adaptive thresholds.
@@ -36,26 +37,31 @@ class OrderManager:
             current_order: Current open order
             target_order: Target order to achieve
             mid_price: Current mid price for adaptive threshold calculation
+            force_cancel: If True, bypass stability window check (used for enforce_both_side)
+                         如果为 True，绕过稳定性窗口检查（用于 enforce_both_side）
             
         Returns:
             True if order should be cancelled, False otherwise
         """
         # Check order age (stability window) / 检查订单年龄（稳定性窗口）
-        order_timestamp = current_order.get("timestamp", 0)
-        if isinstance(order_timestamp, (int, float)) and order_timestamp > 0:
-            # Convert milliseconds to seconds if needed
-            if order_timestamp > 1e10:
-                order_timestamp = order_timestamp / 1000
-            order_age = time.time() - order_timestamp
-            
-            if order_age < MIN_ORDER_AGE_SECONDS:
-                logger.debug(
-                    f"Order {current_order.get('id')} is too new ({order_age:.1f}s < {MIN_ORDER_AGE_SECONDS}s). "
-                    f"Keeping order active for stability. "
-                    f"订单 {current_order.get('id')} 太新（{order_age:.1f}秒 < {MIN_ORDER_AGE_SECONDS}秒）。"
-                    f"保持订单活跃以确保稳定性。"
-                )
-                return False
+        # Skip stability check if force_cancel is True (for enforce_both_side scenarios)
+        # 如果 force_cancel 为 True，跳过稳定性检查（用于 enforce_both_side 场景）
+        if not force_cancel:
+            order_timestamp = current_order.get("timestamp", 0)
+            if isinstance(order_timestamp, (int, float)) and order_timestamp > 0:
+                # Convert milliseconds to seconds if needed
+                if order_timestamp > 1e10:
+                    order_timestamp = order_timestamp / 1000
+                order_age = time.time() - order_timestamp
+                
+                if order_age < MIN_ORDER_AGE_SECONDS:
+                    logger.debug(
+                        f"Order {current_order.get('id')} is too new ({order_age:.1f}s < {MIN_ORDER_AGE_SECONDS}s). "
+                        f"Keeping order active for stability. "
+                        f"订单 {current_order.get('id')} 太新（{order_age:.1f}秒 < {MIN_ORDER_AGE_SECONDS}秒）。"
+                        f"保持订单活跃以确保稳定性。"
+                    )
+                    return False
         
         # Calculate adaptive thresholds / 计算自适应阈值
         price_threshold = mid_price * PRICE_THRESHOLD_PCT if mid_price > 0 else 0.01
@@ -154,11 +160,37 @@ class OrderManager:
             f"mid_price={mid_price:.2f}"
         )
 
+        # For enforce_both_side, we need to ensure both orders are synchronized
+        # If one side is in stability window but the other needs update, force cancel both
+        # 对于 enforce_both_side，我们需要确保双边订单同步
+        # 如果一边在稳定性窗口内但另一边需要更新，强制取消双边
+        force_cancel_for_sync = False
+        if enforce_both_side and tgt_buy and tgt_sell:
+            # Check if we have a mismatch: one side needs update but the other is in stability window
+            # 检查是否有不匹配：一边需要更新但另一边在稳定性窗口内
+            buy_needs_update = curr_buy and self._should_cancel_order(curr_buy, tgt_buy, mid_price, force_cancel=True)
+            sell_needs_update = curr_sell and self._should_cancel_order(curr_sell, tgt_sell, mid_price, force_cancel=True)
+            buy_in_stability = curr_buy and not self._should_cancel_order(curr_buy, tgt_buy, mid_price, force_cancel=False)
+            sell_in_stability = curr_sell and not self._should_cancel_order(curr_sell, tgt_sell, mid_price, force_cancel=False)
+            
+            # If one side needs update but the other is in stability window, force cancel both
+            # 如果一边需要更新但另一边在稳定性窗口内，强制取消双边
+            if (buy_needs_update and sell_in_stability) or (sell_needs_update and buy_in_stability):
+                force_cancel_for_sync = True
+                logger.warning(
+                    f"Both-side order sync mismatch detected. One side needs update but the other is in stability window. "
+                    f"Forcing cancellation of both orders to maintain market making consistency. "
+                    f"检测到双边订单同步不匹配。一边需要更新但另一边在稳定性窗口内。"
+                    f"强制取消双边订单以保持做市一致性。"
+                )
+
         # Compare Buy
         if tgt_buy:
             if curr_buy:
                 # Use improved cancellation logic / 使用改进的取消逻辑
-                if self._should_cancel_order(curr_buy, tgt_buy, mid_price):
+                # Force cancel if needed for both-side sync / 如果需要，强制取消以保持双边同步
+                should_cancel = self._should_cancel_order(curr_buy, tgt_buy, mid_price, force_cancel=force_cancel_for_sync)
+                if should_cancel:
                     to_cancel.append(curr_buy["id"])
                     to_place.append(tgt_buy)
                 else:
@@ -184,7 +216,9 @@ class OrderManager:
         if tgt_sell:
             if curr_sell:
                 # Use improved cancellation logic / 使用改进的取消逻辑
-                if self._should_cancel_order(curr_sell, tgt_sell, mid_price):
+                # Force cancel if needed for both-side sync / 如果需要，强制取消以保持双边同步
+                should_cancel = self._should_cancel_order(curr_sell, tgt_sell, mid_price, force_cancel=force_cancel_for_sync)
+                if should_cancel:
                     to_cancel.append(curr_sell["id"])
                     to_place.append(tgt_sell)
                 else:

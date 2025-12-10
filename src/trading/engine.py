@@ -482,6 +482,33 @@ class AlphaLoop:
             # Get mid_price for adaptive threshold calculation / 获取中间价用于自适应阈值计算
             mid_price = market_data.get("mid_price") if market_data else None
             
+            # Check if strategy requires both-side orders and detect single-sided current orders
+            # 检查策略是否需要双边订单，并检测当前是否有单边订单
+            enforce_both_side = instance._requires_both_side_orders(target_orders)
+            if enforce_both_side:
+                current_buy = any(o.get("side") == "buy" for o in current_orders)
+                current_sell = any(o.get("side") == "sell" for o in current_orders)
+                
+                # If we have single-sided orders, force cancel to ensure both-side placement
+                # 如果有单边订单，强制取消以确保双边下单
+                if (current_buy and not current_sell) or (current_sell and not current_buy):
+                    logger.warning(
+                        f"Single-sided orders detected for strategy '{instance.strategy_id}'. "
+                        f"Current: buy={current_buy}, sell={current_sell}. "
+                        f"Target requires both-side. Forcing cancellation of single-sided orders. "
+                        f"检测到策略 '{instance.strategy_id}' 有单边订单。"
+                        f"当前: 买入={current_buy}, 卖出={current_sell}。"
+                        f"目标要求双边。强制取消单边订单。"
+                    )
+                    # Force cancel all current orders to ensure clean state for both-side placement
+                    # 强制取消所有当前订单，确保干净状态以便双边下单
+                    for order in current_orders:
+                        if order.get("id"):
+                            instance.remove_tracked_order(order.get("id"))
+                    if current_orders:
+                        instance.exchange.cancel_orders([o.get("id") for o in current_orders if o.get("id")])
+                    current_orders = []  # Clear current orders for fresh sync
+            
             to_cancel_ids, to_place = instance.sync_orders(
                 current_orders, target_orders, mid_price
             )
@@ -545,6 +572,18 @@ class AlphaLoop:
                             f"下单失败的订单方向: {failed_sides}。"
                             f"请检查 exchange.last_order_error 获取详细信息。"
                         )
+                        
+                        # If enforce_both_side and we have single-sided placed orders, mark for retry
+                        # 如果 enforce_both_side 且只有单边订单成功，标记需要重试
+                        if enforce_both_side and len(placed_sides) == 1:
+                            logger.warning(
+                                f"Single-sided orders placed after failure. "
+                                f"Placed sides: {placed_sides}, Failed sides: {failed_sides}. "
+                                f"Will retry missing side in next cycle. "
+                                f"失败后只下单了单边订单。"
+                                f"成功方向: {placed_sides}, 失败方向: {failed_sides}。"
+                                f"将在下一循环中重试缺失的方向。"
+                            )
                 else:
                     logger.info(
                         f"✅ Successfully placed {len(placed_orders)} order(s). "

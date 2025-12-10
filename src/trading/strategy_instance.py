@@ -170,20 +170,32 @@ class StrategyInstance:
         Returns:
             True if strategy requires both buy and sell orders, False otherwise
         """
-        # Market making strategies (fixed_spread, funding_rate) always return both-side orders
-        # 做市策略（fixed_spread, funding_rate）总是返回双边订单
-        if self.strategy_type in ["fixed_spread", "funding_rate"]:
-            return True
-        
         # Check if target_orders contains both buy and sell orders
-        # This is a fallback for strategies that don't have explicit type checking
         # 检查 target_orders 是否包含买入和卖出订单
-        # 这是对没有显式类型检查的策略的回退
         has_buy = any(o.get("side") == "buy" for o in target_orders)
         has_sell = any(o.get("side") == "sell" for o in target_orders)
         
-        # If strategy returns both buy and sell, it's likely a market making strategy
-        # 如果策略返回买入和卖出，它可能是做市策略
+        # Only enforce both-side if:
+        # 1. Strategy type is market making (fixed_spread, funding_rate) AND
+        # 2. Target orders actually contain both sides
+        # 只有当以下条件都满足时才强制双边：
+        # 1. 策略类型是做市策略（fixed_spread, funding_rate）且
+        # 2. 目标订单实际包含双边
+        if self.strategy_type in ["fixed_spread", "funding_rate"]:
+            # Market making strategies should return both-side orders
+            # If target_orders has both sides, enforce both-side placement
+            # 做市策略应该返回双边订单
+            # 如果 target_orders 包含双边，强制双边下单
+            if has_buy and has_sell:
+                return True
+            # If strategy type is market making but target_orders is single-sided,
+            # it might be due to risk limits or other constraints - don't enforce
+            # 如果策略类型是做市但 target_orders 是单边，
+            # 可能是由于风险限制或其他约束 - 不强制
+            return False
+        
+        # For other strategies, check if target_orders contains both sides
+        # 对于其他策略，检查 target_orders 是否包含双边
         if has_buy and has_sell:
             return True
         

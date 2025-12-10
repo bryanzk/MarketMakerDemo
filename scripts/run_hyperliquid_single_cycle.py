@@ -2,7 +2,7 @@
 Manual one-cycle runner for Hyperliquid to sanity-check price alignment with SDK.
 
 Usage:
-    HL_SYMBOL=ETH/USDT:USDT HL_QTY=0.01 HL_SPREAD_BP=20 venv/bin/python3 scripts/run_hyperliquid_single_cycle.py
+    HL_SYMBOL=ETH/USDT:USDT HL_QTY=0.01 HL_SPREAD_BP=20 .venv/bin/python3 scripts/run_hyperliquid_single_cycle.py
 
 Environment:
     HL_SYMBOL      Trading pair (default: ETH/USDT:USDT)

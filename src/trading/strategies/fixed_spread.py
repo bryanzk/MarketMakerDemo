@@ -9,8 +9,11 @@ Owner: Agent TRADING
 
 from typing import Any, Dict, List
 
-from src.shared.config import LEVERAGE, QUANTITY, SPREAD_PCT
+from src.shared.config import LEVERAGE, QUANTITY, RISK_LIMITS, SPREAD_PCT
+from src.shared.logger import setup_logger
 from src.shared.utils import round_step_size, round_tick_size
+
+logger = setup_logger("FixedSpreadStrategy")
 
 
 class FixedSpreadStrategy:
@@ -95,6 +98,26 @@ class FixedSpreadStrategy:
             if volatility >= self.volatility_thresholds["medium"]:
                 min_spread = market_spread * 1.3
                 adjusted_spread = max(adjusted_spread, min_spread)
+        
+        # Clamp to risk limits to ensure compliance / 限制在风险范围内以确保合规
+        min_spread_limit = RISK_LIMITS["MIN_SPREAD"]
+        max_spread_limit = RISK_LIMITS["MAX_SPREAD"]
+        
+        original_adjusted = adjusted_spread
+        if adjusted_spread < min_spread_limit:
+            logger.warning(
+                f"Adjusted spread {adjusted_spread*100:.2f}% below MIN_SPREAD {min_spread_limit*100:.2f}%. "
+                f"Clamping to {min_spread_limit*100:.2f}%. "
+                f"调整后的价差 {adjusted_spread*100:.2f}% 低于最小价差 {min_spread_limit*100:.2f}%。限制为 {min_spread_limit*100:.2f}%。"
+            )
+            adjusted_spread = min_spread_limit
+        elif adjusted_spread > max_spread_limit:
+            logger.warning(
+                f"Adjusted spread {adjusted_spread*100:.2f}% above MAX_SPREAD {max_spread_limit*100:.2f}%. "
+                f"Clamping to {max_spread_limit*100:.2f}%. "
+                f"调整后的价差 {adjusted_spread*100:.2f}% 高于最大价差 {max_spread_limit*100:.2f}%。限制为 {max_spread_limit*100:.2f}%。"
+            )
+            adjusted_spread = max_spread_limit
         
         # Update current spread / 更新当前价差
         self.spread = adjusted_spread

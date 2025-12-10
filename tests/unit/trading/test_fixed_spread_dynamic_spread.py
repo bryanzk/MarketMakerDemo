@@ -279,4 +279,59 @@ class TestFixedSpreadDynamicSpread:
         # Should be approximately 2.25% (with rounding)
         assert actual_spread == pytest.approx(0.0225, abs=0.001)
 
+    def test_risk_limit_clamping_max_spread(self):
+        """
+        Test that adjusted spread is clamped to MAX_SPREAD when it exceeds limit.
+        测试调整后的价差超过限制时被限制为 MAX_SPREAD。
+        """
+        strategy = FixedSpreadStrategy()
+        strategy.base_spread = 0.035  # 3.5% - high base spread
+        
+        # Very high volatility would push spread to 3.5% * 1.5 = 5.25%
+        # But MAX_SPREAD is 5.0%, so should be clamped
+        adjusted_spread = strategy.calculate_adaptive_spread(volatility_1h=0.15)
+        
+        # Should be clamped to MAX_SPREAD (5.0%)
+        from src.shared.config import RISK_LIMITS
+        assert adjusted_spread == RISK_LIMITS["MAX_SPREAD"]
+        assert adjusted_spread == 0.05  # 5.0%
+
+    def test_risk_limit_clamping_min_spread(self):
+        """
+        Test that adjusted spread is clamped to MIN_SPREAD when it falls below limit.
+        测试调整后的价差低于限制时被限制为 MIN_SPREAD。
+        """
+        strategy = FixedSpreadStrategy()
+        strategy.base_spread = 0.0012  # 0.12% - low base spread
+        
+        # Low volatility would reduce spread to 0.12% * 0.8 = 0.096%
+        # But MIN_SPREAD is 0.1%, so should be clamped
+        adjusted_spread = strategy.calculate_adaptive_spread(volatility_1h=0.01)
+        
+        # Should be clamped to MIN_SPREAD (0.1%)
+        from src.shared.config import RISK_LIMITS
+        assert adjusted_spread == RISK_LIMITS["MIN_SPREAD"]
+        assert adjusted_spread == 0.001  # 0.1%
+
+    def test_risk_limit_clamping_market_spread(self):
+        """
+        Test that market spread adjustment is also clamped to risk limits.
+        测试市场价差调整也被限制在风险范围内。
+        """
+        strategy = FixedSpreadStrategy()
+        strategy.base_spread = 0.015  # 1.5%
+        
+        # High volatility with very wide market spread
+        # Base: 1.5% * 1.3 = 1.95%
+        # Market: 4.0% * 1.3 = 5.2% (exceeds MAX_SPREAD of 5.0%)
+        adjusted_spread = strategy.calculate_adaptive_spread(
+            volatility_1h=0.07,  # High volatility
+            market_spread=0.04  # 4% market spread
+        )
+        
+        # Should be clamped to MAX_SPREAD (5.0%)
+        from src.shared.config import RISK_LIMITS
+        assert adjusted_spread == RISK_LIMITS["MAX_SPREAD"]
+        assert adjusted_spread == 0.05  # 5.0%
+
 

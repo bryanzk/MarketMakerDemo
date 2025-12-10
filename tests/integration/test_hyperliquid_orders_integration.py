@@ -139,14 +139,34 @@ class TestHyperliquidOrderManagerIntegration:
         current_orders = client.fetch_open_orders()
         assert len(current_orders) == 2
 
-        # Step 2: Define target orders
+        # Step 2: Define target orders with larger price difference to trigger update
+        # 步骤 2：定义目标订单，价格差异较大以触发更新
+        # Price difference must exceed 0.1% threshold (mid_price ~1001, threshold ~1.001)
+        # 价格差异必须超过 0.1% 阈值（中间价 ~1001，阈值 ~1.001）
         target_orders = [
-            {"side": "buy", "price": 1000.0, "quantity": 0.01},
-            {"side": "sell", "price": 1002.0, "quantity": 0.01},
+            {"side": "buy", "price": 995.0, "quantity": 0.01},  # Changed from 999.0 (diff > 1.001)
+            {"side": "sell", "price": 1007.0, "quantity": 0.01},  # Changed from 1003.0 (diff > 1.001)
         ]
 
-        # Step 3: Sync orders
-        to_cancel, to_place = order_manager.sync_orders(current_orders, target_orders)
+        # Step 3: Sync orders (with enforce_both_side for market making)
+        # 步骤 3：同步订单（对做市策略使用 enforce_both_side）
+        # Provide mid_price to ensure correct threshold calculation
+        # 提供 mid_price 以确保正确的阈值计算
+        mid_price = (target_orders[0]["price"] + target_orders[1]["price"]) / 2
+        to_cancel, to_place = order_manager.sync_orders(
+            current_orders, target_orders, mid_price=mid_price, enforce_both_side=True
+        )
+
+        # Verify both-side enforcement
+        # 验证双边强制
+        # Both orders should be cancelled and replaced due to price difference
+        # 由于价格差异，两个订单都应该被取消并替换
+        assert len(to_cancel) == 2
+        assert len(to_place) == 2
+        buy_count = sum(1 for o in to_place if o.get("side") == "buy")
+        sell_count = sum(1 for o in to_place if o.get("side") == "sell")
+        assert buy_count == 1
+        assert sell_count == 1
 
         # Step 4: Execute changes
         if to_cancel:
@@ -209,7 +229,8 @@ class TestHyperliquidStrategyInstanceOrderIntegration:
         assert hasattr(strategy_instance, "order_manager")
         assert hasattr(strategy_instance, "sync_orders")
 
-        # Test order sync method
+        # Test order sync method with single-side target (non-market-making scenario)
+        # 测试单边目标订单的订单同步方法（非做市场景）
         current_orders = []
         target_orders = [
             {"side": "buy", "price": 1000.0, "quantity": 0.01},
@@ -217,9 +238,27 @@ class TestHyperliquidStrategyInstanceOrderIntegration:
 
         to_cancel, to_place = strategy_instance.sync_orders(current_orders, target_orders)
 
-        # Verify sync logic
+        # For single-side target, should place only that side
+        # 对于单边目标，应该只下单那一边
         assert len(to_place) == 1
         assert to_place[0]["side"] == "buy"
+
+        # Test with both-side target (market-making scenario)
+        # 测试双边目标（做市场景）
+        target_orders_both = [
+            {"side": "buy", "price": 1000.0, "quantity": 0.01},
+            {"side": "sell", "price": 1002.0, "quantity": 0.01},
+        ]
+
+        to_cancel, to_place = strategy_instance.sync_orders(current_orders, target_orders_both)
+
+        # For market-making strategy (fixed_spread), should enforce both-side
+        # 对于做市策略（fixed_spread），应该强制双边
+        assert len(to_place) == 2
+        buy_orders = [o for o in to_place if o.get("side") == "buy"]
+        sell_orders = [o for o in to_place if o.get("side") == "sell"]
+        assert len(buy_orders) == 1
+        assert len(sell_orders) == 1
 
         # If we had HyperliquidClient as exchange, we could use it
         # 如果我们有 HyperliquidClient 作为 exchange，我们可以使用它
@@ -238,11 +277,12 @@ class TestHyperliquidOrderWorkflowIntegration:
         os.environ,
         {
             "HYPERLIQUID_API_KEY": "test_key",
-            "HYPERLIQUID_API_SECRET": "test_secret",
+            "HYPERLIQUID_API_SECRET": "0x" + "1" * 64,  # Valid hex format for SDK initialization
         },
     )
     @patch("src.trading.hyperliquid_client.requests")
-    def test_complete_order_lifecycle(self, mock_requests):
+    @patch("src.trading.hyperliquid_client.HyperliquidExchange")
+    def test_complete_order_lifecycle(self, mock_exchange_class, mock_requests):
         """
         Integration Test: Complete order lifecycle (place → query → cancel)
         集成测试：完整订单生命周期（下单 → 查询 → 取消）
@@ -256,26 +296,53 @@ class TestHyperliquidOrderWorkflowIntegration:
         mock_response.json.return_value = {"status": "ok"}
         mock_requests.post.return_value = mock_response
 
-        # Create client
-        client = HyperliquidClient()
-
-        # Mock order placement
-        place_response = MagicMock()
-        place_response.status_code = 200
-        place_response.json.return_value = {
+        # Mock HyperliquidExchange to avoid SDK initialization issues
+        # Mock HyperliquidExchange 以避免 SDK 初始化问题
+        mock_exchange_instance = MagicMock()
+        mock_exchange_instance.bulk_cancel.return_value = {"status": "ok"}
+        # Mock order method for place_orders - return dict format expected by _parse_sdk_order_response
+        # Mock order 方法用于 place_orders - 返回 _parse_sdk_order_response 期望的字典格式
+        mock_exchange_instance.order.return_value = {
             "status": "ok",
             "response": {
                 "type": "order",
                 "data": {"statuses": [{"resting": {"oid": 12345}}]},
             },
         }
-        mock_requests.post.return_value = place_response
-
-        # Step 1: Place order
+        mock_exchange_class.return_value = mock_exchange_instance
+        
+        # Create client
+        client = HyperliquidClient()
+        
+        # Manually set _exchange to mock to bypass initialization
+        # 手动设置 _exchange 为 mock 以绕过初始化
+        client._exchange = mock_exchange_instance
+        # Set symbol for place_orders and cancel_orders to work
+        # 设置 symbol 以便 place_orders 和 cancel_orders 工作
+        client.symbol = "ETH/USDT:USDT"
+        # Mock fetch_market_data to avoid actual API calls
+        # Mock fetch_market_data 以避免实际 API 调用
+        client.fetch_market_data = Mock(
+            return_value={
+                "mid_price": 3000.0,
+                "best_bid": 2999.0,
+                "best_ask": 3001.0,
+                "tick_size": 0.1,
+                "step_size": 0.001,
+            }
+        )
+    
+        # Step 1: Place order (using mocked SDK)
+        # 步骤 1：下单（使用 mock 的 SDK）
         orders = [{"side": "buy", "price": 3000.0, "quantity": 0.01, "type": "limit"}]
         placed_orders = client.place_orders(orders)
-        assert mock_requests.post.called
-
+        # Verify SDK order method was called
+        # 验证 SDK order 方法被调用
+        assert mock_exchange_instance.order.called
+        # Verify orders were placed
+        # 验证订单已下单
+        assert len(placed_orders) > 0
+    
         # Mock open orders query
         query_response = MagicMock()
         query_response.status_code = 200
@@ -290,25 +357,22 @@ class TestHyperliquidOrderWorkflowIntegration:
             ]
         }
         mock_requests.post.return_value = query_response
-
+    
         # Step 2: Query open orders
         open_orders = client.fetch_open_orders()
         assert hasattr(client, "fetch_open_orders")
-
-        # Mock order cancellation
-        cancel_response = MagicMock()
-        cancel_response.status_code = 200
-        cancel_response.json.return_value = {
-            "status": "ok",
-            "response": {"type": "cancel", "data": {"statuses": [{"filled": None}]}},
-        }
-        mock_requests.post.return_value = cancel_response
-
-        # Step 3: Cancel order
+    
+        # Step 3: Cancel order (using mocked SDK)
+        # 步骤 3：取消订单（使用 mock 的 SDK）
         if open_orders and len(open_orders) > 0:
             order_id = open_orders[0].get("id", "12345")
-            canceled = client.cancel_orders([order_id])
+            # cancel_orders should use mocked _exchange
+            # cancel_orders 应该使用 mock 的 _exchange
+            client.cancel_orders([order_id])
             assert hasattr(client, "cancel_orders")
+            # Verify mock was called
+            # 验证 mock 被调用
+            assert mock_exchange_instance.bulk_cancel.called
 
     @patch.dict(
         os.environ,

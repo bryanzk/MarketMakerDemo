@@ -10,7 +10,7 @@ import os
 import sys
 
 # Add project root to path / 将项目根目录添加到路径
-sys.path.insert(0, os.path.dirname(__file__))
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../..")))
 
 print("=" * 80)
 print("Testing Exchange Volatility Calculator / 测试交易所波动率计算器")

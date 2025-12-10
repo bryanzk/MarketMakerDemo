@@ -238,14 +238,18 @@ class AlphaLoop:
         if default_instance:
             default_status = default_instance.get_status()
             current_symbol = default_status.get("symbol", "ETH/USDT:USDT")
-            mid_price = default_status.get("mid_price", 2000.0)
+            # Use 0.0 as fallback instead of 2000.0 to indicate missing data
+            # 使用 0.0 作为回退值而不是 2000.0，以表示数据缺失
+            mid_price = default_status.get("mid_price", 0.0)
             funding_rate = default_status.get("funding_rate", 0.0)
             position = default_status.get("position", 0.0)
             pnl = default_status.get("pnl", 0.0)
             default_strategy_type = default_instance.strategy_type
         else:
             current_symbol = "ETH/USDT:USDT"
-            mid_price = 2000.0
+            # Use 0.0 as fallback instead of 2000.0 to indicate missing data
+            # 使用 0.0 作为回退值而不是 2000.0，以表示数据缺失
+            mid_price = 0.0
             funding_rate = 0.0
             position = 0.0
             pnl = 0.0

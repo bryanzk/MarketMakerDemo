@@ -101,7 +101,8 @@ class OrderManager:
         self, 
         current_orders: List[Dict[str, Any]], 
         target_orders: List[Dict[str, Any]],
-        mid_price: float = None
+        mid_price: float = None,
+        enforce_both_side: bool = False
     ) -> Tuple[List[str], List[Dict[str, Any]]]:
         """
         Compares current and target orders to determine actions.
@@ -111,6 +112,11 @@ class OrderManager:
             current_orders: List of current open orders
             target_orders: List of target orders to achieve
             mid_price: Current mid price for adaptive threshold (optional, will estimate if not provided)
+            enforce_both_side: If True, ensures both buy and sell orders are placed when target_orders
+                             contains both sides. Used for market making strategies that require
+                             simultaneous bid and ask orders.
+                             如果为 True，当 target_orders 包含双边时，确保买入和卖出订单都下单。
+                             用于需要同时提供买卖订单的做市策略。
 
         Returns:
             Tuple of (order_ids_to_cancel, orders_to_place)
@@ -199,6 +205,34 @@ class OrderManager:
                     f"没有目标卖出订单，将取消当前订单: {curr_sell['id']}。"
                 )
                 to_cancel.append(curr_sell["id"])
+
+        # ENFORCE both-side orders for market making strategies
+        # 强制做市策略的双边订单
+        if enforce_both_side and tgt_buy and tgt_sell:
+            # Strategy requires both-side orders - ensure both are placed
+            # 策略要求双边订单 - 确保双边都下单
+            buy_in_place = any(o.get("side") == "buy" for o in to_place)
+            sell_in_place = any(o.get("side") == "sell" for o in to_place)
+            
+            if buy_in_place and not sell_in_place:
+                # Only buy is being placed, but strategy requires both - add sell
+                # 只下单买入，但策略要求双边 - 添加卖出
+                to_place.append(tgt_sell)
+                logger.warning(
+                    f"Only buy order was scheduled, but strategy requires both-side. "
+                    f"Adding sell order to maintain market making consistency. "
+                    f"只安排了买入订单，但策略要求双边。添加卖出订单以保持做市一致性。"
+                )
+            
+            if sell_in_place and not buy_in_place:
+                # Only sell is being placed, but strategy requires both - add buy
+                # 只下单卖出，但策略要求双边 - 添加买入
+                to_place.append(tgt_buy)
+                logger.warning(
+                    f"Only sell order was scheduled, but strategy requires both-side. "
+                    f"Adding buy order to maintain market making consistency. "
+                    f"只安排了卖出订单，但策略要求双边。添加买入订单以保持做市一致性。"
+                )
 
         # Log summary
         buy_count = sum(1 for o in to_place if o.get("side") == "buy")

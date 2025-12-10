@@ -1,0 +1,192 @@
+# Both-Side Order Enforcement Implementation / 双边订单强制实现
+
+**Date / 日期**: 2025-12-10  
+**Status / 状态**: ✅ Implemented / 已实现  
+**Solution / 方案**: Solution 1 (Order Manager Level) / 方案 1（订单管理器层面）
+
+---
+
+## Problem / 问题
+
+做市策略（Market Making Strategy）应该总是同时提供买入和卖出订单，但当前实现允许单边订单的情况：
+
+- 只有买入订单：策略变成"只买不卖"，不是做市策略
+- 只有卖出订单：策略变成"只卖不买"，不是做市策略
+- 无法提供双向流动性
+- 持仓风险增加
+
+**Evidence from Logs / 日志证据**:
+```
+Placing 1 order(s) for strategy 'hyperliquid'. Buy orders: 1, Sell orders: 0.
+Placing 1 order(s) for strategy 'hyperliquid'. Buy orders: 0, Sell orders: 1.
+```
+
+---
+
+## Solution / 解决方案
+
+### Implementation Approach / 实现方法
+
+采用 **方案 1**：在 `order_manager.py` 中强制双边下单，确保在订单同步阶段就处理双边订单要求。
+
+### Key Changes / 关键变更
+
+#### 1. `src/trading/order_manager.py`
+
+**Added Parameter / 添加参数**:
+```python
+def sync_orders(
+    self, 
+    current_orders: List[Dict[str, Any]], 
+    target_orders: List[Dict[str, Any]],
+    mid_price: float = None,
+    enforce_both_side: bool = False  # 新增参数
+) -> Tuple[List[str], List[Dict[str, Any]]]:
+```
+
+**Added Logic / 添加逻辑**:
+```python
+# ENFORCE both-side orders for market making strategies
+# 强制做市策略的双边订单
+if enforce_both_side and tgt_buy and tgt_sell:
+    buy_in_place = any(o.get("side") == "buy" for o in to_place)
+    sell_in_place = any(o.get("side") == "sell" for o in to_place)
+    
+    if buy_in_place and not sell_in_place:
+        to_place.append(tgt_sell)  # 自动添加卖出订单
+        logger.warning("Only buy order was scheduled, adding sell order...")
+    
+    if sell_in_place and not buy_in_place:
+        to_place.append(tgt_buy)  # 自动添加买入订单
+        logger.warning("Only sell order was scheduled, adding buy order...")
+```
+
+#### 2. `src/trading/strategy_instance.py`
+
+**Added Method / 添加方法**:
+```python
+def _requires_both_side_orders(self, target_orders: List[Dict[str, Any]]) -> bool:
+    """
+    Determine if this strategy requires both-side orders (buy and sell).
+    This method is extensible for future strategies.
+    """
+    # Market making strategies always return both-side orders
+    if self.strategy_type in ["fixed_spread", "funding_rate"]:
+        return True
+    
+    # Fallback: Check if target_orders contains both buy and sell
+    has_buy = any(o.get("side") == "buy" for o in target_orders)
+    has_sell = any(o.get("side") == "sell" for o in target_orders)
+    
+    if has_buy and has_sell:
+        return True
+    
+    return False
+```
+
+**Updated Method / 更新方法**:
+```python
+def sync_orders(self, current_orders, target_orders, mid_price=None):
+    # ...
+    enforce_both_side = self._requires_both_side_orders(target_orders)
+    return self.order_manager.sync_orders(
+        filtered_orders, target_orders, mid_price, 
+        enforce_both_side=enforce_both_side
+    )
+```
+
+---
+
+## Extensibility Design / 扩展性设计
+
+### Current Support / 当前支持
+
+1. **Strategy Type Based / 基于策略类型**:
+   - `fixed_spread`: 强制双边 ✅
+   - `funding_rate`: 强制双边 ✅
+
+2. **Fallback Detection / 回退检测**:
+   - 如果策略返回双边订单，自动识别为做市策略
+   - 适用于未来可能添加的新做市策略
+
+### Future Extension / 未来扩展
+
+**Option 1: Add Strategy Type / 添加策略类型**
+```python
+def _requires_both_side_orders(self, target_orders):
+    if self.strategy_type in ["fixed_spread", "funding_rate", "new_market_making_strategy"]:
+        return True
+    # ...
+```
+
+**Option 2: Override Method / 重写方法**
+```python
+class NewStrategyInstance(StrategyInstance):
+    def _requires_both_side_orders(self, target_orders):
+        # Custom logic for new strategy
+        return custom_logic()
+```
+
+**Option 3: Strategy Interface / 策略接口**
+```python
+# Future: Add to strategy base class
+class BaseStrategy:
+    def requires_both_side_orders(self) -> bool:
+        """Override in subclasses"""
+        return False
+```
+
+---
+
+## Benefits / 优势
+
+1. ✅ **Early Detection / 早期检测**: 在订单同步阶段就处理，避免单边订单产生
+2. ✅ **Clear Responsibility / 职责清晰**: 订单管理模块负责订单同步规则
+3. ✅ **Unified Processing / 统一处理**: 所有策略都经过同一逻辑
+4. ✅ **Extensible / 可扩展**: 支持未来新策略类型
+5. ✅ **Backward Compatible / 向后兼容**: 默认 `enforce_both_side=False`，不影响现有代码
+
+---
+
+## Testing / 测试
+
+### Manual Test Cases / 手动测试用例
+
+1. **Test Case 1: Both-Side Strategy with Single-Side Update**
+   - 当前只有买入订单
+   - 目标订单需要更新卖出订单
+   - **Expected / 预期**: 自动添加买入订单，确保双边
+
+2. **Test Case 2: Both-Side Strategy with Order Failure**
+   - 双边订单下单时，一边失败
+   - **Expected / 预期**: 系统检测到单边，自动添加另一边
+
+3. **Test Case 3: Non-Market-Making Strategy**
+   - 未来可能添加非做市策略（如趋势跟踪）
+   - **Expected / 预期**: 不强制双边，允许单边订单
+
+---
+
+## Related Files / 相关文件
+
+- `src/trading/order_manager.py` - Order synchronization logic
+- `src/trading/strategy_instance.py` - Strategy instance with both-side detection
+- `src/trading/strategies/fixed_spread.py` - Market making strategy (both-side)
+- `src/trading/strategies/funding_rate.py` - Market making strategy (both-side)
+- `diagnostic_analysis.md` - Problem analysis and solution comparison
+
+---
+
+## Status / 状态
+
+✅ **Implementation Complete / 实现完成**
+- Code changes applied / 代码变更已应用
+- Syntax validation passed / 语法验证通过
+- Extensibility design implemented / 扩展性设计已实现
+- Documentation updated / 文档已更新
+
+---
+
+**Report Generated by / 报告生成者**: Agent TRADING  
+**Implementation Date / 实现日期**: 2025-12-10
+

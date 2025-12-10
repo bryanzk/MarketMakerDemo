@@ -3446,6 +3446,19 @@ async def get_hyperliquid_status(request: Request):
                 f"计算波动率时出错: {e}。使用默认值。",
                 exc_info=True
             )
+        
+        # Determine volatility level for display / 确定波动率级别用于显示
+        volatility_level = None  # "low", "medium", "high", "very_high"
+        volatility = volatility_1h if volatility_1h is not None else volatility_24h
+        if volatility is not None:
+            if volatility < 0.02:
+                volatility_level = "low"
+            elif volatility < 0.05:
+                volatility_level = "medium"
+            elif volatility < 0.10:
+                volatility_level = "high"
+            else:
+                volatility_level = "very_high"
 
         try:
             open_orders = exchange.fetch_open_orders()
@@ -3507,6 +3520,7 @@ async def get_hyperliquid_status(request: Request):
             "quantity": quantity if quantity is not None else None,
             "volatility_24h": volatility_24h,
             "volatility_1h": volatility_1h,
+            "volatility_level": volatility_level,
             "orders": open_orders,
             "positions": positions,
             "trace_id": trace_id,

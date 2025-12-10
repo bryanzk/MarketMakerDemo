@@ -20,7 +20,6 @@ from src.ai.evaluation.evaluator import MultiLLMEvaluator
 from src.ai.evaluation.schemas import MarketContext
 from src.trading.hyperliquid_client import HyperliquidClient
 
-
 class TestHyperliquidLLMEvaluationAPIIntegration:
     """
     Integration tests for Hyperliquid LLM Evaluation API.
@@ -74,12 +73,12 @@ class TestHyperliquidLLMEvaluationAPIIntegration:
             providers.append(mock)
         return providers
 
-    @patch("server.create_all_providers")
+    @patch("server.get_provider_availability")
     @patch("server.get_exchange_by_name")
     def test_complete_evaluation_flow_with_hyperliquid(
         self,
         mock_get_exchange,
-        mock_create_providers,
+        mock_get_provider_availability,
         mock_hyperliquid_client,
         mock_llm_providers,
     ):
@@ -105,7 +104,15 @@ class TestHyperliquidLLMEvaluationAPIIntegration:
         """
         # Setup mocks
         mock_get_exchange.return_value = mock_hyperliquid_client
-        mock_create_providers.return_value = mock_llm_providers
+        # Mock get_provider_availability to return format: {"available": [{"name": "...", "provider": ...}], "unavailable": []}
+        # 模拟 get_provider_availability 返回格式：{"available": [{"name": "...", "provider": ...}], "unavailable": []}
+        mock_get_provider_availability.return_value = {
+            "available": [
+                {"name": provider.name, "provider": provider}
+                for provider in mock_llm_providers
+            ],
+            "unavailable": [],
+        }
 
         # Mock bot_engine
         mock_bot_engine = Mock()
@@ -157,12 +164,12 @@ class TestHyperliquidLLMEvaluationAPIIntegration:
             # 步骤 7：验证聚合结果
             assert "aggregated" in data, "Response should include aggregated results / 响应应该包含聚合结果"
 
-    @patch("server.create_all_providers")
+    @patch("server.get_provider_availability")
     @patch("server.get_exchange_by_name")
     def test_hyperliquid_market_data_in_llm_context(
         self,
         mock_get_exchange,
-        mock_create_providers,
+        mock_get_provider_availability,
         mock_hyperliquid_client,
         mock_llm_providers,
     ):
@@ -174,7 +181,15 @@ class TestHyperliquidLLMEvaluationAPIIntegration:
         验证 Hyperliquid 特定的市场数据包含在 LLM 上下文中。
         """
         mock_get_exchange.return_value = mock_hyperliquid_client
-        mock_create_providers.return_value = mock_llm_providers
+        # Mock get_provider_availability to return format: {"available": [{"name": "...", "provider": ...}], "unavailable": []}
+        # 模拟 get_provider_availability 返回格式：{"available": [{"name": "...", "provider": ...}], "unavailable": []}
+        mock_get_provider_availability.return_value = {
+            "available": [
+                {"name": provider.name, "provider": provider}
+                for provider in mock_llm_providers
+            ],
+            "unavailable": [],
+        }
 
         # Capture LLM prompt to verify context
         # 捕获 LLM 提示以验证上下文
@@ -187,7 +202,14 @@ class TestHyperliquidLLMEvaluationAPIIntegration:
         mock_provider = Mock()
         mock_provider.name = "Gemini"
         mock_provider.generate.side_effect = capture_prompt
-        mock_create_providers.return_value = [mock_provider]
+        # Mock get_provider_availability to return format: {"available": [{"name": "...", "provider": ...}], "unavailable": []}
+        # 模拟 get_provider_availability 返回格式：{"available": [{"name": "...", "provider": ...}], "unavailable": []}
+        mock_get_provider_availability.return_value = {
+            "available": [
+                {"name": mock_provider.name, "provider": mock_provider}
+            ],
+            "unavailable": [],
+        }
 
         mock_bot_engine = Mock()
         mock_bot_engine.data = Mock()
@@ -236,12 +258,12 @@ class TestHyperliquidLLMEvaluationAPIIntegration:
                     f"提示包含：{prompt_text[:200]}..."
                 )
 
-    @patch("server.create_all_providers")
+    @patch("server.get_provider_availability")
     @patch("server.get_exchange_by_name")
     def test_hyperliquid_response_format_consistency(
         self,
         mock_get_exchange,
-        mock_create_providers,
+        mock_get_provider_availability,
         mock_hyperliquid_client,
         mock_llm_providers,
     ):
@@ -253,7 +275,15 @@ class TestHyperliquidLLMEvaluationAPIIntegration:
         验证 Hyperliquid 评估返回与 Binance 相同格式的结果。
         """
         mock_get_exchange.return_value = mock_hyperliquid_client
-        mock_create_providers.return_value = mock_llm_providers
+        # Mock get_provider_availability to return format: {"available": [{"name": "...", "provider": ...}], "unavailable": []}
+        # 模拟 get_provider_availability 返回格式：{"available": [{"name": "...", "provider": ...}], "unavailable": []}
+        mock_get_provider_availability.return_value = {
+            "available": [
+                {"name": provider.name, "provider": provider}
+                for provider in mock_llm_providers
+            ],
+            "unavailable": [],
+        }
 
         mock_bot_engine = Mock()
         mock_bot_engine.data = Mock()
@@ -376,7 +406,6 @@ class TestHyperliquidLLMEvaluationAPIIntegration:
             
             assert "error" in data, "Error message should be present / 应该存在错误消息"
 
-
 class TestHyperliquidLLMEvaluatorIntegration:
     """
     Integration tests for MultiLLMEvaluator with HyperliquidClient.
@@ -498,7 +527,6 @@ class TestHyperliquidLLMEvaluatorIntegration:
         consensus = aggregated.consensus_proposal
         assert consensus.recommended_strategy is not None, "Should have strategy / 应该有策略"
         assert consensus.spread > 0, "Spread should be positive / 价差应该为正"
-
 
 class TestHyperliquidLLMApplyIntegration:
     """
@@ -892,7 +920,6 @@ class TestHyperliquidLLMApplyIntegration:
             # 验证实例被标记为运行中
             assert mock_instance.running is True
 
-
 class TestSelectedModelsIntegration:
     """
     Integration tests for selected_models parameter filtering.
@@ -947,12 +974,12 @@ class TestSelectedModelsIntegration:
             providers.append(mock)
         return providers
 
-    @patch("server.create_all_providers")
+    @patch("server.get_provider_availability")
     @patch("server.get_exchange_by_name")
     def test_integration_selected_models_single_model(
         self,
         mock_get_exchange,
-        mock_create_providers,
+        mock_get_provider_availability,
         mock_hyperliquid_client,
         mock_all_llm_providers,
     ):
@@ -973,7 +1000,15 @@ class TestSelectedModelsIntegration:
         4. API 返回仅包含 Gemini 的结果
         """
         mock_get_exchange.return_value = mock_hyperliquid_client
-        mock_create_providers.return_value = mock_all_llm_providers
+        # Mock get_provider_availability to return format: {"available": [{"name": "...", "provider": ...}], "unavailable": []}
+        # 模拟 get_provider_availability 返回格式：{"available": [{"name": "...", "provider": ...}], "unavailable": []}
+        mock_get_provider_availability.return_value = {
+            "available": [
+                {"name": provider.name, "provider": provider}
+                for provider in mock_all_llm_providers
+            ],
+            "unavailable": [],
+        }
 
         mock_bot_engine = Mock()
         mock_bot_engine.data = Mock()
@@ -1017,12 +1052,12 @@ class TestSelectedModelsIntegration:
                 "Should have one model in consensus / 共识中应该有一个模型"
             )
 
-    @patch("server.create_all_providers")
+    @patch("server.get_provider_availability")
     @patch("server.get_exchange_by_name")
     def test_integration_selected_models_multiple_models(
         self,
         mock_get_exchange,
-        mock_create_providers,
+        mock_get_provider_availability,
         mock_hyperliquid_client,
         mock_all_llm_providers,
     ):
@@ -1034,7 +1069,15 @@ class TestSelectedModelsIntegration:
         测试选择多个模型的完整流程。
         """
         mock_get_exchange.return_value = mock_hyperliquid_client
-        mock_create_providers.return_value = mock_all_llm_providers
+        # Mock get_provider_availability to return format: {"available": [{"name": "...", "provider": ...}], "unavailable": []}
+        # 模拟 get_provider_availability 返回格式：{"available": [{"name": "...", "provider": ...}], "unavailable": []}
+        mock_get_provider_availability.return_value = {
+            "available": [
+                {"name": provider.name, "provider": provider}
+                for provider in mock_all_llm_providers
+            ],
+            "unavailable": [],
+        }
 
         mock_bot_engine = Mock()
         mock_bot_engine.data = Mock()
@@ -1078,12 +1121,12 @@ class TestSelectedModelsIntegration:
                 "Should have two models in consensus / 共识中应该有两个模型"
             )
 
-    @patch("server.create_all_providers")
+    @patch("server.get_provider_availability")
     @patch("server.get_exchange_by_name")
     def test_integration_selected_models_none_uses_all(
         self,
         mock_get_exchange,
-        mock_create_providers,
+        mock_get_provider_availability,
         mock_hyperliquid_client,
         mock_all_llm_providers,
     ):
@@ -1095,7 +1138,15 @@ class TestSelectedModelsIntegration:
         测试当未提供 selected_models 时，使用所有提供商。
         """
         mock_get_exchange.return_value = mock_hyperliquid_client
-        mock_create_providers.return_value = mock_all_llm_providers
+        # Mock get_provider_availability to return format: {"available": [{"name": "...", "provider": ...}], "unavailable": []}
+        # 模拟 get_provider_availability 返回格式：{"available": [{"name": "...", "provider": ...}], "unavailable": []}
+        mock_get_provider_availability.return_value = {
+            "available": [
+                {"name": provider.name, "provider": provider}
+                for provider in mock_all_llm_providers
+            ],
+            "unavailable": [],
+        }
 
         mock_bot_engine = Mock()
         mock_bot_engine.data = Mock()
@@ -1131,7 +1182,6 @@ class TestSelectedModelsIntegration:
             assert "Gemini" in provider_names, "Should include Gemini / 应该包含 Gemini"
             assert "OpenAI" in provider_names, "Should include OpenAI / 应该包含 OpenAI"
             assert "Claude" in provider_names, "Should include Claude / 应该包含 Claude"
-
 
 class TestParseErrorIntegration:
     """
@@ -1183,12 +1233,12 @@ class TestParseErrorIntegration:
         
         return providers
 
-    @patch("server.create_all_providers")
+    @patch("server.get_provider_availability")
     @patch("server.get_exchange_by_name")
     def test_integration_parse_error_in_complete_flow(
         self,
         mock_get_exchange,
-        mock_create_providers,
+        mock_get_provider_availability,
         mock_hyperliquid_client,
         mock_mixed_llm_providers,
     ):
@@ -1209,8 +1259,15 @@ class TestParseErrorIntegration:
         4. 成功的提供商仍然返回有效的建议
         """
         mock_get_exchange.return_value = mock_hyperliquid_client
-        mock_create_providers.return_value = mock_mixed_llm_providers
-
+        # Mock get_provider_availability to return format: {"available": [{"name": "...", "provider": ...}], "unavailable": []}
+        # 模拟 get_provider_availability 返回格式：{"available": [{"name": "...", "provider": ...}], "unavailable": []}
+        mock_get_provider_availability.return_value = {
+            "available": [
+                {"name": provider.name, "provider": provider}
+                for provider in mock_mixed_llm_providers
+            ],
+            "unavailable": [],
+        }
         mock_bot_engine = Mock()
         mock_bot_engine.data = Mock()
         mock_bot_engine.data.calculate_metrics.return_value = {"sharpe_ratio": 1.5}
@@ -1285,12 +1342,12 @@ class TestParseErrorIntegration:
                     "Aggregated results should be present / 聚合结果应该存在"
                 )
 
-    @patch("server.create_all_providers")
+    @patch("server.get_provider_availability")
     @patch("server.get_exchange_by_name")
     def test_integration_parse_error_does_not_break_evaluation(
         self,
         mock_get_exchange,
-        mock_create_providers,
+        mock_get_provider_availability,
         mock_hyperliquid_client,
     ):
         """
@@ -1311,7 +1368,15 @@ class TestParseErrorIntegration:
             provider.generate.return_value = f"Invalid response from {name} - not JSON"
             invalid_providers.append(provider)
         
-        mock_create_providers.return_value = invalid_providers
+        # Mock get_provider_availability to return format: {"available": [{"name": "...", "provider": ...}], "unavailable": []}
+        # 模拟 get_provider_availability 返回格式：{"available": [{"name": "...", "provider": ...}], "unavailable": []}
+        mock_get_provider_availability.return_value = {
+            "available": [
+                {"name": provider.name, "provider": provider}
+                for provider in invalid_providers
+            ],
+            "unavailable": [],
+        }
 
         mock_bot_engine = Mock()
         mock_bot_engine.data = Mock()

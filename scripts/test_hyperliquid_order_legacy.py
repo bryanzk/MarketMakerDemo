@@ -15,8 +15,8 @@ from dotenv import load_dotenv
 # Load environment variables / 加载环境变量
 load_dotenv()
 
-# Add src to path / 添加 src 到路径
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+# Add project root to path / 添加项目根目录到路径
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from src.trading.hyperliquid_client import HyperliquidClient
 

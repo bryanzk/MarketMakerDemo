@@ -233,9 +233,11 @@ class TestHyperliquidTradePageBusinessLogic:
         
         # Check for optimized intervals in JavaScript
         # 检查 JavaScript 中的优化间隔
-        # Orders: 15000 (15 seconds) - updated to reduce rate limiting
-        # 订单：15000（15秒）- 已更新以减少速率限制
-        assert 'setInterval(refreshOrders, 15000)' in html or 'setInterval(refreshOrders,15000)' in html
+        # Orders: Dynamic intervals based on bot status (5000ms when running, 30000ms when stopped)
+        # 订单：根据 bot 状态的动态间隔（运行时 5000ms，停止时 30000ms）
+        assert 'setInterval(refreshOrders, 5000)' in html or 'setInterval(refreshOrders,5000)' in html or \
+               'setInterval(refreshOrders, 30000)' in html or 'setInterval(refreshOrders,30000)' in html or \
+               'startAutoRefresh' in html  # Function that sets dynamic intervals / 设置动态间隔的函数
         # Position: 20000 (20 seconds) - updated to reduce rate limiting
         # 仓位：20000（20秒）- 已更新以减少速率限制
         assert 'setInterval(refreshPosition, 20000)' in html or 'setInterval(refreshPosition,20000)' in html

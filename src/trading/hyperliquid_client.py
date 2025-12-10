@@ -681,6 +681,22 @@ class HyperliquidClient:
                         f"Hyperliquid client connected successfully (testnet={self.testnet}, attempt={attempt + 1})"
                     )
                     return
+                elif response.status_code == 401:
+                    # Authentication error - raise immediately
+                    # 认证错误 - 立即抛出
+                    error_text = getattr(response, "text", "Unauthorized")
+                    try:
+                        error_json = response.json()
+                        error_msg = error_json.get("error", error_text)
+                    except Exception:
+                        error_msg = error_text
+                    error_msg = (
+                        f"Authentication failed. Invalid API credentials. "
+                        f"Error: {error_msg}. "
+                        f"认证失败。无效的 API 凭证。错误: {error_msg}。"
+                    )
+                    logger.error(f"Authentication failed: {error_msg}")
+                    raise AuthenticationError(error_msg)
                 else:
                     # Log non-200 status codes for debugging
                     logger.warning(

@@ -60,12 +60,14 @@ class TestFixedSpreadStrategy:
         assert spread_pct < 0.0001  # Less than 0.01%
 
     def test_calculate_target_orders_no_mid_price(self):
-        """Test handling of missing mid_price"""
-        market_data = {"best_bid": 2999.5, "best_ask": 3000.5}
+        """Test handling of missing mid_price - should use best_bid/best_ask if available"""
+        market_data = {"best_bid": 2999.5, "best_ask": 3000.5, "tick_size": 0.1, "step_size": 0.001}
 
         orders = self.strategy.calculate_target_orders(market_data)
 
-        assert orders == []
+        # With best_bid/best_ask available, should still generate orders
+        # 如果有 best_bid/best_ask，应该仍然生成订单
+        assert len(orders) > 0
 
     def test_calculate_target_orders_empty_data(self):
         """Test handling of empty market data"""

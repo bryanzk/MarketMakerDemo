@@ -428,9 +428,28 @@ class AlphaLoop:
                 current_orders = [
                     o for o in all_orders if o.get("id") in instance.tracked_order_ids
                 ]
+                
+                # Add timestamp to current orders from order_history if available
+                # 如果可用，从 order_history 为当前订单添加时间戳
+                for order in current_orders:
+                    if "timestamp" not in order:
+                        # Try to find timestamp from order_history
+                        # 尝试从 order_history 查找时间戳
+                        order_id = order.get("id")
+                        for hist_order in instance.order_history:
+                            if hist_order.get("id") == order_id:
+                                order["timestamp"] = hist_order.get("timestamp")
+                                break
+                        # If still no timestamp, use current time (order is assumed old)
+                        # 如果仍然没有时间戳，使用当前时间（假设订单是旧的）
+                        if "timestamp" not in order:
+                            order["timestamp"] = time.time() - 100  # Assume 100s old
 
+            # Get mid_price for adaptive threshold calculation / 获取中间价用于自适应阈值计算
+            mid_price = market_data.get("mid_price") if market_data else None
+            
             to_cancel_ids, to_place = instance.sync_orders(
-                current_orders, target_orders
+                current_orders, target_orders, mid_price=mid_price
             )
 
             if to_cancel_ids:

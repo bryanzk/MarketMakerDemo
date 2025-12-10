@@ -161,7 +161,7 @@ class TestAuthenticationErrorHandling:
         "os.environ",
         {
             "HYPERLIQUID_API_KEY": "test_key",
-            "HYPERLIQUID_API_SECRET": "test_secret",
+            "HYPERLIQUID_API_SECRET": "1" * 64,  # Valid hex format for testing / 用于测试的有效十六进制格式
         },
     )
     @patch("src.trading.hyperliquid_client.requests.post")
@@ -174,20 +174,20 @@ class TestAuthenticationErrorHandling:
         mock_auth_error_response.text = "Unauthorized"
         mock_auth_error_response.json.return_value = {"error": "Unauthorized"}
         
-        # First call (info) succeeds, second call (exchange) returns 401
-        # 第一次调用（info）成功，第二次调用（exchange）返回 401
-        mock_success = MagicMock()
-        mock_success.status_code = 200
-        mock_success.json.return_value = {"status": "ok"}
-        
-        mock_post.side_effect = [mock_success, mock_auth_error_response]
+        # First call (info) returns 401 - authentication error
+        # 第一次调用（info）返回 401 - 认证错误
+        mock_post.side_effect = [mock_auth_error_response]
         
         # Should raise AuthenticationError during initialization
         # 应该在初始化期间抛出 AuthenticationError
-        with pytest.raises(AuthenticationError):
+        with pytest.raises(AuthenticationError) as exc_info:
             HyperliquidClient(
-                api_key="test_key", api_secret="test_secret", testnet=True
+                api_key="test_key", api_secret="1" * 64, testnet=True
             )
+        
+        # Verify error message contains authentication failure info
+        # 验证错误消息包含认证失败信息
+        assert "Authentication failed" in str(exc_info.value) or "认证失败" in str(exc_info.value)
 
 
 class TestServerErrorHandling:

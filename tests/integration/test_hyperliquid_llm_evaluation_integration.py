@@ -832,6 +832,7 @@ class TestHyperliquidLLMApplyIntegration:
         mock_instance.running = False
         mock_instance.exchange = mock_client
         mock_instance.use_real_exchange = True
+        mock_instance.symbol = "ETH/USDC:USDC"  # Hyperliquid uses USDC, not USDT / Hyperliquid 使用 USDC，不是 USDT
         mock_instance.strategy = Mock()
         mock_instance.strategy.spread = 0.01
         mock_instance.strategy.quantity = 0.05
@@ -947,12 +948,12 @@ class TestSelectedModelsIntegration:
             providers.append(mock)
         return providers
 
-    @patch("server.create_all_providers")
+    @patch("server.get_provider_availability")
     @patch("server.get_exchange_by_name")
     def test_integration_selected_models_single_model(
         self,
         mock_get_exchange,
-        mock_create_providers,
+        mock_get_provider_availability,
         mock_hyperliquid_client,
         mock_all_llm_providers,
     ):
@@ -973,7 +974,16 @@ class TestSelectedModelsIntegration:
         4. API 返回仅包含 Gemini 的结果
         """
         mock_get_exchange.return_value = mock_hyperliquid_client
-        mock_create_providers.return_value = mock_all_llm_providers
+        # Mock get_provider_availability to return format: {"available": [{"name": "...", "provider": ...}], "unavailable": []}
+        # 模拟 get_provider_availability 返回格式：{"available": [{"name": "...", "provider": ...}], "unavailable": []}
+        mock_get_provider_availability.return_value = {
+            "available": [
+                {"name": "Gemini", "provider": mock_all_llm_providers[0]},
+                {"name": "OpenAI", "provider": mock_all_llm_providers[1]},
+                {"name": "Claude", "provider": mock_all_llm_providers[2]},
+            ],
+            "unavailable": [],
+        }
 
         mock_bot_engine = Mock()
         mock_bot_engine.data = Mock()
@@ -1007,7 +1017,8 @@ class TestSelectedModelsIntegration:
             assert "individual_results" in data, "Response should include individual_results / 响应应该包含 individual_results"
             results = data["individual_results"]
             assert len(results) == 1, "Should have only one result / 应该只有一个结果"
-            assert results[0]["provider_name"] == "Gemini", "Should be Gemini / 应该是 Gemini"
+            # Provider name format is "Gemini (model-name)" / Provider 名称格式是 "Gemini (model-name)"
+            assert results[0]["provider_name"].startswith("Gemini"), f"Should be Gemini, got {results[0]['provider_name']} / 应该是 Gemini，得到 {results[0]['provider_name']}"
 
             # Step 4: Verify aggregated results are based on single model
             # 步骤 4：验证聚合结果基于单个模型
@@ -1017,12 +1028,12 @@ class TestSelectedModelsIntegration:
                 "Should have one model in consensus / 共识中应该有一个模型"
             )
 
-    @patch("server.create_all_providers")
+    @patch("server.get_provider_availability")
     @patch("server.get_exchange_by_name")
     def test_integration_selected_models_multiple_models(
         self,
         mock_get_exchange,
-        mock_create_providers,
+        mock_get_provider_availability,
         mock_hyperliquid_client,
         mock_all_llm_providers,
     ):
@@ -1034,7 +1045,16 @@ class TestSelectedModelsIntegration:
         测试选择多个模型的完整流程。
         """
         mock_get_exchange.return_value = mock_hyperliquid_client
-        mock_create_providers.return_value = mock_all_llm_providers
+        # Mock get_provider_availability to return format: {"available": [{"name": "...", "provider": ...}], "unavailable": []}
+        # 模拟 get_provider_availability 返回格式：{"available": [{"name": "...", "provider": ...}], "unavailable": []}
+        mock_get_provider_availability.return_value = {
+            "available": [
+                {"name": "Gemini", "provider": mock_all_llm_providers[0]},
+                {"name": "OpenAI", "provider": mock_all_llm_providers[1]},
+                {"name": "Claude", "provider": mock_all_llm_providers[2]},
+            ],
+            "unavailable": [],
+        }
 
         mock_bot_engine = Mock()
         mock_bot_engine.data = Mock()
@@ -1066,9 +1086,10 @@ class TestSelectedModelsIntegration:
             assert "individual_results" in data, "Response should include individual_results / 响应应该包含 individual_results"
             results = data["individual_results"]
             provider_names = [r["provider_name"] for r in results]
-            assert "Gemini" in provider_names, "Should include Gemini / 应该包含 Gemini"
-            assert "OpenAI" in provider_names, "Should include OpenAI / 应该包含 OpenAI"
-            assert "Claude" not in provider_names, "Should not include Claude / 不应该包含 Claude"
+            # Provider name format is "Provider (model-name)" / Provider 名称格式是 "Provider (model-name)"
+            assert any(name.startswith("Gemini") for name in provider_names), f"Should include Gemini, got {provider_names} / 应该包含 Gemini，得到 {provider_names}"
+            assert any(name.startswith("OpenAI") for name in provider_names), f"Should include OpenAI, got {provider_names} / 应该包含 OpenAI，得到 {provider_names}"
+            assert not any(name.startswith("Claude") for name in provider_names), f"Should not include Claude, got {provider_names} / 不应该包含 Claude，得到 {provider_names}"
             assert len(results) == 2, "Should have two results / 应该有两个结果"
 
             # Verify aggregated results are based on selected models
@@ -1078,12 +1099,12 @@ class TestSelectedModelsIntegration:
                 "Should have two models in consensus / 共识中应该有两个模型"
             )
 
-    @patch("server.create_all_providers")
+    @patch("server.get_provider_availability")
     @patch("server.get_exchange_by_name")
     def test_integration_selected_models_none_uses_all(
         self,
         mock_get_exchange,
-        mock_create_providers,
+        mock_get_provider_availability,
         mock_hyperliquid_client,
         mock_all_llm_providers,
     ):
@@ -1095,7 +1116,16 @@ class TestSelectedModelsIntegration:
         测试当未提供 selected_models 时，使用所有提供商。
         """
         mock_get_exchange.return_value = mock_hyperliquid_client
-        mock_create_providers.return_value = mock_all_llm_providers
+        # Mock get_provider_availability to return format: {"available": [{"name": "...", "provider": ...}], "unavailable": []}
+        # 模拟 get_provider_availability 返回格式：{"available": [{"name": "...", "provider": ...}], "unavailable": []}
+        mock_get_provider_availability.return_value = {
+            "available": [
+                {"name": "Gemini", "provider": mock_all_llm_providers[0]},
+                {"name": "OpenAI", "provider": mock_all_llm_providers[1]},
+                {"name": "Claude", "provider": mock_all_llm_providers[2]},
+            ],
+            "unavailable": [],
+        }
 
         mock_bot_engine = Mock()
         mock_bot_engine.data = Mock()
@@ -1128,9 +1158,10 @@ class TestSelectedModelsIntegration:
             results = data["individual_results"]
             provider_names = [r["provider_name"] for r in results]
             assert len(results) == 3, "Should use all three providers / 应该使用所有三个提供商"
-            assert "Gemini" in provider_names, "Should include Gemini / 应该包含 Gemini"
-            assert "OpenAI" in provider_names, "Should include OpenAI / 应该包含 OpenAI"
-            assert "Claude" in provider_names, "Should include Claude / 应该包含 Claude"
+            # Provider name format is "Provider (model-name)" / Provider 名称格式是 "Provider (model-name)"
+            assert any(name.startswith("Gemini") for name in provider_names), f"Should include Gemini, got {provider_names} / 应该包含 Gemini，得到 {provider_names}"
+            assert any(name.startswith("OpenAI") for name in provider_names), f"Should include OpenAI, got {provider_names} / 应该包含 OpenAI，得到 {provider_names}"
+            assert any(name.startswith("Claude") for name in provider_names), f"Should include Claude, got {provider_names} / 应该包含 Claude，得到 {provider_names}"
 
 
 class TestParseErrorIntegration:

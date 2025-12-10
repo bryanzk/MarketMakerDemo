@@ -1847,6 +1847,64 @@ async def get_performance():
     }
 
 
+@app.get("/api/performance/strategy")
+async def get_strategy_performance(
+    strategy_type: Optional[str] = None,
+    strategy_id: Optional[str] = None,
+    symbol: Optional[str] = None,
+):
+    """
+    Get performance data for a specific strategy / 获取特定策略的绩效数据
+    
+    Filters trades by strategy_type, strategy_id, or symbol and calculates performance metrics.
+    根据 strategy_type、strategy_id 或 symbol 过滤交易并计算绩效指标。
+    
+    Args:
+        strategy_type: Strategy type filter (e.g., "fixed_spread", "funding_rate")
+        strategy_id: Strategy ID filter
+        symbol: Symbol filter (e.g., "ETH/USDT:USDT")
+    
+    Returns:
+        Performance data dictionary with:
+        - realized_pnl: Total realized PnL
+        - total_trades: Number of trades
+        - winning_trades: Number of winning trades
+        - losing_trades: Number of losing trades
+        - win_rate: Win rate percentage
+        - pnl_history: PnL history for charting
+        - strategy_type: Strategy type (if filtered)
+        - strategy_id: Strategy ID (if filtered)
+        - symbol: Symbol (if filtered)
+        - session_start_time: Session start time in milliseconds
+    """
+    from src.trading.performance import calculate_strategy_performance
+    
+    # Get session start time for filtering
+    start_time_ms = get_session_start_time_ms()
+    
+    # Get all trades from bot engine
+    trades = bot_engine.data.trade_history
+    
+    # Calculate strategy-specific performance
+    performance = calculate_strategy_performance(
+        trades=trades,
+        start_time_ms=start_time_ms,
+        strategy_type=strategy_type,
+        strategy_id=strategy_id,
+        symbol=symbol,
+    )
+    
+    # Add filter information to response
+    if strategy_type:
+        performance["strategy_type"] = strategy_type
+    if strategy_id:
+        performance["strategy_id"] = strategy_id
+    if symbol:
+        performance["symbol"] = symbol
+    
+    return performance
+
+
 @app.get("/api/metrics")
 async def get_metrics(request: Request):
     """

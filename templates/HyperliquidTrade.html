@@ -394,6 +394,18 @@
                         <div style="font-size: 11px; color: #6b7280; margin-bottom: 4px;">Leverage / 杠杆</div>
                         <div id="currentLeverage" style="font-size: 14px; font-weight: 600; color: #1f2937;">--</div>
                     </div>
+                    <div>
+                        <div style="font-size: 11px; color: #6b7280; margin-bottom: 4px;">Base Spread / 基础价差</div>
+                        <div id="currentBaseSpread" style="font-size: 14px; font-weight: 600; color: #6b7280;">--</div>
+                    </div>
+                    <div>
+                        <div style="font-size: 11px; color: #6b7280; margin-bottom: 4px;">Market Spread / 市场价差</div>
+                        <div id="currentMarketSpread" style="font-size: 14px; font-weight: 600; color: #1f2937;">--</div>
+                    </div>
+                    <div>
+                        <div style="font-size: 11px; color: #6b7280; margin-bottom: 4px;">Spread Adjustment / 价差调整</div>
+                        <div id="currentSpreadAdjustment" style="font-size: 14px; font-weight: 600; color: #1f2937;">--</div>
+                    </div>
                 </div>
             </div>
             
@@ -1248,6 +1260,59 @@
                     currentLeverageEl.innerText = `${data.leverage}x`;
                 } else {
                     currentLeverageEl.innerText = '--';
+                }
+            }
+            
+            // Display base spread / 显示基础价差
+            const currentBaseSpreadEl = document.getElementById('currentBaseSpread');
+            if (currentBaseSpreadEl) {
+                if (data.base_spread !== undefined && data.base_spread !== null) {
+                    currentBaseSpreadEl.innerText = `${(data.base_spread * 100).toFixed(2)}%`;
+                } else {
+                    currentBaseSpreadEl.innerText = '--';
+                }
+            }
+            
+            // Display market spread / 显示市场价差
+            const currentMarketSpreadEl = document.getElementById('currentMarketSpread');
+            if (currentMarketSpreadEl) {
+                if (data.market_spread !== undefined && data.market_spread !== null) {
+                    currentMarketSpreadEl.innerText = `${(data.market_spread * 100).toFixed(3)}%`;
+                    // Color code: green if small (<0.1%), yellow if medium, red if large
+                    // 颜色编码：小（<0.1%）为绿色，中等为黄色，大为红色
+                    if (data.market_spread < 0.001) {
+                        currentMarketSpreadEl.style.color = '#10b981'; // Green
+                    } else if (data.market_spread < 0.002) {
+                        currentMarketSpreadEl.style.color = '#f59e0b'; // Yellow
+                    } else {
+                        currentMarketSpreadEl.style.color = '#ef4444'; // Red
+                    }
+                } else {
+                    currentMarketSpreadEl.innerText = '--';
+                    currentMarketSpreadEl.style.color = '#6b7280';
+                }
+            }
+            
+            // Display spread adjustment indicator / 显示价差调整指示器
+            const currentSpreadAdjustmentEl = document.getElementById('currentSpreadAdjustment');
+            if (currentSpreadAdjustmentEl) {
+                if (data.spread !== undefined && data.base_spread !== undefined && 
+                    data.spread !== null && data.base_spread !== null) {
+                    const isAdjusted = Math.abs(data.spread - data.base_spread) > 0.0001;
+                    if (isAdjusted) {
+                        const adjustmentPct = ((data.spread - data.base_spread) / data.base_spread * 100).toFixed(1);
+                        const isReduced = data.spread < data.base_spread;
+                        currentSpreadAdjustmentEl.innerText = isReduced 
+                            ? `↓ ${Math.abs(adjustmentPct)}% (Aggressive / 激进)`
+                            : `↑ ${adjustmentPct}% (Conservative / 保守)`;
+                        currentSpreadAdjustmentEl.style.color = isReduced ? '#10b981' : '#f59e0b';
+                    } else {
+                        currentSpreadAdjustmentEl.innerText = 'Base / 基础';
+                        currentSpreadAdjustmentEl.style.color = '#6b7280';
+                    }
+                } else {
+                    currentSpreadAdjustmentEl.innerText = '--';
+                    currentSpreadAdjustmentEl.style.color = '#6b7280';
                 }
             }
         }

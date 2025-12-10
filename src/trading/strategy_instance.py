@@ -15,6 +15,7 @@ from src.shared.config import SYMBOL
 from src.shared.logger import setup_logger
 from src.trading.exchange import BinanceClient
 from src.trading.exchange_client import ExchangeClient
+from src.trading.order_fill_tracker import OrderFillTracker
 from src.trading.order_manager import OrderManager
 from src.trading.strategies.fixed_spread import FixedSpreadStrategy
 from src.trading.strategies.funding_rate import FundingRateStrategy
@@ -117,6 +118,9 @@ class StrategyInstance:
         self.error_history: deque = deque(maxlen=200)
         # Track order IDs for this strategy instance
         self.tracked_order_ids: Set[str] = set()
+        # Order fill tracking
+        # 订单填充跟踪
+        self.fill_tracker = OrderFillTracker(max_history=500)
         # Running state for this strategy instance
         self.running = False
 
@@ -366,6 +370,37 @@ class StrategyInstance:
                 return False
         return False
 
+    def update_fill_tracking(self, exchange_orders: List[Dict[str, Any]]) -> None:
+        """
+        Update order fill tracking based on exchange orders.
+        基于交易所订单更新订单填充跟踪。
+        
+        Args:
+            exchange_orders: List of orders from exchange.fetch_open_orders()
+        """
+        if not self.exchange:
+            return
+        
+        try:
+            # Update order status from exchange
+            # 从交易所更新订单状态
+            self.fill_tracker.update_order_status_from_exchange(exchange_orders)
+        except Exception as e:
+            logger.warning(
+                f"Strategy '{self.strategy_id}': Error updating fill tracking: {e}. "
+                f"策略 '{self.strategy_id}'：更新填充跟踪时出错：{e}。"
+            )
+
+    def get_fill_statistics(self) -> Dict[str, Any]:
+        """
+        Get order fill rate statistics.
+        获取订单成交率统计。
+        
+        Returns:
+            Dictionary with fill rate metrics
+        """
+        return self.fill_tracker.get_statistics()
+
     def get_status(self) -> Dict[str, Any]:
         """Get status information for this strategy instance."""
         # Use cached data for status
@@ -437,6 +472,9 @@ class StrategyInstance:
                 else:
                     volatility_level = "very_high"
         
+        # Get fill rate statistics / 获取成交率统计
+        fill_stats = self.fill_tracker.get_statistics()
+        
         return {
             "strategy_id": self.strategy_id,
             "strategy_type": self.strategy_type,
@@ -456,4 +494,16 @@ class StrategyInstance:
             "active_orders": self.active_orders,
             "order_count": len(self.active_orders),
             "use_real_exchange": self.use_real_exchange,
+            # Fill rate statistics / 成交率统计
+            "fill_rate": fill_stats.get("fill_rate", 0.0),
+            "fill_rate_pct": fill_stats.get("fill_rate_pct", 0.0),
+            "recent_fill_rate": fill_stats.get("recent_fill_rate", 0.0),
+            "recent_fill_rate_pct": fill_stats.get("recent_fill_rate_pct", 0.0),
+            "cancellation_rate": fill_stats.get("cancellation_rate", 0.0),
+            "cancellation_rate_pct": fill_stats.get("cancellation_rate_pct", 0.0),
+            "total_orders_placed": fill_stats.get("total_orders_placed", 0),
+            "total_orders_filled": fill_stats.get("total_orders_filled", 0),
+            "total_orders_cancelled": fill_stats.get("total_orders_cancelled", 0),
+            "average_fill_age_seconds": fill_stats.get("average_fill_age_seconds", 0.0),
+            "average_cancel_age_seconds": fill_stats.get("average_cancel_age_seconds", 0.0),
         }

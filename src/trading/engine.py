@@ -157,6 +157,14 @@ class AlphaLoop:
             and instance.tracked_order_ids
         ):
             try:
+                # Track cancellations before cancelling
+                # 在取消前跟踪取消
+                for order_id in list(instance.tracked_order_ids):
+                    instance.fill_tracker.track_order_cancelled(
+                        order_id=order_id,
+                        reason="stop_strategy",
+                        timestamp=time.time(),
+                    )
                 instance.exchange.cancel_orders(list(instance.tracked_order_ids))
                 logger.info(
                     f"Cancelled {len(instance.tracked_order_ids)} orders for strategy '{strategy_id}'"
@@ -480,6 +488,10 @@ class AlphaLoop:
                 current_orders = [
                     o for o in all_orders if o.get("id") in instance.tracked_order_ids
                 ]
+                
+                # Update fill tracking based on exchange orders
+                # 基于交易所订单更新填充跟踪
+                instance.update_fill_tracking(all_orders)
 
             # Get mid_price for adaptive threshold calculation / 获取中间价用于自适应阈值计算
             mid_price = market_data.get("mid_price") if market_data else None
@@ -522,6 +534,13 @@ class AlphaLoop:
                 )
                 for order_id in to_cancel_ids:
                     instance.remove_tracked_order(order_id)
+                    # Track order cancellation in fill tracker
+                    # 在填充跟踪器中跟踪订单取消
+                    instance.fill_tracker.track_order_cancelled(
+                        order_id=order_id,
+                        reason="sync_update",  # Order cancelled due to sync update
+                        timestamp=time.time(),
+                    )
                     for hist_order in instance.order_history:
                         if hist_order.get("id") == order_id:
                             hist_order["status"] = "cancelled"
@@ -603,6 +622,19 @@ class AlphaLoop:
                         logger.debug(
                             f"Tracked order {order_id} ({order.get('side')}) for strategy '{instance.strategy_id}'. "
                             f"跟踪订单 {order_id} ({order.get('side')})，策略 '{instance.strategy_id}'。"
+                        )
+                        
+                        # Track order placement in fill tracker
+                        # 在填充跟踪器中跟踪订单下单
+                        instance.fill_tracker.track_order_placed(
+                            order_id=order_id,
+                            side=order.get("side", "unknown"),
+                            price=order.get("price", 0.0),
+                            quantity=order.get("amount", order.get("quantity", 0.0)),
+                            symbol=instance.exchange.symbol,
+                            strategy_id=instance.strategy_id,
+                            strategy_type=instance.strategy_type,
+                            timestamp=time.time(),
                         )
                     else:
                         logger.warning(

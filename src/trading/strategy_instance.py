@@ -157,6 +157,40 @@ class StrategyInstance:
         else:
             return self.strategy.calculate_target_orders(market_data)
 
+    def _requires_both_side_orders(self, target_orders: List[Dict[str, Any]]) -> bool:
+        """
+        Determine if this strategy requires both-side orders (buy and sell).
+        This method is extensible for future strategies.
+        判断此策略是否需要双边订单（买入和卖出）。
+        此方法可扩展以支持未来的策略。
+
+        Args:
+            target_orders: List of target orders from strategy
+
+        Returns:
+            True if strategy requires both buy and sell orders, False otherwise
+        """
+        # Market making strategies (fixed_spread, funding_rate) always return both-side orders
+        # 做市策略（fixed_spread, funding_rate）总是返回双边订单
+        if self.strategy_type in ["fixed_spread", "funding_rate"]:
+            return True
+        
+        # Check if target_orders contains both buy and sell orders
+        # This is a fallback for strategies that don't have explicit type checking
+        # 检查 target_orders 是否包含买入和卖出订单
+        # 这是对没有显式类型检查的策略的回退
+        has_buy = any(o.get("side") == "buy" for o in target_orders)
+        has_sell = any(o.get("side") == "sell" for o in target_orders)
+        
+        # If strategy returns both buy and sell, it's likely a market making strategy
+        # 如果策略返回买入和卖出，它可能是做市策略
+        if has_buy and has_sell:
+            return True
+        
+        # Future strategies can override this method or add their type here
+        # 未来的策略可以重写此方法或在此处添加其类型
+        return False
+
     def sync_orders(
         self, 
         current_orders: List[Dict[str, Any]], 
@@ -181,7 +215,14 @@ class StrategyInstance:
         # Use mid_price from latest market data if available / 如果可用，使用最新市场数据的中间价
         if mid_price is None and self.latest_market_data:
             mid_price = self.latest_market_data.get("mid_price")
-        return self.order_manager.sync_orders(filtered_orders, target_orders, mid_price)
+        
+        # Determine if this strategy requires both-side orders
+        # 判断此策略是否需要双边订单
+        enforce_both_side = self._requires_both_side_orders(target_orders)
+        
+        return self.order_manager.sync_orders(
+            filtered_orders, target_orders, mid_price, enforce_both_side=enforce_both_side
+        )
 
     def add_tracked_order(self, order_id: str) -> None:
         """Add an order ID to the tracked set for this strategy."""
@@ -233,6 +274,38 @@ class StrategyInstance:
                     f"Strategy '{self.strategy_id}': Market data is stale ({data_age_seconds:.1f}s old)"
                 )
 
+            # Calculate volatility if exchange supports it / 如果交易所支持，计算波动率
+            try:
+                from src.trading.volatility import calculate_volatility_1h_24h, VolatilityCalculator
+                
+                # Use a shared calculator instance for caching / 使用共享计算器实例进行缓存
+                if not hasattr(self, "_volatility_calculator"):
+                    self._volatility_calculator = VolatilityCalculator(cache_ttl=300)  # 5 min cache
+                
+                volatility_1h, volatility_24h = calculate_volatility_1h_24h(
+                    self.exchange,
+                    self.symbol,
+                    calculator=self._volatility_calculator
+                )
+                
+                # Add volatility to market_data / 将波动率添加到 market_data
+                market_data["volatility_1h"] = volatility_1h
+                market_data["volatility_24h"] = volatility_24h
+                
+                # Calculate market spread if best_bid and best_ask are available / 如果 best_bid 和 best_ask 可用，计算市场价差
+                best_bid = market_data.get("best_bid")
+                best_ask = market_data.get("best_ask")
+                if best_bid and best_ask and best_bid > 0:
+                    market_spread = (best_ask - best_bid) / best_bid  # Market spread as percentage
+                    market_data["market_spread"] = market_spread
+            except Exception as e:
+                logger.warning(
+                    f"Strategy '{self.strategy_id}': Failed to calculate volatility for {self.symbol}: {e}. "
+                    f"Continuing without volatility data. "
+                    f"策略 '{self.strategy_id}'：计算 {self.symbol} 的波动率失败: {e}。继续但不使用波动率数据。"
+                )
+                # Continue without volatility data / 继续但不使用波动率数据
+
             # Fetch funding rate
             funding_rate = self.exchange.fetch_funding_rate()
 
@@ -280,25 +353,74 @@ class StrategyInstance:
     def get_status(self) -> Dict[str, Any]:
         """Get status information for this strategy instance."""
         # Use cached data for status
-        mid_price = 2000.0
+        mid_price = None
         position = 0.0
         pnl = 0.0
         funding_rate = 0.0
 
         if self.use_real_exchange and self.exchange:
+            # Try to get mid_price from cached data first
+            # 首先尝试从缓存数据获取 mid_price
             if self.latest_market_data and self.latest_market_data.get("mid_price"):
                 mid_price = self.latest_market_data["mid_price"]
+            else:
+                # If cache is empty or missing mid_price, try to fetch fresh data
+                # 如果缓存为空或缺少 mid_price，尝试获取新数据
+                try:
+                    market_data = self.exchange.fetch_market_data()
+                    if market_data and market_data.get("mid_price"):
+                        mid_price = market_data["mid_price"]
+                        # Update cache for next time
+                        # 更新缓存以供下次使用
+                        self.latest_market_data = market_data
+                except Exception as e:
+                    logger.warning(
+                        f"Strategy '{self.strategy_id}': Failed to fetch market data for status: {e}. "
+                        f"策略 '{self.strategy_id}'：获取状态的市场数据失败：{e}。"
+                    )
+            
+            # Fallback to 0.0 if still no mid_price (instead of 2000.0)
+            # 如果仍然没有 mid_price，回退到 0.0（而不是 2000.0）
+            if mid_price is None:
+                mid_price = 0.0
+                logger.warning(
+                    f"Strategy '{self.strategy_id}': No mid_price available, using 0.0. "
+                    f"策略 '{self.strategy_id}'：没有可用的 mid_price，使用 0.0。"
+                )
+            
             funding_rate = self.latest_funding_rate
             if self.latest_account_data:
                 position = self.latest_account_data.get("position_amt", 0.0)
                 if (
                     position != 0
                     and self.latest_account_data.get("entry_price", 0) != 0
+                    and mid_price > 0
                 ):
                     pnl = (
                         mid_price - self.latest_account_data["entry_price"]
                     ) * position
 
+        # Get volatility from latest market data / 从最新市场数据获取波动率
+        volatility_1h = None
+        volatility_24h = None
+        volatility_level = None  # "low", "medium", "high", "very_high"
+        
+        if self.latest_market_data:
+            volatility_1h = self.latest_market_data.get("volatility_1h")
+            volatility_24h = self.latest_market_data.get("volatility_24h")
+            
+            # Determine volatility level for display / 确定波动率级别用于显示
+            volatility = volatility_1h if volatility_1h is not None else volatility_24h
+            if volatility is not None:
+                if volatility < 0.02:
+                    volatility_level = "low"
+                elif volatility < 0.05:
+                    volatility_level = "medium"
+                elif volatility < 0.10:
+                    volatility_level = "high"
+                else:
+                    volatility_level = "very_high"
+        
         return {
             "strategy_id": self.strategy_id,
             "strategy_type": self.strategy_type,
@@ -311,6 +433,9 @@ class StrategyInstance:
             "spread": getattr(self.strategy, "spread", None),
             "quantity": getattr(self.strategy, "quantity", None),
             "leverage": getattr(self.strategy, "leverage", None),
+            "volatility_1h": volatility_1h,
+            "volatility_24h": volatility_24h,
+            "volatility_level": volatility_level,  # For frontend display / 用于前端显示
             "alert": self.alert,
             "active_orders": self.active_orders,
             "order_count": len(self.active_orders),

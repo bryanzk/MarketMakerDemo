@@ -402,6 +402,10 @@
                         <div style="font-size: 11px; color: #6b7280; margin-bottom: 4px;">Volatility (1h) / 波动率 (1小时)</div>
                         <div id="currentVolatility1h" style="font-size: 14px; font-weight: 600; color: #1f2937;">--</div>
                     </div>
+                    <div>
+                        <div style="font-size: 11px; color: #6b7280; margin-bottom: 4px;">Volatility Level / 波动率级别</div>
+                        <div id="currentVolatilityLevel" style="font-size: 14px; font-weight: 600; color: #1f2937;">--</div>
+                    </div>
                 </div>
             </div>
             
@@ -432,16 +436,16 @@
             <div style="margin-top: 8px; font-size: 12px; color: #6b7280;">
                 Note: Fixed Spread Strategy does not use Skew Factor / 注意：固定价差策略不使用倾斜因子
             </div>
-            <div style="display:flex; gap:12px; margin-top:16px;">
+            <div style="display:flex; gap:12px; margin-top:16px; align-items:center;">
                 <button class="btn btn-primary" onclick="updateConfig()">💾 Save Strategy Config</button>
                 <button class="btn btn-secondary" onclick="updateLeverage()">⚡ Update Leverage</button>
-            </div>
-            <!-- Bot Control Buttons / Bot 控制按钮 -->
-            <div style="display:flex; gap:12px; margin-top:16px;">
-                <button id="strategyStartBotBtn" class="btn btn-success" style="flex:1; display:none;"
-                    onclick="startBot()">🚀 Start Bot / 启动机器人</button>
-                <button id="strategyStopBotBtn" class="btn btn-danger" style="flex:1; display:none;"
-                    onclick="stopBot()">⏹ Stop Bot / 停止机器人</button>
+                <!-- Bot Control Buttons / Bot 控制按钮 -->
+                <div style="margin-left:auto; display:flex; gap:12px;">
+                    <button id="strategyStartBotBtn" class="btn btn-success" style="display:none;"
+                        onclick="startBot()">🚀 Start Bot / 启动机器人</button>
+                    <button id="strategyStopBotBtn" class="btn btn-danger" style="display:none;"
+                        onclick="stopBot()">⏹ Stop Bot / 停止机器人</button>
+                </div>
             </div>
             <div id="controlMessage" class="message"></div>
         </section>
@@ -1109,6 +1113,25 @@
                     currentVolatility1hEl.innerText = `${(data.volatility_1h * 100).toFixed(2)}%`;
                 } else {
                     currentVolatility1hEl.innerText = '--';
+                }
+            }
+            
+            // Display volatility level with color coding / 显示波动率级别（带颜色编码）
+            const currentVolatilityLevelEl = document.getElementById('currentVolatilityLevel');
+            if (currentVolatilityLevelEl) {
+                if (data.volatility_level) {
+                    const levelMap = {
+                        'low': { text: 'Low / 低', color: '#10b981' },      // Green
+                        'medium': { text: 'Medium / 中', color: '#f59e0b' }, // Yellow
+                        'high': { text: 'High / 高', color: '#ef4444' },      // Red
+                        'very_high': { text: 'Very High / 极高', color: '#dc2626' } // Dark Red
+                    };
+                    const levelInfo = levelMap[data.volatility_level] || { text: data.volatility_level, color: '#6b7280' };
+                    currentVolatilityLevelEl.innerText = levelInfo.text;
+                    currentVolatilityLevelEl.style.color = levelInfo.color;
+                } else {
+                    currentVolatilityLevelEl.innerText = '--';
+                    currentVolatilityLevelEl.style.color = '#6b7280';
                 }
             }
         }

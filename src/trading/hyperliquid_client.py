@@ -1482,7 +1482,10 @@ class HyperliquidClient:
             if best_bid and best_ask:
                 try:
                     gap = abs(float(best_ask) - float(best_bid))
-                    if gap > 0:
+                    # Only accept gap-based inference if it is reasonably small (prevents absurd tick_size)
+                    # 仅当价差较小且合理时才使用 gap 作为 tick_size，避免异常 tick_size
+                    default_guess = 0.5 if coin_normalized == "BTC" else 0.1
+                    if gap > 0 and gap <= default_guess * 2:
                         tick_size = gap
                         logger.debug(
                             f"tick_size inferred from orderbook gap for {coin_normalized}: {tick_size}"
@@ -1491,14 +1494,23 @@ class HyperliquidClient:
                     pass
 
         if tick_size is None:
+            # Use more accurate defaults based on coin price range
+            # 根据币种价格范围使用更准确的默认值
+            # Note: These are fallback values. Actual tick_size should come from meta data.
+            # 注意：这些是回退值。实际的 tick_size 应该来自 meta 数据。
             if coin_normalized == "BTC":
-                tick_size = 0.5
+                tick_size = 0.5  # BTC common perp tick
             elif coin_normalized == "ETH":
                 tick_size = 0.1
+            elif coin_normalized in ["SOL", "AVAX", "MATIC"]:
+                tick_size = 0.01
             else:
                 tick_size = 0.1
-            logger.debug(
-                f"tick_size fallback default for {coin_normalized}: {tick_size}"
+            logger.warning(
+                f"tick_size fallback default for {coin_normalized}: {tick_size}. "
+                f"This may not be accurate. Please verify from meta data. "
+                f"{coin_normalized} 的 tick_size 回退默认值: {tick_size}。"
+                f"这可能不准确。请从 meta 数据验证。"
             )
 
         return tick_size
@@ -1582,11 +1594,22 @@ class HyperliquidClient:
     def _initialize_symbol(self):
         """Initialize symbol-specific data / 初始化交易对特定数据"""
         # Fetch meta data to build asset index mapping / 获取 meta 数据以构建资产索引映射
-        self._fetch_meta_data()
+        meta_data = self._fetch_meta_data()
+        if meta_data:
+            # Rebuild asset index map with new symbol
+            # 使用新交易对重建资产索引映射
+            self._build_asset_index_map(meta_data)
         
         # For now, we'll use a simple approach
         # In a full implementation, we'd fetch market info from Hyperliquid
         self.market = {"id": self.symbol.replace("/", "").replace(":", "")}
+        
+        # Log symbol initialization
+        # 记录交易对初始化
+        logger.info(
+            f"Symbol initialized: {self.symbol}. Asset index map size: {len(self._asset_index_map)}. "
+            f"交易对已初始化: {self.symbol}。资产索引映射大小: {len(self._asset_index_map)}。"
+        )
 
     def get_connection_status(self) -> Dict:
         """
@@ -1725,10 +1748,23 @@ class HyperliquidClient:
 
             # Hyperliquid uses coin name without /USDT suffix
             # Hyperliquid 使用币种名称，不带 /USDT 后缀
-            coin = symbol_base.replace("USDT", "").replace("/", "").replace(":", "")
+            # IMPORTANT: Only remove USDT if it's a suffix, not if it's part of the coin name
+            # 重要：仅在 USDT 是后缀时移除，而不是当它是币种名称的一部分时
+            coin = symbol_base
+            # Remove USDT suffix only if it appears at the end
+            # 仅在 USDT 出现在末尾时移除后缀
+            if coin.endswith("USDT"):
+                coin = coin[:-4]  # Remove "USDT" suffix
+            # Clean up any remaining separators
+            # 清理任何剩余的分隔符
+            coin = coin.replace("/", "").replace(":", "").strip()
+            
+            # Ensure coin is uppercase (Hyperliquid convention)
+            # 确保 coin 为大写（Hyperliquid 约定）
+            coin = coin.upper()
             
             # Log the extracted coin name / 记录提取的币种名称
-            logger.debug(
+            logger.info(
                 f"Extracted coin from symbol. Symbol: {target_symbol}, Symbol base: {symbol_base}, Coin: {coin}. "
                 f"从交易对提取币种。交易对: {target_symbol}，交易对基础: {symbol_base}，币种: {coin}。"
             )
@@ -1955,11 +1991,13 @@ class HyperliquidClient:
                 meta_data = self._fetch_meta_data()
                 if meta_data:
                     universe = meta_data.get("universe", [])
-                    # Get coin name from symbol
-                    # 从交易对名称获取币种名称
-                    symbol = self.symbol.split(":")[0] if ":" in self.symbol else self.symbol
-                    coin_normalized = symbol.split("/")[0] if "/" in symbol else symbol
-                    coin_normalized = coin_normalized.upper()
+                    # CRITICAL: Use target_symbol (or coin already extracted) instead of self.symbol
+                    # This ensures we get tick_size for the correct coin even if self.symbol hasn't been updated yet
+                    # 关键：使用 target_symbol（或已提取的 coin）而不是 self.symbol
+                    # 这确保即使 self.symbol 尚未更新，我们也能获取正确币种的 tick_size
+                    # Use the coin we already extracted from target_symbol above
+                    # 使用上面从 target_symbol 提取的 coin
+                    coin_normalized = coin.upper()  # coin was already extracted from target_symbol above
                     
                     # Find asset info in universe
                     # 在 universe 中查找资产信息
@@ -2942,6 +2980,20 @@ class HyperliquidClient:
             f"place_orders called with {len(orders)} order(s). Current client symbol: {self.symbol}. "
             f"place_orders 被调用，有 {len(orders)} 个订单。当前客户端交易对: {self.symbol}。"
         )
+        
+        # CRITICAL: Verify symbol is set correctly before processing orders
+        # 关键：在处理订单之前验证交易对设置正确
+        if not self.symbol:
+            logger.error(
+                f"⚠️  CRITICAL: Client symbol is not set! Cannot place orders. "
+                f"⚠️  严重：客户端交易对未设置！无法下单。"
+            )
+            self.last_order_error = {
+                "type": "symbol_not_set",
+                "message": "Client symbol is not set. Cannot place orders. / 客户端交易对未设置。无法下单。",
+                "symbol": self.symbol,
+            }
+            return []
 
         for order in orders:
             order_req_id = f"hl-order-{uuid.uuid4().hex[:8]}"
@@ -3013,6 +3065,21 @@ class HyperliquidClient:
                 # 如果可用，使用 SDK Exchange.order() 方法
                 if self._exchange:
                     try:
+                        # CRITICAL: Verify symbol is set correctly before processing
+                        # 关键：在处理之前验证交易对设置正确
+                        if not self.symbol:
+                            logger.error(
+                                f"⚠️  CRITICAL: Client symbol is not set! Cannot place order. "
+                                f"⚠️  严重：客户端交易对未设置！无法下单。"
+                            )
+                            self.last_order_error = {
+                                "type": "symbol_not_set",
+                                "message": "Client symbol is not set. Cannot place order. / 客户端交易对未设置。无法下单。",
+                                "symbol": self.symbol,
+                                "order": order_snapshot,
+                            }
+                            continue
+                        
                         # Normalize symbol to coin name for Hyperliquid SDK
                         # Hyperliquid uses coin names like "ETH", "BTC", not pairs like "ETH/USDT"
                         # 规范化交易对为 Hyperliquid SDK 的 coin 名称
@@ -3029,6 +3096,29 @@ class HyperliquidClient:
                             f"Symbol normalization: {self.symbol} -> {coin}. "
                             f"交易对规范化: {self.symbol} -> {coin}。"
                         )
+                        
+                        # CRITICAL: Verify coin extraction is correct
+                        # 关键：验证币种提取正确
+                        # If order price suggests a different coin, log warning
+                        # 如果订单价格表明是不同的币种，记录警告
+                        price = float(order.get("price", 0)) if order.get("price") else 0.0
+                        if price > 0:
+                            # Rough price range check: BTC is typically > $50k, ETH is typically $2k-$5k
+                            # 粗略价格范围检查：BTC 通常 > $50k，ETH 通常 $2k-$5k
+                            if price > 50000 and coin != "BTC":
+                                logger.warning(
+                                    f"⚠️  Price {price} suggests BTC order, but coin extracted is {coin}. "
+                                    f"Client symbol: {self.symbol}. "
+                                    f"⚠️  价格 {price} 表明是 BTC 订单，但提取的币种是 {coin}。"
+                                    f"客户端交易对: {self.symbol}。"
+                                )
+                            elif 1000 < price < 10000 and coin != "ETH":
+                                logger.warning(
+                                    f"⚠️  Price {price} suggests ETH order, but coin extracted is {coin}. "
+                                    f"Client symbol: {self.symbol}. "
+                                    f"⚠️  价格 {price} 表明是 ETH 订单，但提取的币种是 {coin}。"
+                                    f"客户端交易对: {self.symbol}。"
+                                )
                         
                         # Convert order format to SDK format
                         # 将订单格式转换为 SDK 格式
@@ -3050,15 +3140,84 @@ class HyperliquidClient:
                                     f"获取市场数据以进行价格验证。客户端交易对: {self.symbol}，币种: {coin}，订单价格: {price}。"
                                 )
                                 
-                                # Fetch current market data for validation and tick_size
-                                # 获取当前市场数据以进行验证和获取 tick_size
-                                market_data = self.fetch_market_data()
+                                # CRITICAL: Fetch market data using the current client symbol to ensure correct coin
+                                # 关键：使用当前客户端交易对获取市场数据以确保正确的币种
+                                # This ensures we get market data for the coin we're actually trading
+                                # 这确保我们获取实际交易的币种的市场数据
+                                market_data = self.fetch_market_data(symbol=self.symbol)
                                 
-                                # Log market data result
-                                # 记录市场数据结果
+                                # Verify that market data is for the correct coin
+                                # 验证市场数据是针对正确币种的
                                 if market_data:
                                     mid_price = market_data.get("mid_price")
-                                    logger.debug(
+                                    
+                                    # CRITICAL: Verify market data matches the coin we're trading
+                                    # 关键：验证市场数据匹配我们正在交易的币种
+                                    if mid_price and price > 0:
+                                        # Rough validation: BTC prices are typically > $50k, ETH prices are typically $2k-$5k
+                                        # 粗略验证：BTC 价格通常 > $50k，ETH 价格通常 $2k-$5k
+                                        if price > 50000 and mid_price < 10000:
+                                            logger.error(
+                                                f"🚨 CRITICAL MISMATCH: Order price {price} suggests BTC, "
+                                                f"but market data mid_price {mid_price} suggests ETH or other coin. "
+                                                f"Client symbol: {self.symbol}, Coin extracted: {coin}. "
+                                                f"This indicates symbol was not updated correctly! "
+                                                f"🚨 严重不匹配：订单价格 {price} 表明是 BTC，"
+                                                f"但市场数据中间价 {mid_price} 表明是 ETH 或其他币种。"
+                                                f"客户端交易对: {self.symbol}，提取的币种: {coin}。"
+                                                f"这表明交易对未正确更新！"
+                                            )
+                                            # Don't proceed with order placement if symbol mismatch
+                                            # 如果交易对不匹配，不继续下单
+                                            self.last_order_error = {
+                                                "type": "symbol_mismatch",
+                                                "message": (
+                                                    f"Symbol mismatch detected. Order price {price} suggests BTC order, "
+                                                    f"but market data mid_price {mid_price} suggests different coin. "
+                                                    f"Client symbol: {self.symbol}. "
+                                                    f"检测到交易对不匹配。订单价格 {price} 表明是 BTC 订单，"
+                                                    f"但市场数据中间价 {mid_price} 表明是不同的币种。客户端交易对: {self.symbol}。"
+                                                ),
+                                                "symbol": self.symbol,
+                                                "coin": coin,
+                                                "order_price": price,
+                                                "reference_price": mid_price,
+                                                "order": order_snapshot,
+                                            }
+                                            continue
+                                        elif 1000 < price < 10000 and mid_price > 50000:
+                                            logger.error(
+                                                f"🚨 CRITICAL MISMATCH: Order price {price} suggests ETH, "
+                                                f"but market data mid_price {mid_price} suggests BTC. "
+                                                f"Client symbol: {self.symbol}, Coin extracted: {coin}. "
+                                                f"This indicates symbol was not updated correctly! "
+                                                f"🚨 严重不匹配：订单价格 {price} 表明是 ETH，"
+                                                f"但市场数据中间价 {mid_price} 表明是 BTC。"
+                                                f"客户端交易对: {self.symbol}，提取的币种: {coin}。"
+                                                f"这表明交易对未正确更新！"
+                                            )
+                                            # Don't proceed with order placement if symbol mismatch
+                                            # 如果交易对不匹配，不继续下单
+                                            self.last_order_error = {
+                                                "type": "symbol_mismatch",
+                                                "message": (
+                                                    f"Symbol mismatch detected. Order price {price} suggests ETH order, "
+                                                    f"but market data mid_price {mid_price} suggests BTC. "
+                                                    f"Client symbol: {self.symbol}. "
+                                                    f"检测到交易对不匹配。订单价格 {price} 表明是 ETH 订单，"
+                                                    f"但市场数据中间价 {mid_price} 表明是 BTC。客户端交易对: {self.symbol}。"
+                                                ),
+                                                "symbol": self.symbol,
+                                                "coin": coin,
+                                                "order_price": price,
+                                                "reference_price": mid_price,
+                                                "order": order_snapshot,
+                                            }
+                                            continue
+                                    
+                                    # Log market data result
+                                    # 记录市场数据结果
+                                    logger.info(
                                         f"Market data fetched. Symbol: {self.symbol}, Coin: {coin}, Mid price: {mid_price}. "
                                         f"市场数据已获取。交易对: {self.symbol}，币种: {coin}，中间价: {mid_price}。"
                                     )
@@ -3228,79 +3387,36 @@ class HyperliquidClient:
                             # Verify price is divisible by tick_size before sending to SDK
                             # 在发送到 SDK 之前验证价格可被 tick_size 整除
                             if tick_size and tick_size > 0:
-                                # Use Decimal for precise remainder calculation / 使用 Decimal 进行精确的余数计算
-                                from decimal import Decimal, ROUND_FLOOR
-                                price_decimal = Decimal(str(price))
-                                tick_size_decimal = Decimal(str(tick_size))
-                                remainder_decimal = price_decimal % tick_size_decimal
-                                
-                                # Check if remainder is effectively zero (accounting for floating point precision)
-                                # 检查余数是否有效为零（考虑浮点数精度）
-                                # Use a more lenient threshold for Decimal remainder check
-                                # 对 Decimal 余数检查使用更宽松的阈值
-                                remainder_abs = abs(remainder_decimal)
-                                if remainder_abs > Decimal('1e-10'):
-                                    # Re-round price using Decimal arithmetic to ensure exact divisibility
-                                    # 使用 Decimal 算术重新舍入价格以确保精确可整除
-                                    original_price_before_final_round = price
-                                    
-                                    # Calculate ticks and round down to ensure divisibility
-                                    # 计算 ticks 并向下舍入以确保可整除
-                                    ticks_decimal = price_decimal / tick_size_decimal
-                                    ticks_floor = ticks_decimal.quantize(Decimal("1"), rounding=ROUND_FLOOR)
-                                    price_rounded_decimal = ticks_floor * tick_size_decimal
-                                    price = float(price_rounded_decimal)
-                                    
-                                    # Verify the rounded price is divisible / 验证舍入后的价格可整除
-                                    price_decimal_after = Decimal(str(price))
-                                    remainder_after = price_decimal_after % tick_size_decimal
-                                    
-                                    logger.warning(
-                                        f"Final price rounding: {original_price_before_final_round} -> {price} "
-                                        f"(tick_size={tick_size}, remainder before: {float(remainder_decimal)}, "
-                                        f"remainder after: {float(remainder_after)}). "
-                                        f"最终价格舍入: {original_price_before_final_round} -> {price} "
-                                        f"（tick_size={tick_size}，舍入前余数: {float(remainder_decimal)}，"
-                                        f"舍入后余数: {float(remainder_after)}）。"
-                                    )
-                                    
-                                    # Final check: if still not divisible, this is a critical error
-                                    # 最终检查：如果仍不可整除，这是严重错误
-                                    if abs(float(remainder_after)) > 1e-10:
-                                        logger.error(
-                                            f"⚠️  CRITICAL: Price still not divisible after Decimal rounding! "
-                                            f"Price: {price}, tick_size: {tick_size}, remainder: {float(remainder_after)}. "
-                                            f"This should not happen. Using floor rounding as last resort. "
-                                            f"⚠️  严重：Decimal 舍入后价格仍不可整除！价格: {price}，tick_size: {tick_size}，"
-                                            f"余数: {float(remainder_after)}。这不应该发生。使用向下舍入作为最后手段。"
-                                        )
-                                        # Force floor rounding one more time / 再次强制向下舍入
-                                        ticks_floor_final = (price_decimal_after / tick_size_decimal).quantize(
-                                            Decimal("1"), rounding=ROUND_FLOOR
-                                        )
-                                        price = float(ticks_floor_final * tick_size_decimal)
-                                        
-                                        # Final verification / 最终验证
-                                        final_price_decimal = Decimal(str(price))
-                                        final_remainder = final_price_decimal % tick_size_decimal
-                                        if abs(float(final_remainder)) > 1e-10:
-                                            logger.critical(
-                                                f"🚨 CRITICAL ERROR: Price {price} cannot be made divisible by tick_size {tick_size}! "
-                                                f"Final remainder: {float(final_remainder)}. "
-                                                f"🚨 严重错误：价格 {price} 无法被 tick_size {tick_size} 整除！"
-                                                f"最终余数: {float(final_remainder)}。"
+                                from decimal import Decimal, ROUND_FLOOR, ROUND_HALF_UP
+
+                                def _round_price_for_sdk(px: float, tick: float) -> float:
+                                    price_dec = Decimal(str(px))
+                                    tick_dec = Decimal(str(tick))
+
+                                    # snap to tick grid using floor to avoid overshooting
+                                    ticks = (price_dec / tick_dec).quantize(Decimal("1"), rounding=ROUND_FLOOR)
+                                    snapped = ticks * tick_dec
+
+                                    # determine precision for SDK (max 8 dp, but respect tick precision)
+                                    tick_exp = -tick_dec.as_tuple().exponent
+                                    precision = min(max(tick_exp, 0), 8)
+                                    quantize_str = "1" if precision == 0 else "0." + "0" * (precision - 1) + "1"
+                                    snapped = snapped.quantize(Decimal(quantize_str), rounding=ROUND_FLOOR)
+
+                                    # ensure divisibility after quantize
+                                    remainder = snapped % tick_dec
+                                    if remainder != 0:
+                                        ticks = (snapped / tick_dec).quantize(Decimal("1"), rounding=ROUND_FLOOR)
+                                        snapped = ticks * tick_dec
+                                        snapped = snapped.quantize(Decimal(quantize_str), rounding=ROUND_FLOOR)
+                                        remainder = snapped % tick_dec
+                                        if remainder != 0:
+                                            logger.error(
+                                                f"Price {snapped} still not divisible by tick_size {tick_dec}. remainder={remainder}"
                                             )
-                                
-                                # Log final price and tick_size for debugging
-                                # 记录最终价格和 tick_size 用于调试
-                                final_price_decimal = Decimal(str(price))
-                                final_remainder = final_price_decimal % tick_size_decimal
-                                logger.debug(
-                                    f"Final order price: {price}, tick_size: {tick_size}, "
-                                    f"price % tick_size (Decimal): {float(final_remainder)}. "
-                                    f"最终订单价格: {price}，tick_size: {tick_size}，"
-                                    f"price % tick_size (Decimal): {float(final_remainder)}。"
-                                )
+                                    return float(snapped)
+
+                                price = _round_price_for_sdk(price, tick_size)
                         
                         # Round quantity to step_size before sending to SDK
                         # 在发送到 SDK 之前将数量舍入到 step_size
@@ -3400,10 +3516,10 @@ class HyperliquidClient:
                                 exc_info=True,
                             )
                         
-                        # Final price rounding check before sending to SDK
-                        # 在发送到 SDK 之前进行最终价格舍入检查
-                        # This ensures price is always properly aligned, even if price validation block didn't execute
-                        # 这确保价格始终正确对齐，即使价格验证块未执行
+                        # CRITICAL: Final price and quantity rounding before sending to SDK
+                        # 关键：在发送到 SDK 之前进行最终价格和数量舍入
+                        # This is the last chance to ensure exact divisibility and prevent float_to_wire errors
+                        # 这是确保精确可整除并防止 float_to_wire 错误的最后机会
                         if order_type_str == "limit" and price > 0:
                             try:
                                 # Re-fetch tick_size if not already available
@@ -3421,25 +3537,39 @@ class HyperliquidClient:
                                             coin, market_data if 'market_data' in locals() else {}
                                         )
                                 
-                                # Final price rounding to ensure exact divisibility
-                                # 最终价格舍入以确保精确可整除
+                                # ALWAYS round price using round_tick_size before sending to SDK
+                                # 在发送到 SDK 之前始终使用 round_tick_size 舍入价格
+                                # This ensures exact divisibility regardless of previous rounding
+                                # 这确保精确可整除，无论之前的舍入如何
                                 if tick_size and tick_size > 0:
-                                    from decimal import Decimal, ROUND_FLOOR
+                                    original_price = price
+                                    price = round_tick_size(price, tick_size)
+                                    
+                                    # Verify divisibility one more time using Decimal
+                                    # 使用 Decimal 再次验证可整除性
+                                    from decimal import Decimal
                                     price_decimal = Decimal(str(price))
                                     tick_size_decimal = Decimal(str(tick_size))
-                                    remainder_decimal = price_decimal % tick_size_decimal
+                                    remainder = price_decimal % tick_size_decimal
                                     
-                                    if abs(remainder_decimal) > Decimal('1e-10'):
-                                        # Round price down to nearest tick
-                                        # 将价格向下舍入到最近的 tick
-                                        ticks_decimal = price_decimal / tick_size_decimal
-                                        ticks_floor = ticks_decimal.quantize(Decimal("1"), rounding=ROUND_FLOOR)
-                                        price_rounded_decimal = ticks_floor * tick_size_decimal
-                                        price = float(price_rounded_decimal)
+                                    if abs(remainder) > Decimal('1e-10'):
+                                        # If still not divisible, force one more round using Decimal
+                                        # 如果仍不可整除，使用 Decimal 强制再舍入一次
+                                        ticks = price_decimal // tick_size_decimal
+                                        price = float(ticks * tick_size_decimal)
                                         
+                                        logger.warning(
+                                            f"Force re-rounded price: {original_price} -> {price} "
+                                            f"(tick_size={tick_size}) to ensure exact divisibility. "
+                                            f"强制重新舍入价格: {original_price} -> {price} "
+                                            f"（tick_size={tick_size}）以确保精确可整除。"
+                                        )
+                                    elif abs(price - original_price) > 1e-10:
                                         logger.debug(
-                                            f"Final price rounding before SDK: {price} (tick_size={tick_size}). "
-                                            f"SDK 前的最终价格舍入: {price}（tick_size={tick_size}）。"
+                                            f"Final price rounding before SDK: {original_price} -> {price} "
+                                            f"(tick_size={tick_size}). "
+                                            f"SDK 前的最终价格舍入: {original_price} -> {price} "
+                                            f"（tick_size={tick_size}）。"
                                         )
                             except Exception as e:
                                 logger.warning(
@@ -3447,6 +3577,115 @@ class HyperliquidClient:
                                     f"最终价格舍入时出错: {e}。继续使用当前价格。",
                                     exc_info=True,
                                 )
+                        
+                        # CRITICAL: Final quantity rounding before sending to SDK
+                        # 关键：在发送到 SDK 之前进行最终数量舍入
+                        try:
+                            # Re-fetch step_size if not already available
+                            # 如果尚未可用，重新获取 step_size
+                            if 'step_size' not in locals() or step_size is None or step_size <= 0:
+                                # Try to get from market_data first
+                                # 首先尝试从 market_data 获取
+                                if 'market_data' in locals() and market_data:
+                                    step_size = market_data.get("step_size")
+                                
+                                # If still not available, use default
+                                # 如果仍不可用，使用默认值
+                                if step_size is None or step_size <= 0:
+                                    step_size = 0.001  # Default step_size
+                            
+                            # ALWAYS round quantity using round_step_size before sending to SDK
+                            # 在发送到 SDK 之前始终使用 round_step_size 舍入数量
+                            if step_size and step_size > 0:
+                                original_quantity = quantity
+                                quantity = round_step_size(quantity, step_size)
+                                
+                                # Verify divisibility one more time using Decimal
+                                # 使用 Decimal 再次验证可整除性
+                                from decimal import Decimal
+                                quantity_decimal = Decimal(str(quantity))
+                                step_size_decimal = Decimal(str(step_size))
+                                remainder = quantity_decimal % step_size_decimal
+                                
+                                if abs(remainder) > Decimal('1e-10'):
+                                    # If still not divisible, force one more round using Decimal
+                                    # 如果仍不可整除，使用 Decimal 强制再舍入一次
+                                    steps = quantity_decimal // step_size_decimal
+                                    quantity = float(steps * step_size_decimal)
+                                    
+                                    logger.warning(
+                                        f"Force re-rounded quantity: {original_quantity} -> {quantity} "
+                                        f"(step_size={step_size}) to ensure exact divisibility. "
+                                        f"强制重新舍入数量: {original_quantity} -> {quantity} "
+                                        f"（step_size={step_size}）以确保精确可整除。"
+                                    )
+                        except Exception as e:
+                            logger.warning(
+                                f"Error during final quantity rounding: {e}. Proceeding with current quantity. "
+                                f"最终数量舍入时出错: {e}。继续使用当前数量。",
+                                exc_info=True,
+                            )
+                        
+                        # Final verification before sending to SDK
+                        # 在发送到 SDK 之前进行最终验证
+                        if order_type_str == "limit" and price > 0:
+                            from decimal import Decimal
+                            # Verify price one last time
+                            # 最后一次验证价格
+                            price_decimal = Decimal(str(price))
+                            if 'tick_size' in locals() and tick_size and tick_size > 0:
+                                tick_size_decimal = Decimal(str(tick_size))
+                                final_remainder = price_decimal % tick_size_decimal
+                                if abs(final_remainder) > Decimal('1e-10'):
+                                    logger.error(
+                                        f"🚨 CRITICAL: Price {price} still not divisible by tick_size {tick_size} "
+                                        f"before sending to SDK! Remainder: {float(final_remainder)}. "
+                                        f"This will cause float_to_wire error. "
+                                        f"🚨 严重：在发送到 SDK 之前，价格 {price} 仍不可被 tick_size {tick_size} 整除！"
+                                        f"余数: {float(final_remainder)}。这将导致 float_to_wire 错误。"
+                                    )
+                                    # Force one final round as last resort
+                                    # 作为最后手段，强制最后一次舍入
+                                    ticks = price_decimal // tick_size_decimal
+                                    price = float(ticks * tick_size_decimal)
+                                    logger.warning(
+                                        f"Last resort rounding: price -> {price} (tick_size={tick_size}). "
+                                        f"最后手段舍入: 价格 -> {price}（tick_size={tick_size}）。"
+                                    )
+                            
+                            # Verify quantity one last time
+                            # 最后一次验证数量
+                            quantity_decimal = Decimal(str(quantity))
+                            if 'step_size' in locals() and step_size and step_size > 0:
+                                step_size_decimal = Decimal(str(step_size))
+                                final_remainder = quantity_decimal % step_size_decimal
+                                if abs(final_remainder) > Decimal('1e-10'):
+                                    logger.error(
+                                        f"🚨 CRITICAL: Quantity {quantity} still not divisible by step_size {step_size} "
+                                        f"before sending to SDK! Remainder: {float(final_remainder)}. "
+                                        f"This will cause float_to_wire error. "
+                                        f"🚨 严重：在发送到 SDK 之前，数量 {quantity} 仍不可被 step_size {step_size} 整除！"
+                                        f"余数: {float(final_remainder)}。这将导致 float_to_wire 错误。"
+                                    )
+                                    # Force one final round as last resort
+                                    # 作为最后手段，强制最后一次舍入
+                                    steps = quantity_decimal // step_size_decimal
+                                    quantity = float(steps * step_size_decimal)
+                                    logger.warning(
+                                        f"Last resort rounding: quantity -> {quantity} (step_size={step_size}). "
+                                        f"最后手段舍入: 数量 -> {quantity}（step_size={step_size}）。"
+                                    )
+                            
+                            # Log final values before sending to SDK
+                            # 在发送到 SDK 之前记录最终值
+                            logger.debug(
+                                f"Final values before SDK call: price={price}, quantity={quantity}, "
+                                f"tick_size={tick_size if 'tick_size' in locals() else 'N/A'}, "
+                                f"step_size={step_size if 'step_size' in locals() else 'N/A'}. "
+                                f"SDK 调用前的最终值: 价格={price}，数量={quantity}，"
+                                f"tick_size={tick_size if 'tick_size' in locals() else 'N/A'}，"
+                                f"step_size={step_size if 'step_size' in locals() else 'N/A'}。"
+                            )
                         
                         # Place order using SDK
                         # 使用 SDK 下单

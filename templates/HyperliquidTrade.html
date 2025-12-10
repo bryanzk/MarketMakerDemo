@@ -436,6 +436,13 @@
                 <button class="btn btn-primary" onclick="updateConfig()">💾 Save Strategy Config</button>
                 <button class="btn btn-secondary" onclick="updateLeverage()">⚡ Update Leverage</button>
             </div>
+            <!-- Bot Control Buttons / Bot 控制按钮 -->
+            <div style="display:flex; gap:12px; margin-top:16px;">
+                <button id="strategyStartBotBtn" class="btn btn-success" style="flex:1; display:none;"
+                    onclick="startBot()">🚀 Start Bot / 启动机器人</button>
+                <button id="strategyStopBotBtn" class="btn btn-danger" style="flex:1; display:none;"
+                    onclick="stopBot()">⏹ Stop Bot / 停止机器人</button>
+            </div>
             <div id="controlMessage" class="message"></div>
         </section>
 
@@ -2357,8 +2364,13 @@
 
         // Update bot control buttons based on bot status / 根据 bot 状态更新控制按钮
         function updateBotControlButtons(isRunning) {
+            // Update buttons in evaluation panel / 更新评估面板中的按钮
             const startBtn = document.getElementById('startBotBtn');
             const stopBtn = document.getElementById('stopBotBtn');
+            
+            // Update buttons in strategy panel / 更新策略面板中的按钮
+            const strategyStartBtn = document.getElementById('strategyStartBotBtn');
+            const strategyStopBtn = document.getElementById('strategyStopBotBtn');
             
             // Update bot state / 更新 bot 状态
             botIsActive = isRunning;
@@ -2367,10 +2379,14 @@
                 // Bot is running: show stop button, hide start button / Bot 正在运行：显示停止按钮，隐藏启动按钮
                 if (startBtn) startBtn.style.display = 'none';
                 if (stopBtn) stopBtn.style.display = 'flex';
+                if (strategyStartBtn) strategyStartBtn.style.display = 'none';
+                if (strategyStopBtn) strategyStopBtn.style.display = 'flex';
             } else {
                 // Bot is stopped: show start button, hide stop button / Bot 已停止：显示启动按钮，隐藏停止按钮
                 if (startBtn) startBtn.style.display = 'flex';
                 if (stopBtn) stopBtn.style.display = 'none';
+                if (strategyStartBtn) strategyStartBtn.style.display = 'flex';
+                if (strategyStopBtn) strategyStopBtn.style.display = 'none';
             }
             
             // Update orders refresh interval when bot state changes / bot 状态改变时更新订单刷新间隔
@@ -2381,8 +2397,12 @@
         function initializeBotButtons() {
             // Default to showing start button if status check fails / 如果状态检查失败，默认显示启动按钮
             const startBtn = document.getElementById('startBotBtn');
+            const strategyStartBtn = document.getElementById('strategyStartBotBtn');
             if (startBtn && startBtn.style.display === 'none' && !document.getElementById('stopBotBtn')?.style.display) {
                 startBtn.style.display = 'flex';
+            }
+            if (strategyStartBtn && strategyStartBtn.style.display === 'none' && !document.getElementById('strategyStopBotBtn')?.style.display) {
+                strategyStartBtn.style.display = 'flex';
             }
         }
 

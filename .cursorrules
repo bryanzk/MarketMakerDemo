@@ -27,7 +27,112 @@ Bryan 重视 **"Slow is Fast"**，关注点在于：推理质量、抽象与架�
 
 ## 1 · 总体推理与规划框架 / Overall Reasoning and Planning Framework
 
-在进行任何操作前（包括：回复用户、调用工具或给出代码），你必须先在内部完成如下推理与规划。这些推理过程 **只在你内部进行**，不需要显式输出思维步骤，除非用户明确要求展示。
+在进行任何操作前（包括：回复用户、调用工具或给出代码），你必须先在内部完成如下推理与规划。
+
+**重要更新 / Important Update**: 从本节开始，所有 Agent 必须完成 **1.0 思维前置强制性检查清单**。对于 moderate/complex 任务，必须显式输出思维前置摘要。
+
+**Important Update**: Starting from this section, all Agents must complete the **1.0 Pre-Thinking Mandatory Checklist**. For moderate/complex tasks, an explicit pre-thinking summary is required.
+
+### 1.0 Pre-Thinking Mandatory Checklist / 思维前置强制性检查清单
+
+**CRITICAL / 关键**: Before providing any response, code, or taking any action, you MUST complete ALL items in this checklist. This is a MANDATORY step that cannot be skipped.
+
+**关键**: 在提供任何回复、代码或采取任何行动之前，你必须完成此检查清单中的所有项目。这是一个强制性步骤，不能跳过。
+
+#### ✅ Step 1: Task Classification / 任务分类
+- [ ] Determine task complexity: **trivial** / **moderate** / **complex** (see Section 2)
+- [ ] Identify task type: bug fix / feature / refactor / documentation / other
+- [ ] Check if task belongs to my responsibility (Agent role check from Section "⚠️ Agent 职责确认规则")
+- [ ] Verify current step in `status/roadmap.json` (if applicable)
+
+#### ✅ Step 2: Constraint Analysis / 约束分析
+- [ ] List all explicit rules and constraints from `.cursorrules` (especially Section 1.1-1.9)
+- [ ] Identify module/file ownership constraints (from "📁 文件归属矩阵")
+- [ ] Check for any "DO NOT" or "PROHIBITED" rules (from "🚫 禁止操作")
+- [ ] Verify language/style requirements (Chinese/English, PEP 8, etc. from Section 4)
+
+#### ✅ Step 3: Risk Assessment / 风险评估
+- [ ] Identify potential data loss or irreversible changes (Section 1.2)
+- [ ] Check for API/interface breaking changes
+- [ ] Assess impact on other modules/agents
+- [ ] Determine if operation is reversible
+- [ ] For high-risk operations, prepare explicit risk warning
+
+#### ✅ Step 4: Information Gathering / 信息收集
+- [ ] **MANDATORY**: Read relevant files before proposing changes (Section 5.2 Plan 模式规则)
+- [ ] Check existing code patterns and conventions
+- [ ] Review related documentation (contracts, specs, stories)
+- [ ] Gather context from session history if needed
+- [ ] Use codebase_search or grep to find related code
+
+#### ✅ Step 5: Hypothesis Formation / 假设形成 (if applicable)
+- [ ] For problem-solving tasks: Form 1-3 hypotheses about the problem (Section 1.3)
+- [ ] Rank hypotheses by probability
+- [ ] Identify what information is needed to validate hypotheses
+- [ ] Plan hypothesis validation approach
+
+#### ✅ Step 6: Multi-Perspective Expert Consultation / 多视角专家咨询
+- [ ] **Identify relevant expert roles / 识别相关专家角色**: What group of experts should explore this problem?
+  - [ ] List 2-4 relevant expert perspectives (e.g., Architect, Security Expert, Performance Engineer, UX Designer, Domain Expert)
+  - [ ] Consider cross-functional perspectives (not just technical)
+- [ ] **Synthesize expert opinions / 综合专家意见**: What would each expert say?
+  - [ ] Architect perspective: System design, scalability, maintainability concerns
+  - [ ] Security/Quality perspective: Security risks, edge cases, error handling
+  - [ ] Performance perspective: Performance implications, resource usage
+  - [ ] User/Business perspective: User experience, business value, requirements alignment
+- [ ] **Resolve conflicts / 解决冲突**: If experts disagree, prioritize based on Section 1.7 conflict resolution
+- [ ] **Document key insights / 记录关键洞察**: Note any non-obvious considerations from expert consultation
+
+#### ✅ Step 7: Solution Design / 方案设计
+- [ ] Design solution considering all constraints from Step 2
+- [ ] Incorporate insights from Step 6 (expert consultation)
+- [ ] Consider alternative approaches (Section 1.7)
+- [ ] Identify implementation steps
+- [ ] Plan verification strategy (tests, manual checks, etc.)
+- [ ] For moderate/complex tasks: Determine if Plan/Code mode is needed (Section 5)
+
+#### ✅ Step 8: Self-Check / 自检
+- [ ] Verify all constraints are satisfied (Section 1.4)
+- [ ] Check for contradictions or omissions
+- [ ] Ensure solution aligns with user's "Slow is Fast" philosophy (Section 0)
+- [ ] Confirm no prohibited operations are planned (Section "🚫 禁止操作")
+- [ ] Verify solution follows conflict resolution priority (Section 1.7)
+
+### Output Format Based on Complexity / 基于复杂度的输出格式
+
+**For Trivial Tasks / 对于简单任务**:
+- Complete checklist internally (no explicit output)
+- Proceed directly to response
+- No pre-thinking summary required
+
+**For Moderate/Complex Tasks / 对于中等/复杂任务**:
+- Complete checklist internally
+- **MUST output a Pre-Thinking Summary** before the main response, using this format:
+
+```markdown
+## Pre-Thinking Summary / 思维前置摘要
+
+**Task Classification / 任务分类**: [trivial/moderate/complex]
+**Task Type / 任务类型**: [bug fix/feature/refactor/documentation/other]
+**Agent Responsibility / Agent 职责**: [Confirmed/Not My Responsibility - if not, suggest correct agent]
+**Key Constraints / 关键约束**: 
+  1. [Top constraint 1]
+  2. [Top constraint 2]
+  3. [Top constraint 3]
+**Risk Level / 风险级别**: [low/medium/high]
+**Information Gathered / 已收集信息**: 
+  - Files read: [list key files]
+  - Context reviewed: [specs/contracts/stories/documentation]
+  - Code patterns checked: [existing patterns reviewed]
+**Expert Perspectives Consulted / 咨询的专家视角**:
+  - [Expert Role 1]: [Key insight or concern]
+  - [Expert Role 2]: [Key insight or concern]
+  - [Expert Role 3]: [Key insight or concern]
+**Solution Approach / 方案方法**: [Brief description of approach, incorporating expert insights]
+**Next Steps / 下一步**: [Plan mode / Code mode / Direct implementation]
+```
+
+Then proceed with Plan/Code mode as appropriate (Section 5).
 
 ### 1.1 依赖关系与约束优先级 / Dependency and Constraint Priority
 
@@ -253,6 +358,73 @@ Bryan 重视 **"Slow is Fast"**，关注点在于：推理质量、抽象与架�
 - 在展示与 GitHub 的交互示例时，优先使用 `gh` CLI
 
 上述需要确认的规则仅适用于具有破坏性或难以回滚的操作；对纯代码编辑、语法错误修复、格式化和小范围结构重排，不需要额外确认。
+
+### 6.1 服务器启动规范 / Server Startup Requirements
+
+**强制要求 / Mandatory Requirement**：
+
+所有 Agent 在启动服务器时，**必须**使用标准化的启动脚本 `./start_server.sh`，禁止手动启动服务器。
+
+All agents **MUST** use the standardized startup script `./start_server.sh` when starting the server. Manual server startup is **PROHIBITED**.
+
+**正确方式 / Correct Way**：
+```bash
+# ✅ Always use the standardized script / 始终使用标准化脚本
+./start_server.sh
+```
+
+**禁止方式 / Prohibited Ways**：
+```bash
+# ❌ DO NOT start manually / 不要手动启动
+python server.py
+
+# ❌ DO NOT start from subdirectories / 不要从子目录启动
+cd src/trading && python ../../server.py
+
+# ❌ DO NOT bypass the startup script / 不要绕过启动脚本
+python3 -m uvicorn server:app --host 0.0.0.0 --port 3000
+```
+
+**为什么必须使用标准化脚本？ / Why is the standardized script mandatory?**
+
+1. **环境一致性 / Environment Consistency**
+   - 确保所有 Agent 使用相同的工作目录、Python 解释器、PYTHONPATH 和环境变量
+   - Ensures all agents use the same working directory, Python interpreter, PYTHONPATH, and environment variables
+
+2. **防止环境问题 / Prevents Environment Issues**
+   - 避免因环境不一致导致的模块导入错误、路径问题、环境变量缺失等问题
+   - Prevents module import errors, path issues, missing environment variables due to inconsistent environments
+
+3. **可追溯性 / Traceability**
+   - 启动脚本记录环境信息，便于调试和问题排查
+   - Startup script logs environment information for debugging and troubleshooting
+
+**验证环境 / Verify Environment**：
+
+在启动服务器前，可以（可选但推荐）运行环境验证脚本：
+Before starting the server, you can (optional but recommended) run the environment verification script:
+
+```bash
+./scripts/verify_server_env.sh
+```
+
+**相关文档 / Related Documentation**：
+- [Environment Consistency Guide](docs/project/environment_consistency.md) - 详细的环境一致性指南
+- [Logging Management](docs/project/logging_management.md) - 日志管理说明
+
+**违规处理 / Violation Handling**：
+
+如果发现任何 Agent 违反此规则（手动启动服务器），必须：
+If any agent violates this rule (manually starts the server), you must:
+
+1. 立即停止手动启动的服务器进程
+   Immediately stop the manually started server process
+
+2. 使用标准化脚本重新启动
+   Restart using the standardized script
+
+3. 在代码审查或日志中记录此违规行为
+   Document this violation in code review or logs
 
 ---
 

@@ -12,8 +12,6 @@ Owner: Agent QA
 import asyncio
 from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
-import pytest
-
 import server
 
 

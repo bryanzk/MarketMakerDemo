@@ -18,7 +18,6 @@ from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
 import pytest
 from fastapi.testclient import TestClient
-from websockets.exceptions import ConnectionClosed
 
 import server
 from src.ai.evaluation.evaluator import MultiLLMEvaluator

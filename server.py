@@ -1332,89 +1332,6 @@ async def update_hyperliquid_leverage(leverage: int = Body(..., embed=True)):
         }
 
 
-@app.post("/api/hyperliquid/pair")
-async def update_hyperliquid_pair(pair: PairUpdate):
-    """
-    Update Hyperliquid trading pair / 更新 Hyperliquid 交易对
-
-    Note: This endpoint allows updating the symbol even if Hyperliquid is not connected.
-    The symbol will be updated when connection is established.
-    注意：即使 Hyperliquid 未连接，此端点也允许更新交易对。连接建立时将更新交易对。
-    """
-    try:
-        from src.trading.hyperliquid_client import HyperliquidClient
-
-        exchange = get_exchange_by_name("hyperliquid")
-
-        # Update strategy instance symbol first, then update exchange if connected
-        # 首先更新策略实例交易对，然后如果已连接则更新交易所
-        hyperliquid_instance = None
-        for instance_id, instance in bot_engine.strategy_instances.items():
-            if isinstance(instance.exchange, HyperliquidClient):
-                hyperliquid_instance = instance
-                # Always update instance symbol first
-                # 始终首先更新实例交易对
-                instance.symbol = pair.symbol
-                # Always call set_symbol to ensure internal state is updated
-                # 始终调用 set_symbol 以确保内部状态已更新
-                if hasattr(instance.exchange, 'set_symbol'):
-                    success = instance.exchange.set_symbol(pair.symbol)
-                    if not success:
-                        logger.warning(
-                            f"Failed to set symbol on exchange, but instance symbol updated. "
-                            f"在交易所上设置交易对失败，但实例交易对已更新。"
-                        )
-                elif hasattr(instance.exchange, 'symbol'):
-                    # Fallback: direct assignment if set_symbol not available
-                    # 回退：如果 set_symbol 不可用，直接赋值
-                    instance.exchange.symbol = pair.symbol
-                break
-        
-        # If exchange is connected, update it immediately
-        # 如果交易所已连接，立即更新
-        if exchange and getattr(exchange, "is_connected", False):
-            success = exchange.set_symbol(pair.symbol)
-            if success:
-                # Ensure instance symbol is synced (already updated above, but refresh data)
-                # 确保实例交易对已同步（上面已更新，但刷新数据）
-                if hyperliquid_instance:
-                    hyperliquid_instance.refresh_data()
-                    logger.info(
-                        f"✅ Updated Hyperliquid symbol to {pair.symbol} / "
-                        f"✅ 已更新 Hyperliquid 交易对到 {pair.symbol}"
-                    )
-
-                return {"status": "updated", "symbol": pair.symbol}
-            else:
-                return {
-                    "status": "error",
-                    "message": f"Failed to update to symbol {pair.symbol} / 更新到交易对 {pair.symbol} 失败",
-                }
-        else:
-            # Exchange not connected, but we still allow symbol update for UI
-            # Store the symbol preference for when connection is established
-            # 交易所未连接，但我们仍然允许更新交易对以用于 UI
-            # 存储交易对偏好，以便连接建立时使用
-            if hyperliquid_instance:
-                logger.info(
-                    f"✅ Updated Hyperliquid instance symbol to {pair.symbol} (exchange not connected) / "
-                    f"✅ 已更新 Hyperliquid 实例交易对到 {pair.symbol}（交易所未连接）"
-                )
-
-            # Return success with a warning that connection is needed for actual trading
-            # 返回成功，但警告需要连接才能进行实际交易
-            return {
-                "status": "updated",
-                "symbol": pair.symbol,
-                "warning": "Hyperliquid not connected. Symbol updated for UI. Please connect to Hyperliquid for trading. / Hyperliquid 未连接。交易对已更新用于 UI。请连接到 Hyperliquid 进行交易。",
-            }
-    except Exception as e:
-        logger.error(f"Error updating Hyperliquid pair: {e}")
-        return {
-            "status": "error",
-            "message": f"Failed to update pair: {str(e)} / 更新交易对失败：{str(e)}",
-        }
-
 
 @app.post("/api/control")
 async def control_bot(action: str):
@@ -3651,7 +3568,9 @@ async def get_hyperliquid_prices(request: Request):
                         except TypeError:
                             # Fallback for clients without symbol parameter support
                             # 对不支持 symbol 参数的客户端使用回退
-                            if hasattr(exchange, "set_symbol"):
+                            # Avoid mutating symbol for Hyperliquid; its client supports symbol parameter
+                            # Hyperliquid 客户端支持 symbol 参数，避免为了查询修改交易对
+                            if hasattr(exchange, "set_symbol") and exchange.__class__.__name__ != "HyperliquidClient":
                                 exchange.set_symbol(symbol)
                                 symbol_was_changed = True
                             market_data = exchange.fetch_market_data()
@@ -3900,6 +3819,11 @@ async def update_hyperliquid_pair(request: Request, pair: PairUpdate):
         "/api/hyperliquid/pair", "POST", hash_payload(pair.model_dump())
     )
 
+    target_instance = None
+    old_symbol = None
+    was_running = None
+    exchange_symbol_changed = False
+
     try:
         exchange = get_exchange_by_name("hyperliquid")
         if not exchange:
@@ -3923,48 +3847,83 @@ async def update_hyperliquid_pair(request: Request, pair: PairUpdate):
                 error_code="STRATEGY_INSTANCE_NOT_FOUND",
                 details=request_context,
             )
-        
+
+        # Pause trading loop for this instance to make symbol switch atomic
+        # 为该实例暂停交易循环，确保切换交易对是原子的
+        target_instance = bot_engine.strategy_instances.get(target_strategy_id)
+        if target_instance:
+            old_symbol = target_instance.symbol
+            was_running = target_instance.running
+            target_instance.running = False
+
+        # Update strategy and exchange symbols without mutating other instances
+        # 更新策略与交易所的交易对，避免影响其他实例
         success = bot_engine.set_symbol(pair.symbol, strategy_id=target_strategy_id)
 
+        if success and target_instance:
+            # Keep instance.exchange in sync (if separate from global exchange ref)
+            if target_instance.exchange:
+                if hasattr(target_instance.exchange, "set_symbol"):
+                    symbol_changed = target_instance.exchange.set_symbol(pair.symbol)
+                    exchange_symbol_changed = exchange_symbol_changed or symbol_changed
+                elif hasattr(target_instance.exchange, "symbol"):
+                    target_instance.exchange.symbol = pair.symbol
+
+            # If global exchange is connected, update it as well
+            if exchange and getattr(exchange, "is_connected", False):
+                if hasattr(exchange, "set_symbol"):
+                    exchange_symbol_changed = exchange.set_symbol(pair.symbol) or exchange_symbol_changed
+
+            # Refresh data after switching symbol
+            target_instance.refresh_data()
+
         if success:
-            # Immediately refresh data / 立即刷新数据
-            target_instance = bot_engine.strategy_instances.get(target_strategy_id)
-            if target_instance:
-                # Force refresh to get new market data for the new symbol / 强制刷新以获取新交易对的市场数据
-                target_instance.refresh_data()
-                # Also ensure exchange symbol is updated / 同时确保交易所交易对已更新
-                if target_instance.exchange and hasattr(
-                    target_instance.exchange, "symbol"
-                ):
-                    # Double-check symbol is set correctly / 再次确认交易对设置正确
-                    if getattr(target_instance.exchange, "symbol", None) != pair.symbol:
-                        target_instance.exchange.set_symbol(pair.symbol)
-                        # Refresh again after setting symbol / 设置交易对后再次刷新
-                        target_instance.refresh_data()
+            # Resume trading loop if it was previously running
+            if target_instance and was_running is not None:
+                target_instance.running = was_running
 
             logger.info(
-                f"Successfully updated symbol to {pair.symbol} for strategy '{target_strategy_id}'"
+                f"Successfully updated symbol to {pair.symbol} for strategy '{target_strategy_id}' (trace_id={trace_id})"
             )
-            return {
+            response_payload = {
                 "status": "updated",
                 "symbol": pair.symbol,
                 "ok": True,
                 "trace_id": trace_id,
             }
-        else:
-            logger.error(
-                f"Failed to update symbol to {pair.symbol} for strategy '{target_strategy_id}'. "
-                f"Check if exchange.set_symbol() returned False or if _initialize_symbol() raised an exception."
-            )
-            return create_error_response(
-                ValueError(
-                    f"Failed to update to symbol {pair.symbol} for strategy '{target_strategy_id}'. "
-                    f"Check server logs for details."
-                ),
-                error_code="PAIR_UPDATE_FAILED",
-                details=request_context,
-            )
+            if not exchange or not getattr(exchange, "is_connected", False):
+                response_payload["warning"] = "Exchange not connected; will apply on reconnect / 交易所未连接，连接后将应用。"
+            return response_payload
+
+        # Handle failure path
+        logger.error(
+            f"Failed to update symbol to {pair.symbol} for strategy '{target_strategy_id}'. "
+            f"Check if exchange.set_symbol() returned False or if _initialize_symbol() raised an exception."
+        )
+        # Roll back runtime flags
+        if target_instance and was_running is not None:
+            target_instance.running = was_running
+        return create_error_response(
+            ValueError(
+                f"Failed to update to symbol {pair.symbol} for strategy '{target_strategy_id}'. "
+                f"Check server logs for details."
+            ),
+            error_code="PAIR_UPDATE_FAILED",
+            details=request_context,
+        )
     except Exception as e:
+        # Roll back symbol on exception to avoid leaving mismatched state
+        if target_instance and old_symbol:
+            target_instance.symbol = old_symbol
+            if target_instance.exchange and hasattr(target_instance.exchange, "set_symbol"):
+                target_instance.exchange.set_symbol(old_symbol)
+            elif target_instance.exchange and hasattr(target_instance.exchange, "symbol"):
+                target_instance.exchange.symbol = old_symbol
+        if exchange and exchange_symbol_changed and old_symbol and hasattr(exchange, "set_symbol"):
+            exchange.set_symbol(old_symbol)
+        if target_instance and was_running is not None:
+            target_instance.running = was_running
+
         logger.error(
             "Error updating Hyperliquid pair",
             exc_info=True,

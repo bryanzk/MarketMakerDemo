@@ -67,10 +67,11 @@ class FixedSpreadStrategy:
         # Use 1h volatility if available, otherwise use 24h / 如果可用，使用 1h 波动率，否则使用 24h
         volatility = volatility_1h if volatility_1h is not None else volatility_24h
         
-        # If no volatility data, use base spread / 如果没有波动率数据，使用基础价差
+        # If no volatility data, keep current spread unchanged / 如果没有波动率数据，保持当前价差不变
+        # This allows tests and external code to set custom spreads
+        # 这允许测试和外部代码设置自定义价差
         if volatility is None:
-            self.spread = self.base_spread
-            return self.base_spread
+            return self.spread
         
         # Determine volatility category / 确定波动率类别
         if volatility < self.volatility_thresholds["low"]:

@@ -89,9 +89,14 @@ class TestFixedSpreadStrategy:
         orders = self.strategy.calculate_target_orders(market_data)
 
         # Prices should be rounded to 0.01 (tick size)
-        # Use approximate equality due to floating point precision
-        assert abs(orders[0]["price"] % 0.01) < 0.0001
-        assert abs(orders[1]["price"] % 0.01) < 0.0001
+        # Check that prices are multiples of tick_size (with tolerance for floating point precision)
+        # 检查价格是 tick_size 的倍数（考虑浮点数精度容差）
+        tick_size = 0.01
+        for order in orders:
+            # Round to nearest tick and check if difference is minimal
+            # 四舍五入到最近的 tick 并检查差异是否最小
+            rounded_price = round(order["price"] / tick_size) * tick_size
+            assert abs(order["price"] - rounded_price) < 0.0001
 
     def test_spread_calculation_symmetry(self):
         """Test that spread is symmetric around mid price"""

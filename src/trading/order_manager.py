@@ -64,8 +64,10 @@ class OrderManager:
         price_diff = abs(curr_price - tgt_price)
         
         # Quantity threshold (percentage-based) / 数量阈值（基于百分比）
-        curr_qty = current_order.get("quantity", 0)
-        tgt_qty = target_order.get("quantity", 0)
+        # Support both "quantity" and "amount" fields (different exchanges use different field names)
+        # 支持 "quantity" 和 "amount" 字段（不同交易所使用不同的字段名）
+        curr_qty = current_order.get("quantity") or current_order.get("amount", 0)
+        tgt_qty = target_order.get("quantity") or target_order.get("amount", 0)
         qty_threshold = max(curr_qty, tgt_qty) * QTY_THRESHOLD_PCT if max(curr_qty, tgt_qty) > 0 else 0.001
         qty_diff = abs(curr_qty - tgt_qty)
         

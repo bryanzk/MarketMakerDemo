@@ -70,6 +70,12 @@ check_package "uvicorn" "uvicorn" || exit 1
 check_package "fastapi" "fastapi" || exit 1
 check_package "python-dotenv" "dotenv" || exit 1
 
+# Check optional LLM packages for Multi-LLM Evaluation / 检查多模型评估的可选 LLM 包
+echo ""
+echo "   Optional LLM Packages / 可选 LLM 包 (for Multi-LLM Evaluation / 用于多模型评估):"
+check_package "openai" "openai" || echo "   ⚠ openai not found (OpenAI provider will be unavailable) / 未找到 openai（OpenAI 提供商将不可用）"
+check_package "anthropic" "anthropic" || echo "   ⚠ anthropic not found (Claude provider will be unavailable) / 未找到 anthropic（Claude 提供商将不可用）"
+
 # Check 5: Environment file / 检查 5：环境文件
 echo ""
 echo "5. Environment File / 环境文件:"

@@ -51,15 +51,25 @@ class TestQuantAgent:
 
     def test_rule_based_logic(self):
         """Test the fallback rule-based logic directly"""
-        agent = QuantAgent(gateway=None)  # Force no gateway
+        # Patch GeminiProvider to avoid slow initialization
+        # 模拟 GeminiProvider 以避免缓慢的初始化
+        # This prevents SDK import, env var checks, and network connections
+        # 这可以避免 SDK 导入、环境变量检查和网络连接
+        with patch("src.ai.agents.quant.GeminiProvider") as mock_provider:
+            # Make GeminiProvider() raise exception immediately
+            # 让 GeminiProvider() 立即抛出异常
+            mock_provider.side_effect = ValueError("No API Key")
+            
+            agent = QuantAgent(gateway=None)  # Force no gateway
+            assert agent.gateway is None
 
-        # Case 1: Low performance
-        config = {"spread": 0.01}
-        stats = {"sharpe_ratio": 0.5, "win_rate": 40}
-        proposal = agent.analyze_and_propose(config, stats)
-        assert proposal["spread"] > 0.01
+            # Case 1: Low performance
+            config = {"spread": 0.01}
+            stats = {"sharpe_ratio": 0.5, "win_rate": 40}
+            proposal = agent.analyze_and_propose(config, stats)
+            assert proposal["spread"] > 0.01
 
-        # Case 2: High performance
-        stats = {"sharpe_ratio": 2.5, "win_rate": 60}
-        proposal = agent.analyze_and_propose(config, stats)
-        assert proposal["spread"] < 0.01
+            # Case 2: High performance
+            stats = {"sharpe_ratio": 2.5, "win_rate": 60}
+            proposal = agent.analyze_and_propose(config, stats)
+            assert proposal["spread"] < 0.01

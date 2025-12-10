@@ -70,6 +70,17 @@ echo "PYTHONPATH: $PYTHONPATH" >&2
 echo "Working Directory / 工作目录: $(pwd)" >&2
 echo "================================================" >&2
 
+# Check optional LLM dependencies / 检查可选 LLM 依赖
+echo "Checking optional LLM dependencies / 检查可选 LLM 依赖..." >&2
+if ! python -c "import openai" 2>/dev/null; then
+    echo "Warning: openai package not found. OpenAI provider will be unavailable. / 警告：未找到 openai 包。OpenAI 提供商将不可用。" >&2
+    echo "Install with: pip install openai / 使用以下命令安装：pip install openai" >&2
+fi
+if ! python -c "import anthropic" 2>/dev/null; then
+    echo "Warning: anthropic package not found. Claude provider will be unavailable. / 警告：未找到 anthropic 包。Claude 提供商将不可用。" >&2
+    echo "Install with: pip install anthropic / 使用以下命令安装：pip install anthropic" >&2
+fi
+
 # Create logs directory if it doesn't exist / 如果日志目录不存在则创建
 LOGS_DIR="$SCRIPT_DIR/logs"
 mkdir -p "$LOGS_DIR"

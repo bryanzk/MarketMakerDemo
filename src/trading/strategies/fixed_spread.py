@@ -89,6 +89,19 @@ class FixedSpreadStrategy:
         # 使用动态的 tick_size 和 step_size
         final_bid = round_tick_size(bid_price, tick_size)
         final_ask = round_tick_size(ask_price, tick_size)
+        
+        # Ensure ask price is always above mid_price after rounding
+        # If rounding down causes ask to be <= mid_price, round up one tick
+        # 确保卖出价格在舍入后始终大于 mid_price
+        # 如果向下舍入导致卖出价格 <= mid_price，则向上舍入一个 tick
+        if final_ask <= mid_price:
+            from decimal import Decimal
+            ask_decimal = Decimal(str(ask_price))
+            tick_size_decimal = Decimal(str(tick_size))
+            # Round up one tick / 向上舍入一个 tick
+            ticks_rounded = (ask_decimal // tick_size_decimal) + Decimal("1")
+            final_ask = float(ticks_rounded * tick_size_decimal)
+        
         qty = round_step_size(self.quantity, step_size)
 
         return [

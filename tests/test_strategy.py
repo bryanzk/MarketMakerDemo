@@ -35,7 +35,14 @@ class TestFixedSpreadStrategy:
         """Test order calculation with very small spread (0.005%)"""
         self.strategy.spread = 0.005 / 100  # 0.005% spread
 
-        market_data = {"mid_price": 3000.0, "best_bid": 2999.9, "best_ask": 3000.1}
+        # Specify tick_size to ensure proper rounding for small spread
+        # 指定 tick_size 以确保小点差的正确舍入
+        market_data = {
+            "mid_price": 3000.0,
+            "best_bid": 2999.9,
+            "best_ask": 3000.1,
+            "tick_size": 0.01,  # Use smaller tick_size for precision
+        }
 
         orders = self.strategy.calculate_target_orders(market_data)
 
@@ -70,10 +77,13 @@ class TestFixedSpreadStrategy:
 
     def test_price_rounding(self):
         """Test that prices are properly rounded to tick size"""
+        # Specify tick_size to match test expectation
+        # 指定 tick_size 以匹配测试期望
         market_data = {
             "mid_price": 3000.556,  # Non-round price
             "best_bid": 3000.0,
             "best_ask": 3001.0,
+            "tick_size": 0.01,  # Explicit tick_size for test
         }
 
         orders = self.strategy.calculate_target_orders(market_data)

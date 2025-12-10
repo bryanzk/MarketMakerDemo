@@ -9,7 +9,7 @@ Owner: Agent QA
 """
 
 import os
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, Mock, patch
 
 import pytest
 import requests
@@ -67,6 +67,18 @@ class TestHyperliquid422ErrorIntegration:
         ]
         
         client = HyperliquidClient()
+        
+        # Mock fetch_market_data to return market data with tick_size and step_size
+        # Mock fetch_market_data 返回包含 tick_size 和 step_size 的市场数据
+        client.fetch_market_data = Mock(
+            return_value={
+                "best_bid": 2000.0,
+                "best_ask": 2002.0,
+                "mid_price": 2001.0,
+                "tick_size": 0.1,
+                "step_size": 0.001,
+            }
+        )
         
         # Mock SDK order() method to return 422 error response
         # Mock SDK order() 方法返回 422 错误响应
@@ -134,13 +146,44 @@ class TestHyperliquid422ErrorIntegration:
         
         client = HyperliquidClient()
         
+        # Mock fetch_market_data to return market data with tick_size and step_size
+        # Market data should match order prices to avoid symbol mismatch detection
+        # Mock fetch_market_data 返回包含 tick_size 和 step_size 的市场数据
+        # 市场数据应该匹配订单价格以避免交易对不匹配检测
+        # Use a callable mock that returns different market data based on which order is being placed
+        # 使用可调用的 mock，根据正在下的订单返回不同的市场数据
+        call_count = [0]  # Use list to allow modification in nested function
+        def mock_fetch_market_data():
+            call_count[0] += 1
+            if call_count[0] == 1:
+                # First order: price 100.0, so mid_price should be around 100.0
+                # 第一个订单：价格 100.0，所以 mid_price 应该在 100.0 附近
+                return {
+                    "best_bid": 99.5,
+                    "best_ask": 100.5,
+                    "mid_price": 100.0,  # Match first order price / 匹配第一个订单价格
+                    "tick_size": 0.1,
+                    "step_size": 0.001,
+                }
+            else:
+                # Second order: price 2010.0, so mid_price should be around 2010.0
+                # 第二个订单：价格 2010.0，所以 mid_price 应该在 2010.0 附近
+                return {
+                    "best_bid": 2009.5,
+                    "best_ask": 2010.5,
+                    "mid_price": 2010.0,  # Match second order price / 匹配第二个订单价格
+                    "tick_size": 0.1,
+                    "step_size": 0.001,
+                }
+        client.fetch_market_data = Mock(side_effect=mock_fetch_market_data)
+        
         # Mock SDK order() method to return different responses for different orders
         # Mock SDK order() 方法为不同订单返回不同响应
         if client._exchange:
-            call_count = [0]  # Use list to allow modification in nested function
+            order_call_count = [0]  # Use list to allow modification in nested function
             def mock_order(*args, **kwargs):
-                call_count[0] += 1
-                if call_count[0] == 1:
+                order_call_count[0] += 1
+                if order_call_count[0] == 1:
                     # First order fails with 422 / 第一个订单因 422 失败
                     return {
                         "status": "err",

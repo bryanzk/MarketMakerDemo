@@ -28,8 +28,9 @@ class TestAlphaLoop:
         mock_risk.return_value = Mock()
         mock_strategy.return_value = Mock()
 
-        # Create engine
-        engine = AlphaLoop()
+        # Create engine with hyperliquid_only=False to get default instance
+        # 创建引擎时设置 hyperliquid_only=False 以获取 default 实例
+        engine = AlphaLoop(hyperliquid_only=False)
 
         # Verify
         # Verify
@@ -88,7 +89,9 @@ class TestAlphaLoop:
         ]
         mock_strategy_cls.return_value = mock_strategy
 
-        engine = AlphaLoop()
+        # Create engine with hyperliquid_only=False to get default instance
+        # 创建引擎时设置 hyperliquid_only=False 以获取 default 实例
+        engine = AlphaLoop(hyperliquid_only=False)
 
         # Run one cycle manually
         engine.run_cycle()
@@ -101,7 +104,7 @@ class TestAlphaLoop:
         # Now strategy is wrapped in StrategyInstance, which creates real strategy objects
         # We verify the cycle completed successfully by checking that orders were attempted
         # (if target orders were generated, place_orders should be called)
-        default_instance = engine.strategy_instances["default"]
+        default_instance = engine.strategy_instances.get("default")
         # Since we're using real StrategyInstance, the strategy is a real FixedSpreadStrategy
         # We verify the cycle ran by checking that place_orders was called if orders were generated
         # The mock strategy returns orders, so place_orders should be called
@@ -167,13 +170,16 @@ class TestAlphaLoop:
         }
         mock_strategy_cls.return_value = mock_strategy
 
-        engine = AlphaLoop()
+        # Create engine with hyperliquid_only=False to get default instance
+        # 创建引擎时设置 hyperliquid_only=False 以获取 default 实例
+        engine = AlphaLoop(hyperliquid_only=False)
         engine.run_cycle()
 
         # Verify
         mock_risk.validate_proposal.assert_called()
         # Verify auto-fallback was triggered (now on StrategyInstance)
-        default_instance = engine.strategy_instances["default"]
+        default_instance = engine.strategy_instances.get("default")
+        assert default_instance is not None
         # Check that alert was set with fallback info (now on instance)
         assert default_instance.alert is not None
         assert "Risk Rejection" in default_instance.alert["message"]
@@ -199,11 +205,18 @@ class TestAlphaLoop:
         mock_client.set_symbol.return_value = True
         mock_client_cls.return_value = mock_client
 
-        engine = AlphaLoop()
+        # Create engine with hyperliquid_only=False to get default instance
+        # 创建引擎时设置 hyperliquid_only=False 以获取 default 实例
+        engine = AlphaLoop(hyperliquid_only=False)
         result = engine.set_symbol("BTC/USDT:USDT")
 
         assert result is True
-        mock_client.set_symbol.assert_called_with("BTC/USDT:USDT")
+        # Verify set_symbol was called on the exchange in the default instance
+        # 验证在 default 实例的 exchange 上调用了 set_symbol
+        default_instance = engine.strategy_instances.get("default")
+        assert default_instance is not None
+        assert default_instance.exchange.set_symbol.called
+        assert default_instance.exchange.set_symbol.call_args[0][0] == "BTC/USDT:USDT"
 
 
 class TestErrorHistory:
@@ -297,7 +310,9 @@ class TestErrorHistory:
         ]
         mock_strategy_cls.return_value = mock_strategy
 
-        engine = AlphaLoop()
+        # Create engine with hyperliquid_only=False to use BinanceClient mock
+        # 创建引擎时设置 hyperliquid_only=False 以使用 BinanceClient mock
+        engine = AlphaLoop(hyperliquid_only=False)
         engine.run_cycle()
 
         # Verify error was captured
@@ -425,7 +440,11 @@ class TestErrorHistory:
         ]
         mock_strategy_cls.return_value = mock_strategy
 
-        engine = AlphaLoop()
+        # Create engine with hyperliquid_only=False to use BinanceClient mock
+        # 创建引擎时设置 hyperliquid_only=False 以使用 BinanceClient mock
+        # This ensures place_orders returns the mock result successfully
+        # 这确保 place_orders 成功返回 mock 结果
+        engine = AlphaLoop(hyperliquid_only=False)
         engine.run_cycle()
 
         # Verify no error was captured
@@ -459,7 +478,9 @@ class TestErrorHistory:
         mock_risk_cls.return_value = Mock()
         mock_strategy_cls.return_value = Mock()
 
-        engine = AlphaLoop()
+        # Create engine with hyperliquid_only=False to get default instance
+        # 创建引擎时设置 hyperliquid_only=False 以获取 default 实例
+        engine = AlphaLoop(hyperliquid_only=False)
         engine.run_cycle()
 
         # Verify alert was set on strategy instance (not global)
@@ -590,7 +611,9 @@ class TestMultiStrategy:
         mock_client_instance.fetch_market_data.return_value = {"mid_price": 100.0}
         mock_client.return_value = mock_client_instance
 
-        engine = AlphaLoop()
+        # Create engine with hyperliquid_only=False to get default instance
+        # 创建引擎时设置 hyperliquid_only=False 以获取 default 实例
+        engine = AlphaLoop(hyperliquid_only=False)
         
         # Initially should have default strategy
         assert len(engine.strategy_instances) == 1
@@ -619,7 +642,9 @@ class TestMultiStrategy:
         mock_client_instance.cancel_orders.return_value = True
         mock_client.return_value = mock_client_instance
 
-        engine = AlphaLoop()
+        # Create engine with hyperliquid_only=False to get default instance
+        # 创建引擎时设置 hyperliquid_only=False 以获取 default 实例
+        engine = AlphaLoop(hyperliquid_only=False)
         
         # Add a strategy instance
         engine.add_strategy_instance("strategy_2", "fixed_spread")
@@ -646,7 +671,9 @@ class TestMultiStrategy:
         mock_client_instance.fetch_open_orders.return_value = []
         mock_client.return_value = mock_client_instance
 
-        engine = AlphaLoop()
+        # Create engine with hyperliquid_only=False to get default instance
+        # 创建引擎时设置 hyperliquid_only=False 以获取 default 实例
+        engine = AlphaLoop(hyperliquid_only=False)
         
         # Add a second strategy instance
         engine.add_strategy_instance("strategy_2", "fixed_spread")
@@ -670,7 +697,9 @@ class TestMultiStrategy:
         mock_client_instance.fetch_market_data.return_value = {"mid_price": 100.0}
         mock_client.return_value = mock_client_instance
 
-        engine = AlphaLoop()
+        # Create engine with hyperliquid_only=False to get default instance
+        # 创建引擎时设置 hyperliquid_only=False 以获取 default 实例
+        engine = AlphaLoop(hyperliquid_only=False)
         engine.add_strategy_instance("strategy_2", "funding_rate")
         
         status = engine.get_status()
@@ -703,7 +732,9 @@ class TestMultiStrategy:
         mock_client_instance.fetch_open_orders.return_value = []
         mock_client.return_value = mock_client_instance
 
-        engine = AlphaLoop()
+        # Create engine with hyperliquid_only=False to get default instance
+        # 创建引擎时设置 hyperliquid_only=False 以获取 default 实例
+        engine = AlphaLoop(hyperliquid_only=False)
         # Default instance should run; add a second instance and keep it stopped
         engine.add_strategy_instance("strategy_2", "fixed_spread")
         engine.strategy_instances["strategy_2"].running = False
@@ -752,11 +783,14 @@ class TestErrorHandlingAndAlerts:
         mock_quant.return_value.analyze_and_propose.return_value = None
         mock_risk.return_value = Mock()
 
-        engine = AlphaLoop()
+        # Create engine with hyperliquid_only=False to get default instance
+        # 创建引擎时设置 hyperliquid_only=False 以获取 default 实例
+        engine = AlphaLoop(hyperliquid_only=False)
         engine.run_cycle()
 
         # Check that alert was set on default strategy instance
-        default_instance = engine.strategy_instances["default"]
+        default_instance = engine.strategy_instances.get("default")
+        assert default_instance is not None
         assert default_instance.alert is not None
         assert default_instance.alert["type"] == "error"
         assert "Insufficient balance" in default_instance.alert["message"]
@@ -830,7 +864,9 @@ class TestErrorHandlingAndAlerts:
         mock_quant.return_value.analyze_and_propose.return_value = None
         mock_risk.return_value = Mock()
 
-        engine = AlphaLoop()
+        # Create engine with hyperliquid_only=False to get default instance
+        # 创建引擎时设置 hyperliquid_only=False 以获取 default 实例
+        engine = AlphaLoop(hyperliquid_only=False)
         engine.add_strategy_instance("strategy_2", "fixed_spread")
         engine.run_cycle()
 
@@ -839,8 +875,10 @@ class TestErrorHandlingAndAlerts:
         
         # Check that errors are recorded per instance
         # (In real scenario, each instance would have its own error if it occurred)
-        default_instance = engine.strategy_instances["default"]
-        strategy_2_instance = engine.strategy_instances["strategy_2"]
+        default_instance = engine.strategy_instances.get("default")
+        strategy_2_instance = engine.strategy_instances.get("strategy_2")
+        assert default_instance is not None
+        assert strategy_2_instance is not None
         
         # At least one should have error history if error occurred
         assert len(default_instance.error_history) >= 0  # May or may not have error

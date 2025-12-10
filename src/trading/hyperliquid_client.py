@@ -61,7 +61,7 @@ from src.shared.config import (
     SYMBOL,
 )
 from src.shared.tracing import get_trace_id, hash_payload
-from src.shared.utils import round_tick_size
+from src.shared.utils import round_step_size, round_tick_size
 
 logger = logging.getLogger(__name__)
 
@@ -3300,6 +3300,152 @@ class HyperliquidClient:
                                     f"price % tick_size (Decimal): {float(final_remainder)}. "
                                     f"最终订单价格: {price}，tick_size: {tick_size}，"
                                     f"price % tick_size (Decimal): {float(final_remainder)}。"
+                                )
+                        
+                        # Round quantity to step_size before sending to SDK
+                        # 在发送到 SDK 之前将数量舍入到 step_size
+                        # This ensures quantity is properly aligned to avoid float_to_wire rounding errors
+                        # 这确保数量正确对齐，避免 float_to_wire 舍入错误
+                        try:
+                            # Get step_size from market_data if available
+                            # 如果可用，从 market_data 获取 step_size
+                            step_size = None
+                            if 'market_data' in locals() and market_data:
+                                step_size = market_data.get("step_size")
+                            
+                            # If step_size not available, try to resolve from meta data
+                            # 如果 step_size 不可用，尝试从 meta 数据解析
+                            if step_size is None or step_size <= 0:
+                                try:
+                                    meta_data = self._fetch_meta_data()
+                                    if meta_data:
+                                        universe = meta_data.get("universe", [])
+                                        coin_normalized = coin.upper()
+                                        for asset_info in universe:
+                                            if isinstance(asset_info, dict) and asset_info.get("name") == coin_normalized:
+                                                if "szDecimals" in asset_info:
+                                                    sz_decimals = asset_info["szDecimals"]
+                                                    step_size = 10 ** (-sz_decimals)
+                                                    logger.debug(
+                                                        f"Resolved step_size={step_size} for {coin} from meta data "
+                                                        f"(szDecimals={sz_decimals}). "
+                                                        f"从 meta 数据解析 {coin} 的 step_size={step_size}（szDecimals={sz_decimals}）。"
+                                                    )
+                                                    break
+                                except Exception as e:
+                                    logger.debug(
+                                        f"Failed to resolve step_size from meta: {e}. "
+                                        f"从 meta 解析 step_size 失败: {e}。"
+                                    )
+                            
+                            # Use default step_size if still not available
+                            # 如果仍不可用，使用默认 step_size
+                            if step_size is None or step_size <= 0:
+                                step_size = 0.001  # Default step_size
+                                logger.debug(
+                                    f"Using default step_size={step_size} for {coin}. "
+                                    f"对 {coin} 使用默认 step_size={step_size}。"
+                                )
+                            
+                            # Round quantity to step_size
+                            # 将数量舍入到 step_size
+                            original_quantity = quantity
+                            quantity = round_step_size(quantity, step_size)
+                            
+                            if abs(quantity - original_quantity) > 1e-10:  # Only log if quantity changed
+                                logger.info(
+                                    f"Rounded quantity from {original_quantity} to {quantity} (step_size={step_size}) for {coin}. "
+                                    f"将 {coin} 的数量从 {original_quantity} 舍入到 {quantity}（step_size={step_size}）。"
+                                )
+                            
+                            # Final quantity validation: ensure quantity is divisible by step_size
+                            # 最终数量验证：确保数量可被 step_size 整除
+                            if step_size and step_size > 0:
+                                from decimal import Decimal
+                                quantity_decimal = Decimal(str(quantity))
+                                step_size_decimal = Decimal(str(step_size))
+                                remainder_decimal = quantity_decimal % step_size_decimal
+                                
+                                remainder_abs = abs(remainder_decimal)
+                                if remainder_abs > Decimal('1e-10'):
+                                    # Re-round quantity using Decimal arithmetic to ensure exact divisibility
+                                    # 使用 Decimal 算术重新舍入数量以确保精确可整除
+                                    original_quantity_before_final_round = quantity
+                                    ticks_decimal = quantity_decimal / step_size_decimal
+                                    ticks_floor = ticks_decimal.quantize(Decimal("1"), rounding=ROUND_FLOOR)
+                                    quantity_rounded_decimal = ticks_floor * step_size_decimal
+                                    quantity = float(quantity_rounded_decimal)
+                                    
+                                    logger.warning(
+                                        f"Final quantity rounding: {original_quantity_before_final_round} -> {quantity} "
+                                        f"(step_size={step_size}, remainder before: {float(remainder_decimal)}). "
+                                        f"最终数量舍入: {original_quantity_before_final_round} -> {quantity} "
+                                        f"（step_size={step_size}，舍入前余数: {float(remainder_decimal)}）。"
+                                    )
+                                
+                                # Log final quantity and step_size for debugging
+                                # 记录最终数量和 step_size 用于调试
+                                final_quantity_decimal = Decimal(str(quantity))
+                                final_remainder = final_quantity_decimal % step_size_decimal
+                                logger.debug(
+                                    f"Final order quantity: {quantity}, step_size: {step_size}, "
+                                    f"quantity % step_size (Decimal): {float(final_remainder)}. "
+                                    f"最终订单数量: {quantity}，step_size: {step_size}，"
+                                    f"quantity % step_size (Decimal): {float(final_remainder)}。"
+                                )
+                        except Exception as e:
+                            logger.warning(
+                                f"Error during quantity rounding: {e}. Proceeding with original quantity. "
+                                f"数量舍入时出错: {e}。继续使用原始数量。",
+                                exc_info=True,
+                            )
+                        
+                        # Final price rounding check before sending to SDK
+                        # 在发送到 SDK 之前进行最终价格舍入检查
+                        # This ensures price is always properly aligned, even if price validation block didn't execute
+                        # 这确保价格始终正确对齐，即使价格验证块未执行
+                        if order_type_str == "limit" and price > 0:
+                            try:
+                                # Re-fetch tick_size if not already available
+                                # 如果尚未可用，重新获取 tick_size
+                                if 'tick_size' not in locals() or tick_size is None or tick_size <= 0:
+                                    # Try to get from market_data first
+                                    # 首先尝试从 market_data 获取
+                                    if 'market_data' in locals() and market_data:
+                                        tick_size = market_data.get("tick_size")
+                                    
+                                    # If still not available, resolve from meta
+                                    # 如果仍不可用，从 meta 解析
+                                    if tick_size is None or tick_size <= 0:
+                                        tick_size = self._resolve_tick_size(
+                                            coin, market_data if 'market_data' in locals() else {}
+                                        )
+                                
+                                # Final price rounding to ensure exact divisibility
+                                # 最终价格舍入以确保精确可整除
+                                if tick_size and tick_size > 0:
+                                    from decimal import Decimal, ROUND_FLOOR
+                                    price_decimal = Decimal(str(price))
+                                    tick_size_decimal = Decimal(str(tick_size))
+                                    remainder_decimal = price_decimal % tick_size_decimal
+                                    
+                                    if abs(remainder_decimal) > Decimal('1e-10'):
+                                        # Round price down to nearest tick
+                                        # 将价格向下舍入到最近的 tick
+                                        ticks_decimal = price_decimal / tick_size_decimal
+                                        ticks_floor = ticks_decimal.quantize(Decimal("1"), rounding=ROUND_FLOOR)
+                                        price_rounded_decimal = ticks_floor * tick_size_decimal
+                                        price = float(price_rounded_decimal)
+                                        
+                                        logger.debug(
+                                            f"Final price rounding before SDK: {price} (tick_size={tick_size}). "
+                                            f"SDK 前的最终价格舍入: {price}（tick_size={tick_size}）。"
+                                        )
+                            except Exception as e:
+                                logger.warning(
+                                    f"Error during final price rounding: {e}. Proceeding with current price. "
+                                    f"最终价格舍入时出错: {e}。继续使用当前价格。",
+                                    exc_info=True,
                                 )
                         
                         # Place order using SDK

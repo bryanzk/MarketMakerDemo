@@ -211,8 +211,44 @@ async def _prepare_market_context_for_evaluation(symbol: str, exchange_name: str
             win_rate = winning / len(trades) if len(trades) > 0 else 0.0
             recent_pnl = sum(t.get("pnl", 0) for t in trades[-10:])
 
-    volatility_24h = 0.03
-    volatility_1h = 0.01
+    # Calculate volatility from exchange historical data / 从交易所历史数据计算波动率
+    volatility_24h = 0.03  # Default fallback / 默认回退值
+    volatility_1h = 0.01  # Default fallback / 默认回退值
+    
+    try:
+        from src.trading.volatility import calculate_volatility_1h_24h, VolatilityCalculator
+        
+        # Get exchange client / 获取交易所客户端
+        # Note: exchange is already fetched above, reuse it
+        # 注意：exchange 已在上面获取，直接复用
+        if exchange:
+            # Initialize calculator with caching / 使用缓存初始化计算器
+            calculator = VolatilityCalculator(cache_ttl=300)  # Cache for 5 minutes / 缓存 5 分钟
+            
+            # Calculate volatility from historical prices / 从历史价格计算波动率
+            volatility_1h, volatility_24h = calculate_volatility_1h_24h(
+                exchange, symbol, calculator=calculator
+            )
+            
+            logger.info(
+                f"Calculated volatility for {symbol}: 1h={volatility_1h:.4%}, 24h={volatility_24h:.4%}. "
+                f"计算 {symbol} 的波动率: 1小时={volatility_1h:.4%}, 24小时={volatility_24h:.4%}。",
+                extra={"trace_id": trace_id}
+            )
+        else:
+            logger.warning(
+                f"Exchange {exchange_name} not found. Using default volatility values. "
+                f"未找到交易所 {exchange_name}。使用默认波动率值。",
+                extra={"trace_id": trace_id}
+            )
+    except Exception as e:
+        logger.warning(
+            f"Error calculating volatility from exchange data: {e}. Using default values. "
+            f"从交易所数据计算波动率时出错: {e}。使用默认值。",
+            exc_info=True,
+            extra={"trace_id": trace_id, "symbol": symbol, "exchange": exchange_name}
+        )
+    
     symbol_with_exchange = _format_symbol_with_exchange(symbol, exchange_name)
 
     context = MarketContext(

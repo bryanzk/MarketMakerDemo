@@ -15,6 +15,13 @@ import pytest
 
 from src.trading.hyperliquid_client import HyperliquidClient
 
+# Valid test private key (64 hex characters, within valid range) to avoid warnings in tests
+# 有效的测试私钥（64 个十六进制字符，在有效范围内）以避免测试中的警告
+# For tests, we expect the warning and fallback to placeholder
+# 对于测试，我们期望警告并回退到占位符
+VALID_TEST_PRIVATE_KEY = "1" * 64
+VALID_TEST_API_KEY = "test_key"
+
 
 class TestHyperliquidOrderManagementSmoke:
     """
@@ -28,8 +35,8 @@ class TestHyperliquidOrderManagementSmoke:
     @patch.dict(
         os.environ,
         {
-            "HYPERLIQUID_API_KEY": "test_key",
-            "HYPERLIQUID_API_SECRET": "test_secret",
+            "HYPERLIQUID_API_KEY": VALID_TEST_API_KEY,
+            "HYPERLIQUID_API_SECRET": VALID_TEST_PRIVATE_KEY,
         },
     )
     @patch("src.trading.hyperliquid_client.requests")
@@ -49,32 +56,38 @@ class TestHyperliquidOrderManagementSmoke:
 
         # Initialize client
         client = HyperliquidClient()
-
-        # Mock successful order placement
-        order_response = MagicMock()
-        order_response.status_code = 200
-        order_response.json.return_value = {
+        
+        # Set symbol to avoid symbol_not_set error / 设置交易对以避免 symbol_not_set 错误
+        client.symbol = "ETH/USDT:USDT"
+        
+        # Mock _exchange to simulate SDK availability
+        # Mock _exchange 以模拟 SDK 可用性
+        mock_exchange = MagicMock()
+        mock_exchange.order.return_value = {
             "status": "ok",
             "response": {
                 "type": "order",
                 "data": {"statuses": [{"resting": {"oid": 12345}}]},
             },
         }
-        mock_requests.post.return_value = order_response
+        client._exchange = mock_exchange
 
-        # Place limit order
+        # Place limit order (with sufficient value to pass validation: 3000.0 * 0.01 = $30.0)
+        # 下单（使用足够的价值以通过验证：3000.0 * 0.01 = $30.0）
         orders = [{"side": "buy", "price": 3000.0, "quantity": 0.01, "type": "limit"}]
         result = client.place_orders(orders)
 
         # Verify order was placed
         assert result is not None
-        assert mock_requests.post.called
+        # Verify SDK was called (if available) or manual implementation was used
+        # 验证 SDK 被调用（如果可用）或使用了手动实现
+        assert mock_exchange.order.called or mock_requests.post.called
 
     @patch.dict(
         os.environ,
         {
-            "HYPERLIQUID_API_KEY": "test_key",
-            "HYPERLIQUID_API_SECRET": "test_secret",
+            "HYPERLIQUID_API_KEY": VALID_TEST_API_KEY,
+            "HYPERLIQUID_API_SECRET": VALID_TEST_PRIVATE_KEY,
         },
     )
     @patch("src.trading.hyperliquid_client.requests")
@@ -94,27 +107,32 @@ class TestHyperliquidOrderManagementSmoke:
 
         # Initialize client
         client = HyperliquidClient()
-
-        # Mock successful order cancellation
-        cancel_response = MagicMock()
-        cancel_response.status_code = 200
-        cancel_response.json.return_value = {
+        
+        # Set symbol to avoid symbol_not_set error / 设置交易对以避免 symbol_not_set 错误
+        client.symbol = "ETH/USDT:USDT"
+        
+        # Mock _exchange to simulate SDK availability
+        # Mock _exchange 以模拟 SDK 可用性
+        mock_exchange = MagicMock()
+        mock_exchange.bulk_cancel.return_value = {
             "status": "ok",
             "response": {"type": "cancel", "data": {"statuses": [{"filled": None}]}},
         }
-        mock_requests.post.return_value = cancel_response
+        client._exchange = mock_exchange
 
-        # Cancel order
-        result = client.cancel_orders(["order_12345"])
+        # Cancel order (using numeric order ID format that SDK expects)
+        # 取消订单（使用 SDK 期望的数字订单 ID 格式）
+        result = client.cancel_orders(["12345"])
 
-        # Verify cancellation was attempted
-        assert mock_requests.post.called
+        # Verify cancellation was attempted via SDK
+        # 验证通过 SDK 尝试了取消
+        assert mock_exchange.bulk_cancel.called
 
     @patch.dict(
         os.environ,
         {
-            "HYPERLIQUID_API_KEY": "test_key",
-            "HYPERLIQUID_API_SECRET": "test_secret",
+            "HYPERLIQUID_API_KEY": VALID_TEST_API_KEY,
+            "HYPERLIQUID_API_SECRET": VALID_TEST_PRIVATE_KEY,
         },
     )
     @patch("src.trading.hyperliquid_client.requests")
@@ -162,8 +180,8 @@ class TestHyperliquidOrderManagementSmoke:
     @patch.dict(
         os.environ,
         {
-            "HYPERLIQUID_API_KEY": "test_key",
-            "HYPERLIQUID_API_SECRET": "test_secret",
+            "HYPERLIQUID_API_KEY": VALID_TEST_API_KEY,
+            "HYPERLIQUID_API_SECRET": VALID_TEST_PRIVATE_KEY,
         },
     )
     @patch("src.trading.hyperliquid_client.requests")
@@ -202,8 +220,8 @@ class TestHyperliquidOrderManagementSmoke:
     @patch.dict(
         os.environ,
         {
-            "HYPERLIQUID_API_KEY": "test_key",
-            "HYPERLIQUID_API_SECRET": "test_secret",
+            "HYPERLIQUID_API_KEY": VALID_TEST_API_KEY,
+            "HYPERLIQUID_API_SECRET": VALID_TEST_PRIVATE_KEY,
         },
     )
     @patch("src.trading.hyperliquid_client.requests")

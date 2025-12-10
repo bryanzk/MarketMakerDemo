@@ -40,14 +40,16 @@ class TestDynamicSpreadSmoke:
         # Should have both orders
         assert len(orders) == 2
         
-        # Spread should be reduced (0.8 * 1.5% = 1.2%)
+        # Spread should be reduced (0.5 * 1.5% = 0.75%)
+        # Note: Low volatility multiplier changed from 0.8 to 0.5 for more aggressive reduction
+        # 注意：低波动率倍数从 0.8 改为 0.5 以实现更激进的降低
         buy_price = orders[0]["price"]
         sell_price = orders[1]["price"]
         actual_spread = (sell_price - buy_price) / market_data["mid_price"]
         
-        # Should be approximately 1.2% (reduced from 1.5%)
+        # Should be approximately 0.75% (reduced from 1.5% using 0.5 multiplier)
         assert actual_spread < 0.015  # Less than base spread
-        assert actual_spread == pytest.approx(0.012, abs=0.001)
+        assert actual_spread == pytest.approx(0.0075, abs=0.001)
 
     def test_dynamic_spread_high_volatility_smoke(self):
         """

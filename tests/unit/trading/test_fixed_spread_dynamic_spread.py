@@ -30,8 +30,9 @@ class TestFixedSpreadDynamicSpread:
         # Low volatility: 1% (1h)
         adjusted_spread = self.strategy.calculate_adaptive_spread(volatility_1h=0.01)
         
-        # Should reduce spread by 20% (multiplier = 0.8)
-        expected_spread = 0.015 * 0.8  # 1.2%
+        # Should reduce spread by 50% (multiplier = 0.5) for more aggressive pricing
+        # 应该将价差减少 50%（乘数 = 0.5）以获得更激进的价格
+        expected_spread = 0.015 * 0.5  # 0.75%
         assert adjusted_spread == pytest.approx(expected_spread, rel=1e-6)
         assert adjusted_spread < self.strategy.base_spread
 
@@ -94,7 +95,8 @@ class TestFixedSpreadDynamicSpread:
         )
         
         # Should use 1h volatility (low), so spread reduced
-        expected_spread = 0.015 * 0.8  # 1.2%
+        # 应该使用 1h 波动率（低），因此价差减小
+        expected_spread = 0.015 * 0.5  # 0.75% (more aggressive reduction)
         assert adjusted_spread == pytest.approx(expected_spread, rel=1e-6)
 
     def test_calculate_adaptive_spread_fallback_to_24h(self):
@@ -144,15 +146,17 @@ class TestFixedSpreadDynamicSpread:
         orders = self.strategy.calculate_target_orders(market_data)
 
         assert len(orders) == 2
-        # Spread should be reduced (0.8 * 1.5% = 1.2%)
-        # Buy: 3000 * (1 - 0.012/2) = 3000 * 0.994 = 2982
-        # Sell: 3000 * (1 + 0.012/2) = 3000 * 1.006 = 3018
+        # Spread should be reduced (0.5 * 1.5% = 0.75%) for more aggressive pricing
+        # 价差应该减小（0.5 * 1.5% = 0.75%）以获得更激进的价格
+        # Buy: 3000 * (1 - 0.0075/2) = 3000 * 0.99625 = 2988.75
+        # Sell: 3000 * (1 + 0.0075/2) = 3000 * 1.00375 = 3011.25
         buy_price = orders[0]["price"]
         sell_price = orders[1]["price"]
         actual_spread = (sell_price - buy_price) / market_data["mid_price"]
         
-        # Should be approximately 1.2% (with rounding)
-        assert actual_spread == pytest.approx(0.012, abs=0.001)
+        # Should be approximately 0.75% (with rounding)
+        # 应该约为 0.75%（含四舍五入）
+        assert actual_spread == pytest.approx(0.0075, abs=0.001)
 
     def test_calculate_target_orders_with_volatility_high(self):
         """

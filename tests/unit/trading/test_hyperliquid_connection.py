@@ -236,18 +236,23 @@ class TestHyperliquidClientAuthenticationFailure:
 
         from src.trading.hyperliquid_client import (
             HyperliquidClient,
-            ConnectionError,
+            AuthenticationError,
         )
 
-        # Should raise ConnectionError (not AuthenticationError) when connection fails
-        # 连接失败时应抛出 ConnectionError（不是 AuthenticationError）
-        with pytest.raises(ConnectionError) as exc_info:
+        # Should raise AuthenticationError when credentials are invalid (401 status)
+        # 当凭证无效（401 状态）时应抛出 AuthenticationError
+        with pytest.raises(AuthenticationError) as exc_info:
             HyperliquidClient()
 
         error_message = str(exc_info.value)
-        # Verify error message indicates connection failure
-        # 验证错误消息表明连接失败
-        assert "connect" in error_message.lower() or "连接" in error_message or "Failed" in error_message
+        # Verify error message indicates authentication failure
+        # 验证错误消息表明认证失败
+        assert (
+            "authentication" in error_message.lower()
+            or "认证" in error_message
+            or "invalid" in error_message.lower()
+            or "无效" in error_message
+        )
 
     @patch.dict(os.environ, {}, clear=True)
     @patch("src.trading.hyperliquid_client.requests")

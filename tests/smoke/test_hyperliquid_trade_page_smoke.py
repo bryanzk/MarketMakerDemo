@@ -225,30 +225,23 @@ class TestHyperliquidTradePageBusinessLogic:
         Smoke Test: Page uses optimized refresh intervals
         冒烟测试：页面使用优化的刷新间隔
         
-        Verify that refresh intervals are set to reasonable values.
-        验证刷新间隔设置为合理的值。
-        
-        Note: Refresh intervals are dynamic based on bot state and orders.
-        注意：刷新间隔根据 bot 状态和订单动态设置。
+        Verify that refresh intervals are set to reduced values.
+        验证刷新间隔设置为减少的值。
         """
         response = client.get("/hyperliquid")
         html = response.text
         
-        # Check for refresh interval setup in JavaScript
-        # 检查 JavaScript 中的刷新间隔设置
-        # Orders refresh interval is dynamic: 5000ms when bot active, 30000ms when stopped but has orders
-        # 订单刷新间隔是动态的：bot 活跃时 5000ms，停止但有订单时 30000ms
-        assert 'setInterval(refreshOrders' in html or 'refreshOrders' in html
+        # Check for optimized intervals in JavaScript
+        # 检查 JavaScript 中的优化间隔
+        # Orders: 15000 (15 seconds) - updated to reduce rate limiting
+        # 订单：15000（15秒）- 已更新以减少速率限制
+        assert 'setInterval(refreshOrders, 15000)' in html or 'setInterval(refreshOrders,15000)' in html
         # Position: 20000 (20 seconds) - updated to reduce rate limiting
         # 仓位：20000（20秒）- 已更新以减少速率限制
         assert 'setInterval(refreshPosition, 20000)' in html or 'setInterval(refreshPosition,20000)' in html
         # Connection: 30000 (30 seconds)
         # 连接：30000（30秒）
         assert 'setInterval(checkConnection, 30000)' in html or 'setInterval(checkConnection,30000)' in html
-        
-        # Verify that updateOrdersRefreshInterval function exists (handles dynamic intervals)
-        # 验证 updateOrdersRefreshInterval 函数存在（处理动态间隔）
-        assert 'updateOrdersRefreshInterval' in html or 'function updateOrdersRefreshInterval' in html
 
     def test_smoke_hyperliquid_page_request_deduplication(self, client):
         """

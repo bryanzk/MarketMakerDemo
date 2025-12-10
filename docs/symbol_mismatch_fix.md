@@ -195,3 +195,4 @@ This indicates `self.symbol` was not updated correctly.
 2. Test with different symbols (BTC, ETH, SOL) to ensure correct behavior
 3. If issues persist, add more validation in `place_orders` to verify symbol before fetching market data
 
+

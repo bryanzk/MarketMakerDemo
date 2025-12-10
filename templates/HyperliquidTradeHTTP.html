@@ -3,7 +3,7 @@
 
 <head>
     <meta charset="UTF-8">
-    <title>Hyperliquid Trading Page / Hyperliquid 交易页面</title>
+    <title>Hyperliquid Trading Page (HTTP) / Hyperliquid 交易页面 (HTTP)</title>
     <style>
         body {
             margin: 0;
@@ -263,8 +263,8 @@
     <div class="page">
         <header>
             <div>
-                <h1 style="margin:0;">Hyperliquid Trading Page / Hyperliquid 交易页面</h1>
-                <div style="font-size:13px; color:#6b7280;">Dedicated interface for Hyperliquid exchange trading / 专用 Hyperliquid 交易所交易界面</div>
+                <h1 style="margin:0;">Hyperliquid Trading Page (HTTP) / Hyperliquid 交易页面 (HTTP)</h1>
+                <div style="font-size:13px; color:#6b7280;">Dedicated interface for Hyperliquid exchange trading using HTTP / 使用 HTTP 的专用 Hyperliquid 交易所交易界面</div>
             </div>
             <div style="display:flex; gap:12px; align-items:center;">
                 <span id="networkStatus" class="network-badge" style="display:none;">
@@ -614,7 +614,7 @@
     <script>
         const controlMessage = document.getElementById('controlMessage');
         let currentEvalSymbol = 'ETHUSDC';
-        let currentEvaluationWS = null; // Track current WebSocket connection for cancellation / 跟踪当前 WebSocket 连接以便取消
+        // HTTP version: No WebSocket connection tracking needed / HTTP 版本：不需要 WebSocket 连接跟踪
         let evaluationState = {
             loading: false,
             results: [],
@@ -623,190 +623,7 @@
             lastRunSymbol: null,
             lastRunAt: null,
             startTime: null,
-            elapsedInterval: null,
-            providers: ['Gemini', 'OpenAI', 'Claude'], // Expected providers
-            providerStatus: {}, // Track status for each provider
-            progress: { completed: 0, total: 0 },
         };
-
-        function getWebSocketUrl(path) {
-            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-            return `${protocol}//${window.location.host}${path}`;
-        }
-
-        function upsertEvaluationResult(result) {
-            const idx = evaluationState.results.findIndex(r => r.provider_name === result.provider_name);
-            if (idx >= 0) {
-                evaluationState.results[idx] = result;
-            } else {
-                evaluationState.results.push(result);
-            }
-            // Keep results sorted by rank if available
-            evaluationState.results.sort((a, b) => (a.rank || 0) - (b.rank || 0));
-        }
-
-        async function startEvaluationWebSocket(payload) {
-            return new Promise((resolve, reject) => {
-                let finished = false;
-                let ws;
-                try {
-                    ws = new WebSocket(getWebSocketUrl('/ws/evaluation'));
-                    // Store WebSocket reference for cancellation / 存储 WebSocket 引用以便取消
-                    currentEvaluationWS = ws;
-                } catch (err) {
-                    return reject(err);
-                }
-
-                ws.onopen = () => {
-                    ws.send(JSON.stringify(payload));
-                };
-
-                ws.onmessage = (event) => {
-                    let msg;
-                    try {
-                        msg = JSON.parse(event.data);
-                        console.log('WebSocket message received:', msg.type, msg); // Debug log / 调试日志
-                    } catch (err) {
-                        console.warn('Failed to parse WS message', err);
-                        return;
-                    }
-
-                    switch (msg.type) {
-                        case 'start':
-                            evaluationState.progress = {
-                                completed: 0,
-                                total: msg.total || payload.selected_models.length || evaluationState.providers.length
-                            };
-                            console.log('Evaluation started, total providers:', evaluationState.progress.total); // Debug log / 调试日志
-                            updateEvaluationUI();
-                            break;
-                        case 'progress':
-                            evaluationState.progress = {
-                                completed: msg.completed || 0,
-                                total: msg.total || evaluationState.progress.total || 0
-                            };
-                            // Update provider status if provider name is provided
-                            // 如果提供了提供商名称，更新提供商状态
-                            if (msg.provider) {
-                                const providerName = msg.provider;
-                                // Try exact match first / 先尝试精确匹配
-                                if (evaluationState.providerStatus[providerName]) {
-                                    evaluationState.providerStatus[providerName].status = 'in_progress';
-                                    evaluationState.providerStatus[providerName].step = msg.step || 0;
-                                    evaluationState.providerStatus[providerName].stepProgress = msg.stepProgress || 0;
-                                    if (msg.message) {
-                                        evaluationState.providerStatus[providerName].message = msg.message;
-                                    }
-                                } else {
-                                    // Try partial match (e.g., "Gemini" matches "Gemini (gemini-3-pro-preview)")
-                                    // 尝试部分匹配（例如，"Gemini" 匹配 "Gemini (gemini-3-pro-preview)"）
-                                    for (const key in evaluationState.providerStatus) {
-                                        if (providerName.startsWith(key) || key.startsWith(providerName.split(' ')[0])) {
-                                            evaluationState.providerStatus[key].status = 'in_progress';
-                                            evaluationState.providerStatus[key].step = msg.step || 0;
-                                            evaluationState.providerStatus[key].stepProgress = msg.stepProgress || 0;
-                                            if (msg.message) {
-                                                evaluationState.providerStatus[key].message = msg.message;
-                                            }
-                                            break;
-                                        }
-                                    }
-                                }
-                            }
-                            updateProgressDisplay();
-                            updateEvaluationUI();
-                            break;
-                        case 'model_done':
-                            if (msg.result) {
-                                upsertEvaluationResult(msg.result);
-                                evaluationState.lastRunSymbol = payload.symbol;
-                                evaluationState.lastRunAt = new Date().toISOString();
-                                // Immediately show results table when first result arrives / 第一个结果到达时立即显示结果表格
-                                const resultsWrapper = document.getElementById('evaluationResultsWrapper');
-                                if (resultsWrapper && evaluationState.results.length > 0) {
-                                    resultsWrapper.style.display = 'block';
-                                }
-                            }
-                            evaluationState.progress = {
-                                completed: msg.completed || evaluationState.progress.completed,
-                                total: msg.total || evaluationState.progress.total
-                            };
-                            // Match provider name (backend may send full name like "Gemini (gemini-3-pro-preview)")
-                            // 匹配提供商名称（后端可能发送完整名称如 "Gemini (gemini-3-pro-preview)"）
-                            if (msg.provider) {
-                                const providerName = msg.provider;
-                                // Try exact match first / 先尝试精确匹配
-                                if (evaluationState.providerStatus[providerName]) {
-                                    evaluationState.providerStatus[providerName].status = 'completed';
-                                    evaluationState.providerStatus[providerName].completedAt = Date.now();
-                                } else {
-                                    // Try partial match (e.g., "Gemini" matches "Gemini (gemini-3-pro-preview)")
-                                    // 尝试部分匹配（例如，"Gemini" 匹配 "Gemini (gemini-3-pro-preview)"）
-                                    for (const key in evaluationState.providerStatus) {
-                                        if (providerName.startsWith(key) || key.startsWith(providerName.split(' ')[0])) {
-                                            evaluationState.providerStatus[key].status = 'completed';
-                                            evaluationState.providerStatus[key].completedAt = Date.now();
-                                            break;
-                                        }
-                                    }
-                                }
-                            }
-                            // Update UI immediately to show new result / 立即更新 UI 以显示新结果
-                            updateEvaluationUI();
-                            updateProgressDisplay();
-                            break;
-                        case 'finished':
-                            if (msg.results) evaluationState.results = msg.results;
-                            if (msg.aggregated) evaluationState.aggregated = msg.aggregated;
-                            evaluationState.lastRunSymbol = msg.symbol || payload.symbol;
-                            evaluationState.lastRunAt = new Date().toISOString();
-                            evaluationState.progress = {
-                                completed: msg.results ? msg.results.length : evaluationState.progress.completed,
-                                total: msg.total || evaluationState.progress.total
-                            };
-                            evaluationState.loading = false;
-                            currentEvaluationWS = null; // Clear reference on completion / 完成时清除引用
-                            updateEvaluationUI();
-                            finished = true;
-                            ws.close();
-                            resolve();
-                            break;
-                        case 'error':
-                            evaluationState.lastError = msg.message || 'Evaluation error';
-                            evaluationState.loading = false;
-                            currentEvaluationWS = null; // Clear reference on error / 错误时清除引用
-                            updateEvaluationUI();
-                            finished = true;
-                            ws.close();
-                            reject(new Error(evaluationState.lastError));
-                            break;
-                        default:
-                            break;
-                    }
-                };
-
-                ws.onerror = () => {
-                    if (finished) return;
-                    evaluationState.lastError = 'WebSocket error / WebSocket错误';
-                    evaluationState.loading = false;
-                    currentEvaluationWS = null; // Clear reference on error / 错误时清除引用
-                    updateEvaluationUI();
-                    finished = true;
-                    reject(new Error('WebSocket error'));
-                };
-
-                ws.onclose = () => {
-                    if (finished) return;
-                    evaluationState.loading = false;
-                    currentEvaluationWS = null; // Clear reference on close / 关闭时清除引用
-                    updateEvaluationUI();
-                    // Only reject if not finished (e.g., cancelled) / 仅在未完成时拒绝（例如，已取消）
-                    if (!finished) {
-                        reject(new Error('WebSocket closed'));
-                    }
-                };
-            });
-        }
 
         function showMessage(el, text, isError = false) {
             if (!el) return;
@@ -1568,16 +1385,13 @@
             { en: 'Scoring', zh: '打分中', icon: '📈' },
         ];
 
+        // Simplified progress display for HTTP version / HTTP 版本的简化进度显示
         function updateProgressDisplay() {
             const progressPanel = document.getElementById('evaluationProgressPanel');
             if (!progressPanel) return;
 
             if (!evaluationState.loading) {
                 progressPanel.style.display = 'none';
-                if (evaluationState.elapsedInterval) {
-                    clearInterval(evaluationState.elapsedInterval);
-                    evaluationState.elapsedInterval = null;
-                }
                 return;
             }
 
@@ -1594,159 +1408,24 @@
                 }
             }
 
-            // Update overall progress / 更新总体进度
-            const completedCount = Object.values(evaluationState.providerStatus).filter(s => s.status === 'completed' || s.status === 'failed').length;
-            const totalCount = evaluationState.providers.length;
-            const progressPercent = totalCount > 0 ? (completedCount / totalCount) * 100 : 0;
-
-            const overallProgressText = document.getElementById('overallProgressText');
-            const overallProgressPercent = document.getElementById('overallProgressPercent');
-            const overallProgressBar = document.getElementById('overallProgressBar');
+            // Simple loading message for HTTP version / HTTP 版本的简单加载消息
             const overallStatusText = document.getElementById('overallStatusText');
             const overallStatusIcon = document.getElementById('overallStatusIcon');
-
-            if (overallProgressText) {
-                overallProgressText.innerText = `${completedCount} / ${totalCount} providers completed / ${completedCount} / ${totalCount} 个提供商已完成`;
+            if (overallStatusText) {
+                overallStatusText.innerText = 'Evaluation in Progress... Please wait. / 评估进行中... 请稍候。';
             }
-            if (overallProgressPercent) {
-                overallProgressPercent.innerText = `${Math.round(progressPercent)}%`;
-            }
-            if (overallProgressBar) {
-                overallProgressBar.style.width = `${progressPercent}%`;
+            if (overallStatusIcon) {
+                overallStatusIcon.innerText = '⏳';
             }
 
-            if (completedCount === totalCount && totalCount > 0) {
-                const hasFailed = Object.values(evaluationState.providerStatus).some(s => s.status === 'failed');
-                if (hasFailed && completedCount === totalCount) {
-                    if (overallStatusText) overallStatusText.innerText = 'Evaluation Failed / 评估失败';
-                    if (overallStatusIcon) overallStatusIcon.innerText = '✗';
-                } else {
-                    if (overallStatusText) overallStatusText.innerText = 'Evaluation Completed / 评估已完成';
-                    if (overallStatusIcon) overallStatusIcon.innerText = '✓';
-                }
-            } else {
-                if (overallStatusText) overallStatusText.innerText = 'Evaluation in Progress / 评估进行中';
-                if (overallStatusIcon) overallStatusIcon.innerText = '⏳';
-            }
-
-            // Update provider status list / 更新提供商状态列表
+            // Show simple loading message in provider list / 在提供商列表中显示简单加载消息
             const providerList = document.getElementById('providerStatusList');
             if (providerList) {
-                providerList.innerHTML = evaluationState.providers.map(providerName => {
-                    const status = evaluationState.providerStatus[providerName] || { status: 'pending', step: 0, stepProgress: 0 };
-                    const isActive = status.status === 'in_progress';
-                    const isCompleted = status.status === 'completed';
-                    const isFailed = status.status === 'failed';
-
-                    let statusClass = 'provider-status-item';
-                    if (isActive) statusClass += ' active';
-                    else if (isCompleted) statusClass += ' completed';
-                    else if (isFailed) statusClass += ' failed';
-
-                    let stepIndicator = '';
-                    let statusText = '';
-                    let progressBar = '';
-                    let elapsedTime = '';
-
-                    if (status.status === 'completed') {
-                        stepIndicator = `<span class="step-indicator completed">✓ Completed / 已完成</span>`;
-                        statusText = 'Completed / 已完成';
-                        if (status.completedAt) {
-                            const elapsed = Math.floor((status.completedAt - evaluationState.startTime) / 1000);
-                            elapsedTime = `<div style="font-size:11px; color:#6b7280; margin-top:4px;">Completed in ${elapsed}s / 完成于 ${elapsed}秒</div>`;
-                        }
-                    } else if (status.status === 'failed') {
-                        stepIndicator = `<span class="step-indicator failed">✗ Failed / 失败</span>`;
-                        statusText = status.error || 'Failed / 失败';
-                        if (status.failedAt) {
-                            const elapsed = Math.floor((status.failedAt - evaluationState.startTime) / 1000);
-                            elapsedTime = `<div style="font-size:11px; color:#6b7280; margin-top:4px;">Failed in ${elapsed}s / 失败于 ${elapsed}秒</div>`;
-                        }
-                    } else if (status.status === 'in_progress') {
-                        const stepInfo = STEP_NAMES[status.step] || STEP_NAMES[0];
-                        stepIndicator = `<span class="step-indicator active">Step ${status.step + 1}/6: ${stepInfo.en} / 步骤 ${status.step + 1}/6: ${stepInfo.zh}</span>`;
-                        statusText = `${stepInfo.icon} ${stepInfo.en}... / ${stepInfo.zh}...`;
-
-                        // Show progress bar for simulating step / 为模拟步骤显示进度条
-                        if (status.step === 4) { // Simulating step
-                            const simProgress = status.stepProgress || 0;
-                            progressBar = `
-                                <div style="margin-top:8px;">
-                                    <div style="font-size:11px; color:#6b7280; margin-bottom:2px;">
-                                        Simulating: ${simProgress}/500 steps (${Math.round(simProgress / 5)}%) / 模拟中: ${simProgress}/500 步 (${Math.round(simProgress / 5)}%)
-                                    </div>
-                                    <div class="individual-progress-bar">
-                                        <div class="individual-progress-bar-fill" style="width:${(simProgress / 500) * 100}%;"></div>
-                                    </div>
-                                </div>
-                            `;
-                        }
-                    } else {
-                        stepIndicator = `<span class="step-indicator">⏸ Pending / 等待中</span>`;
-                        statusText = 'Waiting... / 等待中...';
-                    }
-
-                    return `
-                        <div class="${statusClass}">
-                            <div style="display:flex; justify-content:space-between; align-items:center;">
-                                <div style="font-weight:bold; font-size:13px;">${providerName}</div>
-                                ${stepIndicator}
-                            </div>
-                            <div style="font-size:12px; color:#6b7280; margin-top:4px;">${statusText}</div>
-                            ${progressBar}
-                            ${elapsedTime}
-                        </div>
-                    `;
-                }).join('');
+                providerList.innerHTML = '<div style="padding:12px; text-align:center; color:#6b7280;">Loading evaluation results... / 正在加载评估结果...</div>';
             }
         }
 
-        function simulateProgress() {
-            // Simulate progress for each provider / 为每个提供商模拟进度
-            evaluationState.providers.forEach((providerName, index) => {
-                if (!evaluationState.providerStatus[providerName]) {
-                    evaluationState.providerStatus[providerName] = { status: 'pending', step: 0, stepProgress: 0 };
-                }
-
-                const status = evaluationState.providerStatus[providerName];
-                if (status.status === 'pending' || status.status === 'in_progress') {
-                    // Simulate step progression / 模拟步骤进展
-                    const delay = index * 2000; // Stagger providers / 错开提供商
-                    setTimeout(() => {
-                        status.status = 'in_progress';
-                        updateProgressDisplay();
-
-                        // Simulate each step / 模拟每个步骤
-                        STEP_NAMES.forEach((_, stepIndex) => {
-                            setTimeout(() => {
-                                status.step = stepIndex;
-                                if (stepIndex === 4) { // Simulating step
-                                    // Simulate simulation progress / 模拟模拟进度
-                                    let simProgress = 0;
-                                    const simInterval = setInterval(() => {
-                                        simProgress += 50;
-                                        status.stepProgress = Math.min(simProgress, 500);
-                                        updateProgressDisplay();
-                                        if (simProgress >= 500) {
-                                            clearInterval(simInterval);
-                                        }
-                                    }, 200);
-                                    setTimeout(() => clearInterval(simInterval), 10000);
-                                }
-                                updateProgressDisplay();
-                            }, stepIndex * 1500 + delay);
-                        });
-
-                        // Mark as completed after all steps / 所有步骤后标记为完成
-                        setTimeout(() => {
-                            status.status = 'completed';
-                            status.completedAt = Date.now();
-                            updateProgressDisplay();
-                        }, STEP_NAMES.length * 1500 + delay + 1000);
-                    }, delay);
-                }
-            });
-        }
+        // HTTP version: No progress simulation needed / HTTP 版本：不需要进度模拟
 
         function updateEvaluationUI() {
             const statusEl = document.getElementById('evaluationStatusText');
@@ -1759,11 +1438,7 @@
 
             if (runBtn) runBtn.disabled = evaluationState.loading;
             if (evaluationState.loading) {
-                if (evaluationState.progress && evaluationState.progress.total) {
-                    statusEl.innerText = `Running evaluation... ${evaluationState.progress.completed}/${evaluationState.progress.total} / 正在运行评估...`;
-                } else {
-                    statusEl.innerText = 'Running evaluation... Please wait. / 正在运行评估... 请稍候。';
-                }
+                statusEl.innerText = 'Running evaluation... Please wait. / 正在运行评估... 请稍候。';
             } else if (evaluationState.lastRunAt) {
                 statusEl.innerText = `Last run: ${evaluationState.lastRunSymbol} @ ${new Date(evaluationState.lastRunAt).toLocaleTimeString()} / 上次运行: ${evaluationState.lastRunSymbol} @ ${new Date(evaluationState.lastRunAt).toLocaleTimeString()}`;
             } else {
@@ -2060,44 +1735,33 @@
             evaluationState.startTime = Date.now();
             evaluationState.results = [];
             evaluationState.aggregated = null;
-            evaluationState.progress = { completed: 0, total: 0 };
-            evaluationState.providerStatus = {};
             
-            const modelToProviderName = {
-                'gemini': 'Gemini',
-                'openai': 'OpenAI',
-                'claude': 'Claude'
-            };
-            evaluationState.providers = selectedModels.map(m => modelToProviderName[m] || m);
-            evaluationState.providers.forEach(name => {
-                evaluationState.providerStatus[name] = { status: 'pending', step: 0, stepProgress: 0 };
-            });
-
-            if (evaluationState.elapsedInterval) clearInterval(evaluationState.elapsedInterval);
-            evaluationState.elapsedInterval = setInterval(() => {
-                updateProgressDisplay();
-            }, 1000);
-
             updateEvaluationUI();
 
-            // Use WebSocket streaming for real-time evaluation results / 使用 WebSocket 流式传输实时评估结果
-            const payload = {
-                symbol: getEvaluationSymbol(),
-                exchange: 'hyperliquid',
-                simulation_steps: 100,
-                selected_models: selectedModels
-            };
-
+            // Use HTTP POST for evaluation / 使用 HTTP POST 进行评估
             try {
-                await startEvaluationWebSocket(payload);
-            } catch (err) {
-                // Mark all providers as failed / 标记所有提供商为失败
-                evaluationState.providers.forEach(name => {
-                    evaluationState.providerStatus[name].status = 'failed';
-                    evaluationState.providerStatus[name].failedAt = Date.now();
-                    evaluationState.providerStatus[name].error = err.message;
+                const symbol = getEvaluationSymbol();
+                const res = await diagnosticFetch('/api/evaluation/run', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        symbol: symbol,
+                        exchange: 'hyperliquid',
+                        simulation_steps: 100,
+                        selected_models: selectedModels
+                    }),
                 });
                 
+                const data = await res.json();
+                if (data.error) throw new Error(data.error);
+                
+                // Process results / 处理结果
+                evaluationState.results = data.individual_results || [];
+                evaluationState.aggregated = data.aggregated || null;
+                evaluationState.lastRunSymbol = data.symbol || symbol;
+                evaluationState.lastRunAt = new Date().toISOString();
+                
+            } catch (err) {
                 // Extract error message / 提取错误消息
                 let errorMessage = err.message || 'Failed to run evaluation / 运行评估失败';
                 
@@ -2141,14 +1805,9 @@
                 }
                 
                 evaluationState.lastError = errorMessage;
+            } finally {
                 evaluationState.loading = false;
                 updateEvaluationUI();
-            } finally {
-                // Note: loading state and interval are managed by startEvaluationWebSocket / 注意：loading 状态和 interval 由 startEvaluationWebSocket 管理
-                if (evaluationState.elapsedInterval) {
-                    clearInterval(evaluationState.elapsedInterval);
-                    evaluationState.elapsedInterval = null;
-                }
             }
         }
 

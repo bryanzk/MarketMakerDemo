@@ -914,6 +914,14 @@ async def hyperliquid_trade_page(request: Request):
     """Render dedicated Hyperliquid Trading page / 渲染专用 Hyperliquid 交易页面"""
     return templates.TemplateResponse(request, "HyperliquidTrade.html")
 
+@app.get("/hyperliquid-trade-http", response_class=HTMLResponse)
+async def hyperliquid_trade_http(request: Request):
+    """
+    Hyperliquid trading page using HTTP evaluation (no WebSocket).
+    Hyperliquid 交易页面，使用 HTTP 评估（无 WebSocket）。
+    """
+    return templates.TemplateResponse(request, "HyperliquidTradeHTTP.html")
+
 
 @app.get("/api/debug/balance")
 async def debug_balance():
@@ -3855,6 +3863,20 @@ async def update_hyperliquid_pair(request: Request, pair: PairUpdate):
             )
 
         target_strategy_id = pair.strategy_id or "default"
+        
+        # Check if strategy instance exists / 检查策略实例是否存在
+        if target_strategy_id not in bot_engine.strategy_instances:
+            logger.error(
+                f"Strategy instance '{target_strategy_id}' not found. Available instances: {list(bot_engine.strategy_instances.keys())}"
+            )
+            return create_error_response(
+                ValueError(
+                    f"Strategy instance '{target_strategy_id}' not found. Available instances: {list(bot_engine.strategy_instances.keys())}"
+                ),
+                error_code="STRATEGY_INSTANCE_NOT_FOUND",
+                details=request_context,
+            )
+        
         success = bot_engine.set_symbol(pair.symbol, strategy_id=target_strategy_id)
 
         if success:
@@ -3873,6 +3895,9 @@ async def update_hyperliquid_pair(request: Request, pair: PairUpdate):
                         # Refresh again after setting symbol / 设置交易对后再次刷新
                         target_instance.refresh_data()
 
+            logger.info(
+                f"Successfully updated symbol to {pair.symbol} for strategy '{target_strategy_id}'"
+            )
             return {
                 "status": "updated",
                 "symbol": pair.symbol,
@@ -3880,9 +3905,14 @@ async def update_hyperliquid_pair(request: Request, pair: PairUpdate):
                 "trace_id": trace_id,
             }
         else:
+            logger.error(
+                f"Failed to update symbol to {pair.symbol} for strategy '{target_strategy_id}'. "
+                f"Check if exchange.set_symbol() returned False or if _initialize_symbol() raised an exception."
+            )
             return create_error_response(
                 ValueError(
-                    f"Failed to update to symbol {pair.symbol} for strategy '{target_strategy_id}'"
+                    f"Failed to update to symbol {pair.symbol} for strategy '{target_strategy_id}'. "
+                    f"Check server logs for details."
                 ),
                 error_code="PAIR_UPDATE_FAILED",
                 details=request_context,

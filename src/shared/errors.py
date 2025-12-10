@@ -114,6 +114,7 @@ class StandardErrorResponse:
         """
         result = {
             "error": self.error,
+            "ok": False,  # Always False for error responses / 错误响应始终为 False
             "error_type": self.error_type.value,
             "error_code": self.error_code,
             "message": self.message,

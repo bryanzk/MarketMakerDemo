@@ -249,17 +249,6 @@ class TestHyperliquidLLMEvaluation:
             providers.append(mock)
         return providers
 
-    @pytest.fixture
-    def mock_provider_availability(self, mock_llm_providers):
-        """Create mock get_provider_availability return value / 创建模拟 get_provider_availability 返回值"""
-        available = [
-            {"name": p.name, "provider": p} for p in mock_llm_providers
-        ]
-        return {
-            "available": available,
-            "unavailable": []
-        }
-
     def test_page_contains_llm_evaluation_section(self):
         """
         Test AC-4: Page contains LLM evaluation section
@@ -280,17 +269,14 @@ class TestHyperliquidLLMEvaluation:
         assert "evaluation" in html.lower() or "评估" in html
         assert "runEvaluation" in html or "Run Evaluation" in html
 
-    @patch("server.get_provider_availability")
     @patch("server.create_all_providers")
     @patch("server.get_exchange_by_name")
     def test_llm_evaluation_uses_hyperliquid_exchange(
         self,
         mock_get_exchange,
         mock_create_providers,
-        mock_get_provider_availability,
         mock_hyperliquid_client,
         mock_llm_providers,
-        mock_provider_availability,
     ):
         """
         Test AC-4: LLM evaluation uses Hyperliquid exchange parameter
@@ -302,7 +288,6 @@ class TestHyperliquidLLMEvaluation:
         """
         mock_get_exchange.return_value = mock_hyperliquid_client
         mock_create_providers.return_value = mock_llm_providers
-        mock_get_provider_availability.return_value = mock_provider_availability
 
         mock_bot_engine = Mock()
         mock_bot_engine.data = Mock()

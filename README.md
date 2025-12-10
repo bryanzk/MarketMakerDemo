@@ -308,6 +308,70 @@ ANTHROPIC_API_KEY=your_anthropic_api_key
 
 **⚠️ Security Note / 安全提示：**
 - Never commit `.env` file to Git (already in `.gitignore`)
+- Never share API keys in public channels / 不要在公共渠道分享 API 密钥
+
+#### 5. Verify Environment / 验证环境
+
+Before starting the server, verify your environment is correctly configured:
+在启动服务器之前，验证您的环境是否正确配置：
+
+```bash
+# Run environment verification script / 运行环境验证脚本
+./scripts/verify_server_env.sh
+```
+
+This script checks:
+此脚本检查：
+- ✓ Virtual environment setup / 虚拟环境设置
+- ✓ Required Python packages / 必需的 Python 包
+- ✓ Environment file configuration / 环境文件配置
+- ✓ Working directory / 工作目录
+- ✓ Python interpreter / Python 解释器
+
+#### 6. Start the Server / 启动服务器
+
+**Important: Always use the standardized startup script / 重要：始终使用标准化启动脚本**
+
+```bash
+# Standardized startup (recommended) / 标准化启动（推荐）
+./start_server.sh
+```
+
+The `start_server.sh` script ensures:
+`start_server.sh` 脚本确保：
+- ✓ Consistent working directory / 一致的工作目录
+- ✓ Virtual environment activation / 虚拟环境激活
+- ✓ Correct Python interpreter / 正确的 Python 解释器
+- ✓ Proper PYTHONPATH configuration / 正确的 PYTHONPATH 配置
+- ✓ Environment variable loading / 环境变量加载
+
+**Why use the standardized script? / 为什么使用标准化脚本？**
+
+Different agents (Agent TRADING, Agent WEB, Agent AI, etc.) may start the server from different contexts. The standardized script ensures all agents use the same environment configuration, preventing issues like:
+不同的 agent（Agent TRADING、Agent WEB、Agent AI 等）可能从不同的上下文启动服务器。标准化脚本确保所有 agent 使用相同的环境配置，防止以下问题：
+- ❌ Missing environment variables / 缺少环境变量
+- ❌ Wrong Python interpreter / 错误的 Python 解释器
+- ❌ Incorrect working directory / 不正确的工作目录
+- ❌ PYTHONPATH misconfiguration / PYTHONPATH 配置错误
+
+**Alternative: Manual startup (not recommended) / 替代方案：手动启动（不推荐）**
+
+If you must start manually, ensure:
+如果您必须手动启动，请确保：
+
+```bash
+# 1. Activate virtual environment / 激活虚拟环境
+source .venv/bin/activate
+
+# 2. Set working directory / 设置工作目录
+cd /path/to/MarketMakerDemo
+
+# 3. Set PYTHONPATH / 设置 PYTHONPATH
+export PYTHONPATH="$(pwd):${PYTHONPATH}"
+
+# 4. Start server / 启动服务器
+python server.py
+```
 - 永远不要将 `.env` 文件提交到 Git（已在 `.gitignore` 中）
 - Keep your API keys secure and never share them
 - 妥善保管 API 密钥，不要分享

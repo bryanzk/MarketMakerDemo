@@ -195,16 +195,19 @@ class TestEngineErrorHistoryTraceId:
         trace_id = generate_trace_id()
         set_trace_id(trace_id)
 
-        # Create engine and run cycle
-        engine = AlphaLoop()
+        # Create engine with hyperliquid_only=False to get default instance
+        # 创建引擎时设置 hyperliquid_only=False 以获取 default 实例
+        engine = AlphaLoop(hyperliquid_only=False)
         engine.run_cycle()
 
         # Check error_history
-        default_instance = engine.strategy_instances.get("default")
-        assert default_instance is not None
+        # In Hyperliquid-only mode, use hyperliquid instance; otherwise use default
+        # 在 Hyperliquid-only 模式下，使用 hyperliquid 实例；否则使用 default
+        instance = engine.strategy_instances.get("default") or engine.strategy_instances.get("hyperliquid")
+        assert instance is not None, "Expected either default or hyperliquid instance"
 
         # Find the cycle_error in error_history
-        errors = [e for e in default_instance.error_history if e.get("type") == "cycle_error"]
+        errors = [e for e in instance.error_history if e.get("type") == "cycle_error"]
         assert len(errors) > 0, "Expected cycle_error in error_history"
 
         error = errors[0]
@@ -282,16 +285,19 @@ class TestEngineErrorHistoryTraceId:
         mock_strategy_cls.return_value = Mock()
 
         # Don't set trace_id
-        # Create engine and run cycle
-        engine = AlphaLoop()
+        # Create engine with hyperliquid_only=False to get default instance
+        # 创建引擎时设置 hyperliquid_only=False 以获取 default 实例
+        engine = AlphaLoop(hyperliquid_only=False)
         engine.run_cycle()
 
         # Check error_history
-        default_instance = engine.strategy_instances.get("default")
-        assert default_instance is not None
+        # In Hyperliquid-only mode, use hyperliquid instance; otherwise use default
+        # 在 Hyperliquid-only 模式下，使用 hyperliquid 实例；否则使用 default
+        instance = engine.strategy_instances.get("default") or engine.strategy_instances.get("hyperliquid")
+        assert instance is not None, "Expected either default or hyperliquid instance"
 
         # Find the error in error_history
-        errors = [e for e in default_instance.error_history if e.get("type") == "invalid_order"]
+        errors = [e for e in instance.error_history if e.get("type") == "invalid_order"]
         if errors:
             error = errors[0]
             # trace_id should be None if not set

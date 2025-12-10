@@ -10,9 +10,10 @@ Using pytest_configure hook to apply Mocks before test collection.
 """
 
 import sys
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
+from fastapi.testclient import TestClient
 
 # Global patches that persist for the entire test session
 # 在整个测试会话中持续存在的全局 patches
@@ -69,4 +70,40 @@ def pytest_unconfigure(config):
         _volatility_patch.stop()
     if _simulation_patch:
         _simulation_patch.stop()
+
+
+@pytest.fixture(scope="session")
+def mock_bot_engine_before_import():
+    """
+    Mock bot_engine initialization before server module is imported.
+    This prevents expensive AlphaLoop() initialization during tests.
+    
+    在导入服务器模块之前 mock bot_engine 初始化。
+    这防止测试期间昂贵的 AlphaLoop() 初始化。
+    """
+    # Mock AlphaLoop before importing server to avoid expensive initialization
+    # 在导入 server 之前 mock AlphaLoop 以避免昂贵的初始化
+    with patch("src.trading.engine.AlphaLoop", return_value=MagicMock()):
+        yield
+
+
+@pytest.fixture(scope="session")
+def test_client(mock_bot_engine_before_import):
+    """
+    Shared TestClient fixture to avoid repeated server module imports.
+    Session-scoped to cache the client across all tests in the session.
+    
+    共享 TestClient fixture 以避免重复导入服务器模块。
+    会话作用域，以便在会话中的所有测试之间缓存客户端。
+    """
+    # Import server after mocks are in place
+    # 在 mock 就位后导入 server
+    import server
+    
+    # Ensure bot_engine is mocked even if it was already initialized
+    # 确保 bot_engine 被 mock，即使它已经被初始化
+    if not isinstance(server.bot_engine, MagicMock):
+        server.bot_engine = MagicMock()
+    
+    return TestClient(server.app)
 

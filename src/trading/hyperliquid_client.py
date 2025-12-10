@@ -419,15 +419,39 @@ class HyperliquidClient:
                 )
             if EthAccount:
                 try:
-                    # Normalize key format (ensure 0x prefix)
-                    # 规范化密钥格式（确保0x前缀）
-                    original_key = str(self.api_secret)
-                    key = (
-                        self.api_secret
-                        if original_key.startswith("0x")
-                        else f"0x{self.api_secret}"
-                    )
+                    # Clean and normalize private key format
+                    # 清理并规范化私钥格式
+                    original_key = str(self.api_secret).strip()
+                    
+                    # Remove whitespace, newlines, and other non-hex characters
+                    # 移除空格、换行符和其他非十六进制字符
+                    cleaned_key = "".join(c for c in original_key if c.isalnum() or c in "x")
+                    
+                    # Remove 0x prefix if present (we'll add it back)
+                    # 如果存在 0x 前缀则移除（稍后会重新添加）
+                    if cleaned_key.startswith("0x") or cleaned_key.startswith("0X"):
+                        cleaned_key = cleaned_key[2:]
+                    
+                    # Validate hex format (must be 64 hex characters for 32 bytes)
+                    # 验证十六进制格式（必须是 64 个十六进制字符，对应 32 字节）
+                    if not all(c in "0123456789abcdefABCDEF" for c in cleaned_key):
+                        raise ValueError(
+                            f"Private key contains non-hexadecimal characters. "
+                            f"私钥包含非十六进制字符。"
+                            f"Cleaned key preview: {cleaned_key[:20]}...{cleaned_key[-10:] if len(cleaned_key) > 30 else ''}"
+                        )
+                    
+                    if len(cleaned_key) != 64:
+                        raise ValueError(
+                            f"Private key length is {len(cleaned_key)}, expected 64 hex characters (32 bytes). "
+                            f"私钥长度为 {len(cleaned_key)}，期望 64 个十六进制字符（32 字节）。"
+                        )
+                    
+                    # Add 0x prefix for eth_account
+                    # 为 eth_account 添加 0x 前缀
+                    key = f"0x{cleaned_key}"
                     key_length = len(key)
+                    
                     logger.info(
                         f"Attempting to create account from key. "
                         f"Key length: {key_length}, "
@@ -494,13 +518,27 @@ class HyperliquidClient:
                             f"如果您使用 API 钱包模式，请在 .env 文件中设置 HYPERLIQUID_WALLET_ADDRESS。"
                         )
                 except Exception as e:
+                    # Log detailed error information for debugging
+                    # 记录详细的错误信息用于调试
+                    original_key_str = str(self.api_secret)
+                    key_preview = (
+                        f"{original_key_str[:20]}...{original_key_str[-10:]}"
+                        if len(original_key_str) > 30
+                        else original_key_str[:30]
+                    )
+                    
                     logger.warning(
                         f"Failed to initialize Ethereum account for signing: {e}. "
-                        f"API secret format may be invalid (expected hex private key). "
-                        f"Key length: {len(key)}, Key preview: {key[:20]}... "
+                        f"API secret format may be invalid (expected 64-character hex private key). "
+                        f"Original key length: {len(original_key_str)}, "
+                        f"Key preview: {key_preview}. "
+                        f"Please ensure HYPERLIQUID_API_SECRET is a valid 64-character hexadecimal private key "
+                        f"(with or without 0x prefix). "
                         f"Signature-based authentication will fall back to placeholder. "
-                        f"初始化以太坊账户失败: {e}。API密钥格式可能无效（期望十六进制私钥）。"
-                        f"密钥长度: {len(key)}。签名将使用占位符。",
+                        f"初始化以太坊账户失败: {e}。API密钥格式可能无效（期望 64 字符的十六进制私钥）。"
+                        f"原始密钥长度: {len(original_key_str)}，密钥预览: {key_preview}。"
+                        f"请确保 HYPERLIQUID_API_SECRET 是有效的 64 字符十六进制私钥（带或不带 0x 前缀）。"
+                        f"签名将使用占位符。",
                         exc_info=True,
                     )
         else:
@@ -709,6 +747,19 @@ class HyperliquidClient:
                         f"Hyperliquid client connected successfully (testnet={self.testnet}, attempt={attempt + 1})"
                     )
                     return
+                elif response.status_code == 401:
+                    # Authentication failed - raise AuthenticationError immediately
+                    # 认证失败 - 立即抛出 AuthenticationError
+                    error_text = (
+                        response.text if hasattr(response, "text") else "Unauthorized"
+                    )
+                    error_msg = (
+                        f"Authentication failed. Invalid API credentials. "
+                        f"Error: {error_text}. "
+                        f"认证失败。无效的 API 凭证。错误: {error_text}。"
+                    )
+                    logger.error(f"Authentication failed: {error_msg}")
+                    raise AuthenticationError(error_msg)
                 else:
                     # Log non-200 status codes for debugging
                     logger.warning(
@@ -1361,6 +1412,96 @@ class HyperliquidClient:
                 exc_info=True,
             )
             return None
+
+    def _resolve_tick_size(
+        self, coin: str, market_snapshot: Optional[Dict] = None
+    ) -> float:
+        """
+        Resolve tick_size priority:
+        1) priceIncrement/tickSize from meta
+        2) pxDecimals -> 10 ** (-pxDecimals)
+        3) orderbook gap (best_ask - best_bid)
+        4) hard defaults per coin
+        优先使用 meta 价格精度，再用盘口价差，最后用默认值。
+        """
+        coin_normalized = (
+            coin.split("/")[0].split(":")[0].upper() if coin else ""
+        )
+
+        tick_size = None
+        meta_data = None
+
+        try:
+            meta_data = self._fetch_meta_data()
+        except Exception as e:
+            logger.debug(f"Failed to fetch meta for tick_size resolution: {e}")
+
+        if meta_data:
+            universe = meta_data.get("universe", [])
+            for asset_info in universe:
+                if not isinstance(asset_info, dict):
+                    continue
+                if asset_info.get("name") != coin_normalized:
+                    continue
+
+                price_increment = (
+                    asset_info.get("priceIncrement")
+                    or asset_info.get("price_increment")
+                    or asset_info.get("tickSize")
+                    or asset_info.get("tick_size")
+                )
+                if price_increment:
+                    try:
+                        tick_size = float(price_increment)
+                        logger.debug(
+                            f"tick_size resolved from priceIncrement/tickSize for {coin_normalized}: {tick_size}"
+                        )
+                        break
+                    except (TypeError, ValueError):
+                        pass
+
+                px_decimals = asset_info.get("pxDecimals") or asset_info.get(
+                    "px_decimals"
+                )
+                if px_decimals is not None:
+                    try:
+                        tick_size = 10 ** (-int(px_decimals))
+                        logger.debug(
+                            f"tick_size resolved from pxDecimals for {coin_normalized}: {tick_size}"
+                        )
+                        break
+                    except (TypeError, ValueError):
+                        pass
+
+                # If we reached here, we found the asset but no usable price precision
+                break
+
+        if tick_size is None and market_snapshot:
+            best_bid = market_snapshot.get("best_bid")
+            best_ask = market_snapshot.get("best_ask")
+            if best_bid and best_ask:
+                try:
+                    gap = abs(float(best_ask) - float(best_bid))
+                    if gap > 0:
+                        tick_size = gap
+                        logger.debug(
+                            f"tick_size inferred from orderbook gap for {coin_normalized}: {tick_size}"
+                        )
+                except (TypeError, ValueError):
+                    pass
+
+        if tick_size is None:
+            if coin_normalized == "BTC":
+                tick_size = 0.5
+            elif coin_normalized == "ETH":
+                tick_size = 0.1
+            else:
+                tick_size = 0.1
+            logger.debug(
+                f"tick_size fallback default for {coin_normalized}: {tick_size}"
+            )
+
+        return tick_size
     
     def _build_asset_index_map(self, meta_data: Dict) -> None:
         """
@@ -1845,17 +1986,8 @@ class HyperliquidClient:
                                     f"（szDecimals={sz_decimals}）。"
                                 )
                             else:
-                                # Fallback: use common defaults based on coin
-                                # 回退：根据币种使用常见默认值
-                                if coin_normalized == "BTC":
-                                    tick_size = 0.01
-                                elif coin_normalized == "ETH":
-                                    tick_size = 0.1
-                                else:
-                                    tick_size = 0.1  # Default
                                 logger.debug(
-                                    f"Using default tick_size={tick_size} for {coin_normalized} (szDecimals not found). "
-                                    f"为 {coin_normalized} 使用默认 tick_size={tick_size}（未找到 szDecimals）。"
+                                    f"No szDecimals found for {coin_normalized} when resolving step_size."
                                 )
                             break
             except Exception as e:
@@ -1864,10 +1996,14 @@ class HyperliquidClient:
                     f"从 meta 获取 tick_size/step_size 失败: {e}。"
                 )
 
-            # Use defaults if not found
-            # 如果未找到，使用默认值
-            if tick_size is None:
-                tick_size = 0.1  # Default for ETH (changed from 0.01)
+            # Resolve tick_size using price precision with fallbacks
+            # 使用价格精度及回退逻辑解析 tick_size
+            tick_size = self._resolve_tick_size(
+                coin_normalized, {"best_bid": best_bid, "best_ask": best_ask}
+            )
+
+            # Use defaults for step_size if not found
+            # 如果未找到 step_size，使用默认值
             if step_size is None:
                 step_size = 0.001  # Default for ETH
 
@@ -2931,35 +3067,13 @@ class HyperliquidClient:
                                         f"Market data is None. Symbol: {self.symbol}, Coin: {coin}. "
                                         f"市场数据为 None。交易对: {self.symbol}，币种: {coin}。"
                                     )
-                                
-                                # Get tick_size from market_data or use default
-                                # 从 market_data 获取 tick_size 或使用默认值
-                                tick_size = market_data.get("tick_size") if market_data else None
-                                if tick_size is None or tick_size <= 0:
-                                    # Try to get from meta data / 尝试从 meta 数据获取
-                                    try:
-                                        meta_data = self._fetch_meta_data()
-                                        if meta_data:
-                                            universe = meta_data.get("universe", [])
-                                            for asset_info in universe:
-                                                if isinstance(asset_info, dict) and asset_info.get("name") == coin:
-                                                    if "szDecimals" in asset_info:
-                                                        sz_decimals = asset_info["szDecimals"]
-                                                        tick_size = 10 ** (sz_decimals - 6)  # For perpetuals
-                                                        break
-                                    except Exception:
-                                        pass
-                                
-                                # Use default if still not found / 如果仍未找到，使用默认值
-                                if tick_size is None or tick_size <= 0:
-                                    # Common defaults based on coin / 根据币种的常见默认值
-                                    if coin == "BTC":
-                                        tick_size = 0.01
-                                    elif coin == "ETH":
-                                        tick_size = 0.1
-                                    else:
-                                        tick_size = 0.1  # Default
-                                
+
+                                # Resolve tick_size using meta price precision with fallbacks
+                                # 使用 meta 价格精度及回退逻辑解析 tick_size
+                                tick_size = self._resolve_tick_size(
+                                    coin, market_data or {}
+                                )
+
                                 # Round price to tick size BEFORE validation and placing order
                                 # 在验证和下单之前将价格舍入到 tick size
                                 original_price = price
@@ -3107,47 +3221,85 @@ class HyperliquidClient:
                             # Re-fetch tick_size if not already available
                             # 如果尚未可用，重新获取 tick_size
                             if 'tick_size' not in locals() or tick_size is None or tick_size <= 0:
-                                try:
-                                    market_data_check = self.fetch_market_data()
-                                    if market_data_check and market_data_check.get("tick_size"):
-                                        tick_size = market_data_check.get("tick_size")
-                                    else:
-                                        # Try meta data
-                                        meta_data = self._fetch_meta_data()
-                                        if meta_data:
-                                            universe = meta_data.get("universe", [])
-                                            for asset_info in universe:
-                                                if isinstance(asset_info, dict) and asset_info.get("name") == coin:
-                                                    if "szDecimals" in asset_info:
-                                                        sz_decimals = asset_info["szDecimals"]
-                                                        tick_size = 10 ** (sz_decimals - 6)
-                                                        break
-                                except Exception:
-                                    pass
+                                tick_size = self._resolve_tick_size(
+                                    coin, market_data or {}
+                                )
                             
                             # Verify price is divisible by tick_size before sending to SDK
                             # 在发送到 SDK 之前验证价格可被 tick_size 整除
                             if tick_size and tick_size > 0:
-                                remainder = price % tick_size
-                                if abs(remainder) > 1e-10:  # Account for floating point precision
-                                    # Re-round price to ensure divisibility
-                                    # 重新舍入价格以确保可整除
+                                # Use Decimal for precise remainder calculation / 使用 Decimal 进行精确的余数计算
+                                from decimal import Decimal, ROUND_FLOOR
+                                price_decimal = Decimal(str(price))
+                                tick_size_decimal = Decimal(str(tick_size))
+                                remainder_decimal = price_decimal % tick_size_decimal
+                                
+                                # Check if remainder is effectively zero (accounting for floating point precision)
+                                # 检查余数是否有效为零（考虑浮点数精度）
+                                # Use a more lenient threshold for Decimal remainder check
+                                # 对 Decimal 余数检查使用更宽松的阈值
+                                remainder_abs = abs(remainder_decimal)
+                                if remainder_abs > Decimal('1e-10'):
+                                    # Re-round price using Decimal arithmetic to ensure exact divisibility
+                                    # 使用 Decimal 算术重新舍入价格以确保精确可整除
                                     original_price_before_final_round = price
-                                    price = round_tick_size(price, tick_size)
+                                    
+                                    # Calculate ticks and round down to ensure divisibility
+                                    # 计算 ticks 并向下舍入以确保可整除
+                                    ticks_decimal = price_decimal / tick_size_decimal
+                                    ticks_floor = ticks_decimal.quantize(Decimal("1"), rounding=ROUND_FLOOR)
+                                    price_rounded_decimal = ticks_floor * tick_size_decimal
+                                    price = float(price_rounded_decimal)
+                                    
+                                    # Verify the rounded price is divisible / 验证舍入后的价格可整除
+                                    price_decimal_after = Decimal(str(price))
+                                    remainder_after = price_decimal_after % tick_size_decimal
+                                    
                                     logger.warning(
                                         f"Final price rounding: {original_price_before_final_round} -> {price} "
-                                        f"(tick_size={tick_size}, remainder was {remainder}). "
+                                        f"(tick_size={tick_size}, remainder before: {float(remainder_decimal)}, "
+                                        f"remainder after: {float(remainder_after)}). "
                                         f"最终价格舍入: {original_price_before_final_round} -> {price} "
-                                        f"（tick_size={tick_size}，余数为 {remainder}）。"
+                                        f"（tick_size={tick_size}，舍入前余数: {float(remainder_decimal)}，"
+                                        f"舍入后余数: {float(remainder_after)}）。"
                                     )
+                                    
+                                    # Final check: if still not divisible, this is a critical error
+                                    # 最终检查：如果仍不可整除，这是严重错误
+                                    if abs(float(remainder_after)) > 1e-10:
+                                        logger.error(
+                                            f"⚠️  CRITICAL: Price still not divisible after Decimal rounding! "
+                                            f"Price: {price}, tick_size: {tick_size}, remainder: {float(remainder_after)}. "
+                                            f"This should not happen. Using floor rounding as last resort. "
+                                            f"⚠️  严重：Decimal 舍入后价格仍不可整除！价格: {price}，tick_size: {tick_size}，"
+                                            f"余数: {float(remainder_after)}。这不应该发生。使用向下舍入作为最后手段。"
+                                        )
+                                        # Force floor rounding one more time / 再次强制向下舍入
+                                        ticks_floor_final = (price_decimal_after / tick_size_decimal).quantize(
+                                            Decimal("1"), rounding=ROUND_FLOOR
+                                        )
+                                        price = float(ticks_floor_final * tick_size_decimal)
+                                        
+                                        # Final verification / 最终验证
+                                        final_price_decimal = Decimal(str(price))
+                                        final_remainder = final_price_decimal % tick_size_decimal
+                                        if abs(float(final_remainder)) > 1e-10:
+                                            logger.critical(
+                                                f"🚨 CRITICAL ERROR: Price {price} cannot be made divisible by tick_size {tick_size}! "
+                                                f"Final remainder: {float(final_remainder)}. "
+                                                f"🚨 严重错误：价格 {price} 无法被 tick_size {tick_size} 整除！"
+                                                f"最终余数: {float(final_remainder)}。"
+                                            )
                                 
                                 # Log final price and tick_size for debugging
                                 # 记录最终价格和 tick_size 用于调试
+                                final_price_decimal = Decimal(str(price))
+                                final_remainder = final_price_decimal % tick_size_decimal
                                 logger.debug(
                                     f"Final order price: {price}, tick_size: {tick_size}, "
-                                    f"price % tick_size: {price % tick_size if tick_size > 0 else 'N/A'}. "
+                                    f"price % tick_size (Decimal): {float(final_remainder)}. "
                                     f"最终订单价格: {price}，tick_size: {tick_size}，"
-                                    f"price % tick_size: {price % tick_size if tick_size > 0 else 'N/A'}。"
+                                    f"price % tick_size (Decimal): {float(final_remainder)}。"
                                 )
                         
                         # Place order using SDK
@@ -3203,6 +3355,7 @@ class HyperliquidClient:
                         "message": error_msg,
                         "symbol": self.symbol,
                         "order": order_snapshot,
+                        "order_req_id": order_req_id,
                     }
                     continue
                 
@@ -3211,18 +3364,61 @@ class HyperliquidClient:
                 if not order_result:
                     # SDK returned None or invalid response
                     # SDK 返回 None 或无效响应
+                    # Check if response contains error information
+                    # 检查响应是否包含错误信息
+                    error_type = "sdk_no_result"
+                    error_detail = None
+                    error_text = None
+                    
+                    if isinstance(response, dict):
+                        if response.get("status") == "err":
+                            # SDK returned error response
+                            # SDK 返回错误响应
+                            error_text = response.get("response", "")
+                            if isinstance(error_text, dict):
+                                error_text = error_text.get("data", str(error_text))
+                            else:
+                                error_text = str(error_text)
+                            
+                            # Determine error type based on error message
+                            # 根据错误消息确定错误类型
+                            error_text_lower = error_text.lower() if error_text else ""
+                            if any(keyword in error_text_lower for keyword in ["insufficient", "margin", "balance", "invalid", "validation", "422"]):
+                                error_type = "invalid_request"
+                            elif "rate limit" in error_text_lower or "429" in error_text_lower:
+                                error_type = "rate_limit"
+                            elif "connection" in error_text_lower or "timeout" in error_text_lower:
+                                error_type = "connection_error"
+                            
+                            error_detail = {
+                                "error": error_text,
+                                "status": "err",
+                            }
+                        else:
+                            # Response format is unexpected
+                            # 响应格式不符合预期
+                            error_text = str(response)
+                    
                     error_msg = (
                         f"SDK order placement returned no result. Response: {response}. "
                         f"SDK 下单未返回结果。响应: {response}。"
                     )
+                    if error_text:
+                        error_msg = (
+                            f"Order placement failed: {error_text}. "
+                            f"下单失败: {error_text}。"
+                        )
+                    
                     logger.error(error_msg)
                     self.last_order_error = {
-                        "type": "sdk_no_result",
+                        "type": error_type,
                         "message": error_msg,
                         "symbol": self.symbol,
                         "order": order_snapshot,
                         "response": str(response)[:500] if response else None,
                     }
+                    if error_detail:
+                        self.last_order_error["api_error"] = error_detail
                     continue
                 if order_result:
                     created_orders.append(order_result)
@@ -3269,13 +3465,13 @@ class HyperliquidClient:
                         raise InvalidOrderError(error_msg)
 
             except InsufficientBalanceError as e:
-                self._handle_order_error(e, order_snapshot, "insufficient_funds")
+                self._handle_order_error(e, order_snapshot, "insufficient_funds", order_req_id)
                 continue
             except InvalidOrderError as e:
-                self._handle_order_error(e, order_snapshot, "invalid_order")
+                self._handle_order_error(e, order_snapshot, "invalid_order", order_req_id)
                 continue
             except Exception as e:
-                self._handle_order_error(e, order_snapshot, "unknown_error")
+                self._handle_order_error(e, order_snapshot, "unknown_error", order_req_id)
                 continue
 
         return created_orders
@@ -4189,7 +4385,7 @@ class HyperliquidClient:
         return None
 
     def _handle_order_error(
-        self, error: Exception, order: Dict, error_type: str
+        self, error: Exception, order: Dict, error_type: str, order_req_id: Optional[str] = None
     ) -> None:
         """
         Handle order placement error / 处理订单下单错误
@@ -4198,6 +4394,7 @@ class HyperliquidClient:
             error: Exception that occurred
             order: Order dictionary that failed
             error_type: Error type string
+            order_req_id: Optional order request ID for tracking
         """
         error_msg = str(error)
         if error_type == "insufficient_funds":
@@ -4227,6 +4424,8 @@ class HyperliquidClient:
             "order": order,
             "trace_id": get_trace_id(),
         }
+        if order_req_id:
+            self.last_order_error["order_req_id"] = order_req_id
 
     def _convert_hyperliquid_order_to_internal(self, order_data: Dict) -> Dict:
         """

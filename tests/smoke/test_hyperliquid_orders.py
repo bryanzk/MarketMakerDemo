@@ -74,11 +74,10 @@ class TestHyperliquidOrderManagementSmoke:
         os.environ,
         {
             "HYPERLIQUID_API_KEY": "test_key",
-            "HYPERLIQUID_API_SECRET": "0x" + "1" * 64,  # Valid hex format for Ethereum account
+            "HYPERLIQUID_API_SECRET": "test_secret",
         },
     )
     @patch("src.trading.hyperliquid_client.requests")
-    @patch("src.trading.hyperliquid_client.ETH_ACCOUNT_AVAILABLE", True)
     def test_smoke_cancel_order(self, mock_requests):
         """
         Smoke Test: AC-3 - Order can be cancelled successfully
@@ -86,9 +85,6 @@ class TestHyperliquidOrderManagementSmoke:
         
         Verifies that order cancellation flow works.
         验证订单取消流程正常工作。
-        
-        Note: This test requires SDK initialization, which needs valid Ethereum account.
-        注意：此测试需要 SDK 初始化，这需要有效的以太坊账户。
         """
         # Mock successful connection
         mock_response = MagicMock()
@@ -108,21 +104,11 @@ class TestHyperliquidOrderManagementSmoke:
         }
         mock_requests.post.return_value = cancel_response
 
-        # Cancel order - may fail if SDK not initialized, which is acceptable for smoke test
-        # 取消订单 - 如果 SDK 未初始化可能会失败，这对于冒烟测试是可接受的
-        try:
-            result = client.cancel_orders(["order_12345"])
-            # If successful, verify cancellation was attempted
-            # 如果成功，验证已尝试取消
-            assert mock_requests.post.called
-        except Exception as e:
-            # If SDK not initialized, verify error message is informative
-            # 如果 SDK 未初始化，验证错误消息信息丰富
-            error_msg = str(e)
-            assert "SDK" in error_msg or "initialized" in error_msg.lower() or "未初始化" in error_msg
-            # For smoke test, we verify the error is handled gracefully (not a crash)
-            # 对于冒烟测试，我们验证错误被优雅处理（不是崩溃）
-            assert isinstance(e, (ConnectionError, AttributeError))
+        # Cancel order
+        result = client.cancel_orders(["order_12345"])
+
+        # Verify cancellation was attempted
+        assert mock_requests.post.called
 
     @patch.dict(
         os.environ,

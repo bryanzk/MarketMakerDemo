@@ -76,3 +76,4 @@ class TestEvaluationCancellation:
         # These should be None initially / 这些应该最初为 None
         # They are updated when evaluation completes / 它们在评估完成时更新
 
+

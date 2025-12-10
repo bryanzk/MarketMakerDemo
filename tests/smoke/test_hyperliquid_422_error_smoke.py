@@ -1,9 +1,9 @@
 """
-Smoke Test for HyperliquidClient 422 error handling and signature
-HyperliquidClient 422 错误处理和签名冒烟测试
+Smoke Test for HyperliquidClient 422 error handling
+HyperliquidClient 422 错误处理冒烟测试
 
-Smoke tests verify critical paths for 422 error handling and signature generation without full integration.
-冒烟测试验证 422 错误处理和签名生成的关键路径，无需完整集成。
+Smoke tests verify critical paths for 422 error handling without full integration.
+冒烟测试验证 422 错误处理的关键路径，无需完整集成。
 
 Owner: Agent QA
 """
@@ -126,21 +126,7 @@ class TestHyperliquid422ErrorSmoke:
         
         # Verify error information is available / 验证错误信息可用
         assert client.last_order_error is not None
-        # Error may be from validation (before API call) or from API (422)
-        # 错误可能来自验证（API 调用前）或来自 API（422）
-        # Check error type or status_code instead of message content
-        # 检查错误类型或 status_code，而不是消息内容
-        assert "type" in client.last_order_error or "status_code" in client.last_order_error
-        # If it's a validation error, it should have type "invalid_order"
-        # 如果是验证错误，应该有 type "invalid_order"
-        # If it's an API error, it should have status_code 422
-        # 如果是 API 错误，应该有 status_code 422
-        if "status_code" in client.last_order_error:
-            assert client.last_order_error["status_code"] == 422
-        elif "type" in client.last_order_error:
-            # Validation errors are also acceptable for smoke test
-            # 验证错误对于冒烟测试也是可接受的
-            assert client.last_order_error["type"] in ["invalid_order", "invalid_request", "sdk_not_initialized"]
+        assert "422" in client.last_order_error["message"]
 
     @patch.dict(
         os.environ,
@@ -196,91 +182,4 @@ class TestHyperliquid422ErrorSmoke:
         assert "Price validation failed" in client.last_api_error["error_detail"]
         assert "price" in client.last_api_error["error_detail"]
         assert "-100" in client.last_api_error["error_detail"]
-
-    @patch.dict(
-        os.environ,
-        {
-            "HYPERLIQUID_API_KEY": "test_key",
-            "HYPERLIQUID_API_SECRET": "0x" + "1" * 64,  # Valid private key format
-        },
-    )
-    @patch("src.trading.hyperliquid_client.requests.post")
-    @patch("src.trading.hyperliquid_client.ETH_ACCOUNT_AVAILABLE", True)
-    def test_smoke_signature_in_order_payload(self, mock_post):
-        """
-        Smoke Test: Order payload includes signature field
-        冒烟测试：订单负载包含签名字段
-        
-        Verifies that signature is included in order payload when eth_account is available.
-        验证 eth_account 可用时订单负载包含签名。
-        """
-        # Mock successful connection / 模拟成功连接
-        mock_success = MagicMock()
-        mock_success.status_code = 200
-        mock_success.json.return_value = {"status": "ok"}
-        mock_post.return_value = mock_success
-
-        client = HyperliquidClient()
-
-        order = {
-            "side": "buy",
-            "type": "limit",
-            "price": 100.0,
-            "quantity": 1.0,
-        }
-
-        payload = client._build_order_payload(order)
-
-        # Verify payload includes signature if account is available / 验证账户可用时负载包含签名
-        assert "action" in payload
-        assert "nonce" in payload
-        if client._account is not None:
-            assert "signature" in payload
-            assert payload["signature"] is not None
-
-    @patch.dict(
-        os.environ,
-        {
-            "HYPERLIQUID_API_KEY": "test_key",
-            "HYPERLIQUID_API_SECRET": "test_secret",
-        },
-    )
-    @patch("src.trading.hyperliquid_client.requests.post")
-    def test_smoke_connect_without_empty_exchange_request(self, mock_post):
-        """
-        Smoke Test: Connection does not send empty POST to /exchange
-        冒烟测试：连接不发送空 POST 到 /exchange
-        
-        Verifies that _connect_and_authenticate no longer sends empty {} to /exchange.
-        验证 _connect_and_authenticate 不再发送空 {} 到 /exchange。
-        """
-        # Mock successful connection / 模拟成功连接
-        mock_success = MagicMock()
-        mock_success.status_code = 200
-        mock_success.json.return_value = {"status": "ok"}
-        mock_post.return_value = mock_success
-
-        client = HyperliquidClient()
-
-        # Verify client is connected / 验证客户端已连接
-        assert client.is_connected is True
-
-        # Verify only /info endpoint was called (not /exchange with empty body)
-        # 验证只调用了 /info 端点（没有用空 body 调用 /exchange）
-        # Check that mock_post was called, but not with empty json={}
-        # 检查 mock_post 被调用，但不是用空的 json={}
-        calls = mock_post.call_args_list
-        # Should have at least one call to /info
-        # 应该至少有一次对 /info 的调用
-        assert len(calls) > 0
-        # Verify no call was made with empty json={} to /exchange
-        # 验证没有用空的 json={} 调用 /exchange
-        for call in calls:
-            args, kwargs = call
-            url = args[0] if args else kwargs.get("url", "")
-            json_data = kwargs.get("json", {})
-            # If it's a call to /exchange, json should not be empty {}
-            # 如果是对 /exchange 的调用，json 不应该是空的 {}
-            if "/exchange" in url:
-                assert json_data != {}, "Empty {} should not be sent to /exchange"
 

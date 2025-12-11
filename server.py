@@ -3358,15 +3358,28 @@ async def get_hyperliquid_status(request: Request):
         # Get strategy config from Hyperliquid strategy instance / 从 Hyperliquid 策略实例获取策略配置
         spread = None
         quantity = None
+        base_spread = None
         if hasattr(bot_engine, "strategy_instances") and bot_engine.strategy_instances:
             # Find Hyperliquid strategy instance / 查找 Hyperliquid 策略实例
             for instance_id, instance in bot_engine.strategy_instances.items():
                 if instance.exchange == exchange:
-                    # Get spread and quantity from strategy / 从策略获取价差和数量
+                    # Get spread, quantity, and base_spread from strategy / 从策略获取价差、数量和基础价差
                     if hasattr(instance, "strategy"):
                         spread = getattr(instance.strategy, "spread", None)
                         quantity = getattr(instance.strategy, "quantity", None)
+                        base_spread = getattr(instance.strategy, "base_spread", None)
                     break
+
+        # Calculate market spread from market data / 从市场数据计算市场价差
+        market_spread = None
+        if market_data:
+            best_bid = market_data.get("best_bid")
+            best_ask = market_data.get("best_ask")
+            mid_price = market_data.get("mid_price", 0.0)
+            if best_bid is not None and best_ask is not None and mid_price > 0:
+                # Market spread = (best_ask - best_bid) / mid_price
+                # 市场价差 = (最佳卖价 - 最佳买价) / 中间价
+                market_spread = (best_ask - best_bid) / mid_price
 
         status = {
             "connected": True,
@@ -3384,6 +3397,8 @@ async def get_hyperliquid_status(request: Request):
             ),
             "leverage": account_data.get("leverage", 1.0) if account_data else 1.0,
             "spread": spread if spread is not None else None,
+            "base_spread": base_spread if base_spread is not None else None,
+            "market_spread": market_spread if market_spread is not None else None,
             "quantity": quantity if quantity is not None else None,
             "orders": open_orders,
             "positions": positions,
